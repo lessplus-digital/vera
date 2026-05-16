@@ -90,6 +90,7 @@ export default function App() {
       notas,
       fecha_pedido,
       detalle_pedidos (
+        producto_id,
         nombre_producto,
         variante,
         cantidad,
