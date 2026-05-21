@@ -87,6 +87,7 @@ export default function App() {
       estado,
       estado_pago,
       comprobante_url,
+      motivo_rechazo,
       notas,
       fecha_pedido,
       detalle_pedidos (

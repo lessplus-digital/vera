@@ -4,27 +4,27 @@ const MOTIVOS_PREDETERMINADOS = [
   {
     id: 'fuera_cobertura',
     label: '📍 Fuera de cobertura',
-    mensaje: 'Lo sentimos, tu dirección está fuera de nuestra zona de cobertura de domicilios.',
+    mensaje: 'Lo sentimos, tu dirección está fuera de nuestra zona de cobertura de domicilios',
   },
   {
     id: 'producto_agotado',
     label: '🍕 Producto agotado',
-    mensaje: 'Lo sentimos, uno o más productos de tu pedido se agotaron por hoy.',
+    mensaje: 'Lo sentimos, uno o más productos de tu pedido se agotaron por hoy',
   },
   {
     id: 'local_cerrado',
     label: '🔒 Local cerrado',
-    mensaje: 'Lo sentimos, el local ya cerró y no podemos procesar más pedidos por hoy.',
+    mensaje: 'Lo sentimos, el local ya cerró y no podemos procesar más pedidos por hoy',
   },
   {
     id: 'pago_no_verificado',
     label: '🏦 Pago no verificado',
-    mensaje: 'No pudimos verificar tu comprobante de pago. Por favor envía uno nuevo o contáctanos.',
+    mensaje: 'No pudimos verificar tu comprobante de pago. Por favor envía uno nuevo o contáctanos',
   },
   {
     id: 'datos_incompletos',
     label: '📝 Datos incompletos',
-    mensaje: 'Tu pedido no tiene la información completa (dirección, productos, etc). Por favor vuelve a hacer el pedido.',
+    mensaje: 'Tu pedido no tiene la información completa (dirección, productos, etc). Por favor vuelve a hacer el pedido',
   },
 ]
 

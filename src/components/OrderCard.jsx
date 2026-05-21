@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../lib/supabase'
 import EditOrderModal from './EditOrderModal'
+import RejectModal from './RejectModal'
 
 const ESTADO_PAGO_LABEL = {
   pendiente:   { label: 'Pago pendiente', color: 'var(--amber)',  bg: 'var(--amber-dim)' },
@@ -19,6 +20,7 @@ export default function OrderCard({ order, isNew, onUpdated }) {
   const [loading, setLoading] = useState(false)
   const [showComprobante, setShowComprobante] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
 
   const timeAgo = formatDistanceToNow(new Date(order.fecha_pedido), {
     addSuffix: true,
@@ -35,6 +37,24 @@ export default function OrderCard({ order, isNew, onUpdated }) {
       .eq('pedido_id', order.pedido_id)
     setLoading(false)
     if (!error) onUpdated()
+  }
+
+  async function handleReject(motivo) {
+    setLoading(true)
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        estado: 'cancelado',
+        estado_pago: 'rechazado',
+        motivo_rechazo: motivo,
+      })
+      .eq('pedido_id', order.pedido_id)
+    setLoading(false)
+    if (!error) {
+      setShowRejectModal(false)
+      setShowComprobante(false)
+      onUpdated()
+    }
   }
 
   const metodo = METODO_LABEL[order.metodo_pago] || { icon: '💳', color: 'var(--text-secondary)' }
@@ -209,7 +229,12 @@ export default function OrderCard({ order, isNew, onUpdated }) {
         )}
 
         {/* Acciones según estado */}
-        <Actions order={order} loading={loading} onUpdate={updateEstado} />
+        <Actions
+          order={order}
+          loading={loading}
+          onUpdate={updateEstado}
+          onRejectClick={() => setShowRejectModal(true)}
+        />
 
         {/* Modal comprobante */}
         {showComprobante && order.comprobante_url && (
@@ -276,7 +301,7 @@ export default function OrderCard({ order, isNew, onUpdated }) {
               {order.estado === 'pendiente' && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
-                    onClick={() => { setShowComprobante(false); updateEstado('cancelado', 'rechazado') }}
+                    onClick={() => { setShowComprobante(false); setShowRejectModal(true) }}
                     disabled={loading}
                     style={{
                       flex: 1, padding: '9px 4px', fontSize: 12, fontWeight: 500,
@@ -316,11 +341,21 @@ export default function OrderCard({ order, isNew, onUpdated }) {
           onUpdated={onUpdated}
         />
       )}
+
+      {/* Modal de rechazo — fuera del card para evitar problemas de z-index */}
+      {showRejectModal && (
+        <RejectModal
+          order={order}
+          loading={loading}
+          onConfirm={handleReject}
+          onClose={() => setShowRejectModal(false)}
+        />
+      )}
     </>
   )
 }
 
-function Actions({ order, loading, onUpdate }) {
+function Actions({ order, loading, onUpdate, onRejectClick }) {
   const btn = (label, onClick, color, bg, border) => (
     <button
       onClick={onClick}
@@ -339,7 +374,7 @@ function Actions({ order, loading, onUpdate }) {
 
   if (order.estado === 'pendiente') return (
     <div style={{ display: 'flex', gap: 6 }}>
-      {btn('✕ Rechazar', () => onUpdate('cancelado', 'rechazado'), 'var(--red)', 'var(--red-dim)', 'var(--red-border)')}
+      {btn('✕ Rechazar', onRejectClick, 'var(--red)', 'var(--red-dim)', 'var(--red-border)')}
       {btn('✓ Aprobar', () => onUpdate('en_cocina', 'confirmado'), 'var(--green)', 'var(--green-dim)', 'var(--green-border)')}
     </div>
   )
