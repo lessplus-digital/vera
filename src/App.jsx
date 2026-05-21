@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from './lib/supabase'
 import Column from './components/Column'
+import SupportPanel from './components/SupportPanel'
 
 const COLUMNS = [
   {
@@ -58,6 +59,8 @@ export default function App() {
   const [newIds, setNewIds] = useState(new Set())
   const [stats, setStats] = useState({ total: 0, ingresos: 0, entregados: 0 })
   const [lastUpdate, setLastUpdate] = useState(new Date())
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [supportCount, setSupportCount] = useState(0)
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('theme')
     return saved === 'light' ? 'light' : 'dark'
@@ -70,42 +73,62 @@ export default function App() {
     localStorage.setItem('theme', theme)
   }, [theme])
 
+  // ─── Support badge count ─────────────────────────────
+  useEffect(() => {
+    async function getCount() {
+      const { count, error } = await supabase
+        .from('clientes')
+        .select('*', { count: 'exact', head: true })
+        .eq('modo', 'humano')
+
+      if (!error && count !== null) setSupportCount(count)
+    }
+    getCount()
+
+    const channel = supabase
+      .channel('clientes-modo-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'clientes' },
+        () => { getCount() }
+      )
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
+  }, [])
+
   const fetchOrders = useCallback(async () => {
     const today = new Date()
     today.setUTCHours(5, 0, 0, 0)
 
-    // Query principal — sin el filtro NOT IN que fallaba
-  const { data, error } = await supabase
-    .from('pedidos')
-    .select(`
-      pedido_id,
-      telefono,
-      tipo_pedido,
-      direccion_entrega,
-      metodo_pago,
-      total,
-      estado,
-      estado_pago,
-      comprobante_url,
-      motivo_rechazo,
-      notas,
-      fecha_pedido,
-      detalle_pedidos (
-        producto_id,
-        nombre_producto,
-        variante,
-        cantidad,
-        precio_unitario
-      )
-    `)
-    .gte('fecha_pedido', today.toISOString())
-    .in('estado', ['pendiente', 'en_cocina', 'en_camino', 'recoger'])
-    .order('fecha_pedido', { ascending: false })
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select(`
+        pedido_id,
+        telefono,
+        tipo_pedido,
+        direccion_entrega,
+        metodo_pago,
+        total,
+        estado,
+        estado_pago,
+        comprobante_url,
+        motivo_rechazo,
+        notas,
+        fecha_pedido,
+        detalle_pedidos (
+          producto_id,
+          nombre_producto,
+          variante,
+          cantidad,
+          precio_unitario
+        )
+      `)
+      .gte('fecha_pedido', today.toISOString())
+      .in('estado', ['pendiente', 'en_cocina', 'en_camino', 'recoger'])
+      .order('fecha_pedido', { ascending: false })
 
-  console.log('DATA:', data)
-  console.log('ERROR:', error)
-
-    if (error) { console.error(error); return }
+    if (error) return
 
     // Detectar pedidos nuevos
     if (!isFirstLoad.current) {
@@ -137,7 +160,6 @@ export default function App() {
       .select('total, estado')
       .gte('fecha_pedido', today.toISOString())
 
-
     if (statsData) {
       const total = statsData.length
       const ingresos = statsData
@@ -149,24 +171,19 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-  fetchOrders()
+    fetchOrders()
 
-  const channel = supabase
-    .channel('pedidos-changes')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'pedidos' },
-      (payload) => {
-        console.log('Cambio detectado:', payload)
-        fetchOrders()
-      }
-    )
-    .subscribe((status) => {
-      console.log('Realtime status:', status)
-    })
+    const channel = supabase
+      .channel('pedidos-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pedidos' },
+        () => { fetchOrders() }
+      )
+      .subscribe()
 
-  return () => supabase.removeChannel(channel)
-}, [])
+    return () => supabase.removeChannel(channel)
+  }, [])
 
   const getColumnOrders = (col) => {
     const keys = Array.isArray(col.key) ? col.key : [col.key]
@@ -205,6 +222,23 @@ export default function App() {
           }}>
             Admin
           </span>
+
+          {/* ─── Tab Navigation ─── */}
+          <nav style={{ display: 'flex', gap: 2, marginLeft: 20 }}>
+            <TabButton
+              active={activeTab === 'dashboard'}
+              onClick={() => setActiveTab('dashboard')}
+              label="Pedidos"
+              emoji="📋"
+            />
+            <TabButton
+              active={activeTab === 'soporte'}
+              onClick={() => setActiveTab('soporte')}
+              label="Soporte"
+              emoji="💬"
+              badge={supportCount}
+            />
+          </nav>
         </div>
 
         {/* Stats */}
@@ -226,9 +260,13 @@ export default function App() {
           >
             {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
           </button>
-          <Stat label="Pedidos hoy" value={stats.total} color="var(--text-secondary)" />
-          <Stat label="Entregados" value={stats.entregados} color="var(--green)" />
-          <Stat label="Ingresos" value={`$${stats.ingresos.toLocaleString('es-CO')}`} color="var(--amber)" />
+          {activeTab === 'dashboard' && (
+            <>
+              <Stat label="Pedidos hoy" value={stats.total} color="var(--text-secondary)" />
+              <Stat label="Entregados" value={stats.entregados} color="var(--green)" />
+              <Stat label="Ingresos" value={`$${stats.ingresos.toLocaleString('es-CO')}`} color="var(--amber)" />
+            </>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div style={{
               width: 6, height: 6, borderRadius: '50%',
@@ -242,40 +280,88 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main */}
-      <main style={{ padding: '20px 24px' }}>
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>🍕</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Cargando pedidos...</div>
+      {/* ─── Tab Content ─── */}
+      {activeTab === 'dashboard' ? (
+        <main style={{ padding: '20px 24px' }}>
+          {loading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🍕</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Cargando pedidos...</div>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 16,
-            alignItems: 'start',
-          }}>
-            {COLUMNS.map(col => (
-              <Column
-                key={Array.isArray(col.key) ? col.key.join('-') : col.key}
-                title={col.title}
-                emoji={col.emoji}
-                color={col.color}
-                colorDim={col.colorDim}
-                colorBorder={col.colorBorder}
-                orders={getColumnOrders(col)}
-                newIds={newIds}
-                onUpdated={fetchOrders}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 16,
+              alignItems: 'start',
+            }}>
+              {COLUMNS.map(col => (
+                <Column
+                  key={Array.isArray(col.key) ? col.key.join('-') : col.key}
+                  title={col.title}
+                  emoji={col.emoji}
+                  color={col.color}
+                  colorDim={col.colorDim}
+                  colorBorder={col.colorBorder}
+                  orders={getColumnOrders(col)}
+                  newIds={newIds}
+                  onUpdated={fetchOrders}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+      ) : (
+        <SupportPanel />
+      )}
 
     </div>
+  )
+}
+
+/* ─── Sub-components ─── */
+
+function TabButton({ active, onClick, label, emoji, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 14px',
+        fontSize: 12,
+        fontWeight: active ? 600 : 400,
+        color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+        background: active ? 'var(--bg-card)' : 'transparent',
+        border: active ? '1px solid var(--border)' : '1px solid transparent',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontFamily: 'var(--font-sans)',
+        transition: 'all 0.15s ease',
+      }}
+    >
+      <span style={{ fontSize: 13 }}>{emoji}</span>
+      {label}
+      {badge > 0 && (
+        <span style={{
+          background: 'var(--red)',
+          color: '#fff',
+          fontSize: 10,
+          fontWeight: 700,
+          borderRadius: 10,
+          padding: '1px 6px',
+          minWidth: 18,
+          textAlign: 'center',
+          fontFamily: 'var(--font-mono)',
+          lineHeight: '16px',
+        }}>
+          {badge}
+        </span>
+      )}
+    </button>
   )
 }
 
