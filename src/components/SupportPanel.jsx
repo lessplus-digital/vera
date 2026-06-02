@@ -8,7 +8,7 @@ import { es } from 'date-fns/locale'
 // exponer el token en el frontend.
 const WA_PHONE_NUMBER_ID = '1026022853935447'
 const WA_API_VERSION = 'v25.0'
-const WA_ACCESS_TOKEN = 'EAASmnZAekbwoBRkNtXWFWVpKrZCzeG8nvouzvHXzSbOOD06udgogsClZAa5K3JO2AKYEnMSgwFxqpeEKEQI2fYNaCr1PCEguMoIonrS9peWEnbFVqKgJBGRLO5HLXcnjYsELDw7YeW9C5bweJZAFWLZBsqtQa7DJ7pkssaJc8lyXwNin5Pl0u3GYNBg0GbDAgFlbSPfxxAgPvWhUVjn9boVfZCI7wfdgZDZD' // ← Configurar con tu token real
+const WA_ACCESS_TOKEN = 'EAASmnZAekbwoBRhq1ZBZA8619wRerkoR0CQTvfQMnQf9WBySGwYsUD5pNZBKdewT1lDMY1a8PWbqqxHK8VSRh8x1RgOvMhEUozGhXpoKHp1BL6ZAZCkfYoDWguaCbfZAVTgM3hmMTZARVkE0ZBOIpb8OoDsY0e3bM7bC1JMZAxUwJIvGBzEQ4RahwSSQOApktRcAZDZD'
 
 // ─── MAIN COMPONENT ─────────────────────────────────────
 export default function SupportPanel() {

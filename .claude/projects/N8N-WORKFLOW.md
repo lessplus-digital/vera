@@ -1,134 +1,216 @@
-# Diseño de Workflows n8n — Vera Pizzería
+# Workflow Principal — n8n
 
-## Workflow principal: Atención WhatsApp
+> El flujo principal de n8n, el más importante
 
-### Trigger
+---
 
-**Tipo:** Webhook (POST)
-**Recibe:** Payload de Meta WhatsApp Cloud API
+## Trigger
 
-### Flujo completo
+**Nodo:** WhatsApp Trigger
+**Tipo:** Webhook de Meta WhatsApp Cloud API
+**Recibe:** Todos los mensajes entrantes (texto, imagen, interactive, etc.)
 
-```
-Webhook Trigger (POST de Meta)
-  │
-  ├─ Code: Extraer telefono + mensaje del payload
-  │   └─ Maneja: text, image (comprobante), interactive (botones)
-  │
-  ├─ Supabase: SELECT * FROM clientes WHERE telefono = {{ telefono }}
-  │
-  ├─ IF: ¿Cliente existe?
-  │   ├─ NO → Supabase: INSERT INTO clientes (telefono, nombre, modo)
-  │   │         VALUES (telefono, 'Pendiente', 'bot')
-  │   └─ SI → Continuar
-  │
-  ├─ IF: ¿cliente.modo == 'humano'?
-  │   ├─ SI → INSERT INTO mensajes_soporte (telefono, origen='cliente', mensaje)
-  │   │       └─ FIN (no pasa al agente)
-  │   └─ NO → Continuar
-  │
-  ├─ Merge: Combinar datos del cliente con el mensaje
-  │
-  ├─ Edit Fields: Preparar JSON con telefono, nombre, direccion, mensaje
-  │
-  └─ AI Agent Node (INTENCION_CLIENTE)
-       ├─ Model: OpenAI Chat Model (GPT)
-       ├─ Memory: Postgres Chat Memory (session_id = telefono)
-       ├─ System Prompt: ver AI-AGENT.md
-       └─ Tools:
-            ├─ consultar_menu    → Subworkflow
-            ├─ crear_pedido      → Supabase INSERT pedidos
-            ├─ agregar_items     → Supabase INSERT detalle_pedidos
-            ├─ actualizar_cliente → Supabase UPDATE clientes
-            └─ escalar_a_humano  → Supabase UPDATE clientes SET modo='humano'
-```
+---
 
-## Subworkflow: consultar_menu
+## Switch inicial: Tipo de mensaje
 
-### Input
+**Nodo:** Switch (mode: Rules)
+**Entrada:** Payload del WhatsApp Trigger
+**Evalúa:** Tipo de mensaje recibido
 
-Un solo campo: `filtro` (string). Ejemplo: `"hawaiana"`, `"arepa"`, `"bebidas"`.
+| Ruta | Condición | Destino |
+|---|---|---|
+| Texto | Mensaje tipo `text` | → Ruta de texto (flujo principal) |
+| Imagen | Mensaje tipo `image` | → Ruta de imagen (comprobante) |
+| Otro | Cualquier otro tipo | → No Operation, do nothing! |
 
-### Flujo
+---
+
+## RUTA DE IMAGEN (comprobante de pago)
 
 ```
-When Executed by Another Workflow
+Switch (imagen)
   │
-  ├─ Code Node 1: Construir filtros
-  │   - Toma filtro, lo limpia
-  │   - Si tiene múltiples palabras: usa la primera para Supabase,
-  │     guarda el resto para filtro post-proceso
-  │   - Construye queryParams con: select, order, disponible=eq.true, limit=30
-  │   - Si hay búsqueda: agrega OR filter (nombre.ilike, categoria.ilike, descripcion.ilike)
+  ├─ Mapear Imagenes de wpp (Edit Fields — manual)
+  │   └─ Extrae image_id, mime_type, metadata del payload
   │
-  ├─ HTTP Request: GET {SUPABASE_URL}/rest/v1/menu
-  │   - Query params desde Code Node 1
-  │   - Headers: apikey + Authorization
+  ├─ Traer Imagen de whatsapp (HTTP Request — GET)
+  │   └─ Descarga la imagen desde Meta API usando el image_id
   │
-  └─ Code Node 2: Formatear respuesta
-      - Si hay palabras extra de filtro → aplica .filter() local
-      - Agrupa por categoría
-      - Retorna { encontrados: N, productos_por_categoria: {...} }
+  ├─ Descargar Imagen de whatsapp (HTTP Request — GET)
+  │   └─ Obtiene el binary de la imagen
+  │
+  ├─ Buscar pedido activo (Supabase — get row)
+  │   └─ Busca pedido del cliente con estado pendiente de comprobante
+  │
+  ├─ ¿Pedido existe? (IF)
+  │   │
+  │   ├─ FALSE → Pedido no encontrado (WhatsApp — message.send)
+  │   │            └─ Le dice al cliente que no tiene pedido activo
+  │   │
+  │   └─ TRUE →
+  │       ├─ Preparar Upload (Code node)
+  │       │   └─ Prepara el archivo para subir al storage
+  │       │
+  │       ├─ Subir a supabase storage (HTTP Request)
+  │       │   └─ Sube la imagen al bucket de Supabase Storage
+  │       │
+  │       ├─ Update a row (Supabase — update row)
+  │       │   └─ Actualiza pedidos.comprobante_url con la URL del storage
+  │       │
+  │       └─ Comprobante recibido (WhatsApp — message.send)
+  │            └─ Confirma al cliente que se recibió el comprobante
 ```
 
-### Restricciones de n8n en Code Nodes
+---
 
-- **NO** existe `URLSearchParams`, `fetch`, ni `$helpers`
-- **NO** usar `null` en campos opcionales → simplemente no incluir el campo
-- n8n envía `undefined` como string `"undefined"` en query params → validar antes
+## RUTA DE TEXTO (flujo principal)
 
-## Tools del agente: Especificaciones
+### Fase 1: Deduplicación y acumulación de mensajes
 
-### consultar_menu
+```
+Switch (texto)
+  │
+  ├─ Extraer datos del mensaje (Supabase — raw/get)
+  │   └─ Extrae telefono, nombre, texto del mensaje
+  │
+  ├─ Crear mensaje pendiente (Supabase — create row)
+  │   └─ Guarda el mensaje en una tabla de mensajes pendientes
+  │
+  ├─ Wait
+  │   └─ Espera N segundos para acumular mensajes rápidos del cliente
+  │       (evita que cada mensaje dispare el flujo por separado)
+  │
+  ├─ Obtener ultimo mensaje (HTTP Request — GET Supabase)
+  │   └─ Consulta el último mensaje del cliente
+  │
+  ├─ ¿Es el último? (Code node)
+  │   └─ Valida si este mensaje es el más reciente del cliente
+  │       (si no es el último, este hilo se descarta → otro hilo lo procesa)
+  │
+  └─ IF
+      ├─ FALSE → (se descarta, el último hilo se encarga)
+      └─ TRUE → Continuar ↓
+```
 
-| Campo | Detalle |
-|---|---|
-| Tipo | Call Subworkflow |
-| Input | `{ filtro: string }` |
-| Output | `{ encontrados: number, productos_por_categoria: object }` |
-| Cuándo | SIEMPRE antes de mencionar cualquier producto, precio o disponibilidad |
+### Fase 2: Combinar mensajes acumulados
 
-### crear_pedido
+```
+  ├─ Obtener ultimo mensaje1 (HTTP Request — GET Supabase)
+  │   └─ Obtiene todos los mensajes pendientes del cliente
+  │
+  ├─ Combinar mensajes (Code node)
+  │   └─ Concatena todos los mensajes acumulados en uno solo
+  │
+  ├─ Eliminar temp de pendientes (Supabase — delete row)
+  │   └─ Limpia los mensajes pendientes ya procesados
+  │
+  └─ Agrupar (Aggregate node)
+      └─ Agrupa los datos para pasarlos como un solo item
+```
 
-| Campo | Detalle |
-|---|---|
-| Tipo | Supabase INSERT |
-| Tabla | `pedidos` |
-| Input | `{ telefono, tipo_pedido, metodo_pago, direccion_entrega?, notas? }` |
-| Output | `{ pedido_id }` |
-| Cuándo | Solo después de confirmación explícita del cliente |
-| Nota | `total` se deja en 0 — el trigger lo calcula al agregar items |
+### Fase 3: Datos del cliente
 
-### agregar_items
+```
+  ├─ Obtener datos cliente (Supabase — get row)
+  │   └─ SELECT * FROM clientes WHERE telefono = {{ telefono }}
+  │
+  ├─ ¿Cliente Existe? (IF)
+  │   ├─ FALSE → No > Crear Cliente (Supabase — create row)
+  │   │            └─ INSERT con nombre='Pendiente', modo='bot'
+  │   └─ TRUE → Continuar
+  │
+  ├─ Merge Data Cliente (Merge — append)
+  │   └─ Combina datos del cliente (nuevo o existente) con el mensaje
+  │
+  └─ Edit Fields (Set — manual)
+      └─ Prepara el JSON final: telefono, nombre, direccion, mensaje combinado
+```
 
-| Campo | Detalle |
-|---|---|
-| Tipo | Supabase INSERT |
-| Tabla | `detalle_pedidos` |
-| Input | `{ pedido_id, producto_id, nombre_producto, variante?, cantidad, precio_unitario }` |
-| Output | Row insertada |
-| Cuándo | Inmediatamente después de crear_pedido, una llamada por producto |
-| CRÍTICO | `producto_id` DEBE venir del resultado de consultar_menu |
+### Fase 4: Handoff check + Agentes
 
-### actualizar_cliente
+```
+  ├─ Handoff Humano (IF)
+  │   │
+  │   ├─ cliente.modo == 'humano'
+  │   │   └─ Create a row (Supabase — create row)
+  │   │       └─ INSERT INTO mensajes_soporte (telefono, origen='cliente', mensaje)
+  │   │       └─ FIN — no pasa a ningún agente
+  │   │
+  │   └─ cliente.modo == 'bot' → Continuar al ORQUESTADOR
+  │
+  ├─ ORQUESTADOR (AI Agent)
+  │   ├─ OpenAI Chat Model
+  │   ├─ Postgres Chat Memory
+  │   └─ Clasifica intención del mensaje
+  │
+  ├─ Parse Orquestador (Code node)
+  │   └─ Extrae la categoría del output
+  │
+  └─ Decision Orquestador (Switch — Routes)
+       │
+       ├─ → AGENTE MENÚ
+       │    ├─ OpenAI Chat Model1 + Postgres Chat Memory2
+       │    ├─ Tools: leer_carrito, crear_carrito, actualizar_carrito,
+       │    │         actualizar_cliente2, consultar_menu
+       │    └─ Code in JavaScript → Send message
+       │
+       ├─ → AGENTE PEDIDOS
+       │    ├─ OpenAI Chat Model2 + Postgres Chat Memory3
+       │    ├─ Tools: leer_carrito1, crear_orden_completa,
+       │    │         actualizar_cliente/editar_pedido
+       │    └─ Code in JavaScript2 → Send message
+       │
+       └─ → AGENTE SOPORTE
+            ├─ OpenAI Chat Model4 + Postgres Chat Memory4
+            ├─ Tools: solicitar_handoff, actualizar_cliente
+            └─ Code in JavaScript1 → Send message
+```
 
-| Campo | Detalle |
-|---|---|
-| Tipo | Supabase UPDATE |
-| Tabla | `clientes` |
-| Filter | `telefono = {{ telefono }}` |
-| Input | `{ nombre?, direccion? }` |
-| Cuándo | Cuando el cliente da su nombre o actualiza dirección |
+---
 
-### escalar_a_humano
+## Diagrama resumido del flujo completo
 
-| Campo | Detalle |
-|---|---|
-| Tipo | Supabase UPDATE |
-| Tabla | `clientes` |
-| Filter | `telefono = {{ telefono }}` |
-| Input | `{ modo: 'humano' }` |
-| Cuándo | Cliente pide hablar con una persona real |
+```
+WhatsApp Trigger
+  │
+  └─ Switch (tipo de mensaje)
+       │
+       ├─ IMAGEN ──→ Mapear → Descargar → ¿Pedido? → Subir storage → Confirmar
+       │
+       ├─ TEXTO ───→ Guardar msg → Wait → ¿Es último? → Combinar msgs
+       │              → Datos cliente → ¿Existe? → Edit Fields
+       │              → ¿Handoff? → Orquestador → Agente → Send message
+       │
+       └─ OTRO ───→ No Operation (ignorar)
+```
+
+---
+
+## Notas de implementación
+
+### Sistema de acumulación de mensajes (Wait)
+
+**Problema que resuelve:** En WhatsApp, los clientes envían mensajes rápidos seguidos ("hola" + "quiero una pizza" + "hawaiana"). Sin acumulación, cada mensaje dispara un flujo independiente y el agente responde 3 veces.
+
+**Cómo funciona:**
+1. Cada mensaje se guarda como "pendiente" en BD
+2. Se espera N segundos (el Wait)
+3. Al despertar, verifica si hay mensajes más recientes del mismo cliente
+4. Si SÍ hay más recientes → este hilo se descarta (el último se encarga)
+5. Si NO hay más recientes → este es el último, combina todos los pendientes y procesa
+
+**Resultado:** El agente recibe un solo mensaje concatenado con todo lo que el cliente escribió.
+
+### Ruta de imagen (comprobante)
+
+**Flujo de 2 pasos para descargar:**
+1. `Traer Imagen de whatsapp` — Obtiene la URL de descarga de Meta (requiere token)
+2. `Descargar Imagen de whatsapp` — Descarga el binary de la imagen
+
+**Storage:** La imagen se sube a Supabase Storage (bucket) y la URL pública se guarda en `pedidos.comprobante_url`.
+
+---
 
 ## Variables de entorno en n8n
 
