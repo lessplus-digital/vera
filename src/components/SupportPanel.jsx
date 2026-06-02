@@ -21,6 +21,7 @@ export default function SupportPanel() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [resolving, setResolving] = useState(false)
   const messagesEndRef = useRef(null)
+  const [lightboxUrl, setLightboxUrl] = useState(null)
 
   // ─── Fetch conversations from the view ───────────────
   const fetchConversations = useCallback(async () => {
@@ -342,7 +343,13 @@ export default function SupportPanel() {
                   Sin mensajes aún.
                 </div>
               ) : (
-                messages.map(msg => <ChatBubble key={msg.id} msg={msg} />)
+                messages.map(msg => (
+                  <ChatBubble
+                    key={msg.id}
+                    msg={msg}
+                    onImageClick={(url) => setLightboxUrl(url)}
+                  />
+                ))
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -402,7 +409,12 @@ export default function SupportPanel() {
           </>
         )}
       </div>
-    </div>
+      {/* ─── Image Lightbox ─── */}
+      <ImageLightbox
+        src={lightboxUrl}
+        onClose={() => setLightboxUrl(null)}
+      />
+      </div>
   )
 }
 
@@ -459,7 +471,10 @@ function ConversationItem({ convo, selected, onClick }) {
           overflow: 'hidden', textOverflow: 'ellipsis',
           whiteSpace: 'nowrap', width: '100%',
         }}>
-          {convo.ultimo_origen === 'admin' ? '↩ ' : ''}{convo.ultimo_mensaje}
+          {convo.ultimo_origen === 'admin' ? '↩ ' : ''}
+          {convo.ultimo_mensaje === '📷 Imagen'
+            ? '📷 Imagen'
+            : convo.ultimo_mensaje}
         </span>
       )}
       {convo.ultima_actividad && (
@@ -471,9 +486,10 @@ function ConversationItem({ convo, selected, onClick }) {
   )
 }
 
-function ChatBubble({ msg }) {
+function ChatBubble({ msg, onImageClick }) {
   const isSystem = msg.origen === 'sistema'
   const isAdmin = msg.origen === 'admin'
+  const isImage = msg.tipo_contenido === 'imagen' && msg.imagen_url
 
   if (isSystem) {
     return (
@@ -498,26 +514,83 @@ function ChatBubble({ msg }) {
       padding: '2px 0',
     }}>
       <div style={{
-        maxWidth: '70%', padding: '8px 12px',
+        maxWidth: '70%',
+        padding: isImage ? '6px' : '8px 12px',
         borderRadius: isAdmin ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
         background: isAdmin ? 'var(--blue-dim)' : 'var(--bg-card)',
         border: `1px solid ${isAdmin ? 'var(--blue-border)' : 'var(--border)'}`,
       }}>
+        {/* ─── Label origen ─── */}
         <div style={{
-          fontSize: 10, fontWeight: 600, marginBottom: 3,
+          fontSize: 10, fontWeight: 600,
+          marginBottom: 3,
           color: isAdmin ? 'var(--blue)' : 'var(--amber)',
+          padding: isImage ? '2px 6px 0' : 0,
         }}>
           {isAdmin ? 'Tú' : 'Cliente'}
         </div>
-        <div style={{
-          fontSize: 13, color: 'var(--text-primary)',
-          lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        }}>
-          {msg.mensaje}
-        </div>
+
+        {/* ─── Contenido: imagen o texto ─── */}
+        {isImage ? (
+          <div>
+            <img
+              src={msg.imagen_url}
+              alt="Imagen del cliente"
+              onClick={() => onImageClick && onImageClick(msg.imagen_url)}
+              style={{
+                maxWidth: '100%',
+                maxHeight: 280,
+                borderRadius: 8,
+                cursor: 'pointer',
+                display: 'block',
+                objectFit: 'cover',
+              }}
+              loading="lazy"
+              onError={(e) => {
+                e.target.style.display = 'none'
+                e.target.nextSibling.style.display = 'flex'
+              }}
+            />
+            {/* Fallback si la imagen no carga */}
+            <div style={{
+              display: 'none',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 6px',
+              color: 'var(--text-muted)',
+              fontSize: 12,
+            }}>
+              <span>⚠️</span>
+              <span>No se pudo cargar la imagen</span>
+            </div>
+
+            {/* Caption (si el mensaje no es solo "📷 Imagen") */}
+            {msg.mensaje && msg.mensaje !== '📷 Imagen' && (
+              <div style={{
+                fontSize: 13, color: 'var(--text-primary)',
+                lineHeight: 1.5, whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                padding: '4px 6px 0',
+              }}>
+                {msg.mensaje}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{
+            fontSize: 13, color: 'var(--text-primary)',
+            lineHeight: 1.5, whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}>
+            {msg.mensaje}
+          </div>
+        )}
+
+        {/* ─── Timestamp ─── */}
         <div style={{
           fontSize: 10, color: 'var(--text-muted)',
           marginTop: 4, textAlign: 'right',
+          padding: isImage ? '0 6px 2px' : 0,
         }}>
           {new Date(msg.created_at).toLocaleTimeString('es-CO', {
             hour: '2-digit', minute: '2-digit',
@@ -560,6 +633,89 @@ function NoChatSelected() {
       <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 280, lineHeight: 1.5 }}>
         Elige un cliente de la lista para ver sus mensajes y responderle directamente por WhatsApp.
       </div>
+    </div>
+  )
+}
+
+function ImageLightbox({ src, onClose }) {
+  if (!src) return null
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        background: 'rgba(0, 0, 0, 0.85)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'zoom-out',
+        padding: 24,
+      }}
+    >
+      {/* Botón cerrar */}
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 20,
+          background: 'rgba(255,255,255,0.15)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 8,
+          color: '#fff',
+          fontSize: 14,
+          fontWeight: 600,
+          padding: '6px 14px',
+          cursor: 'pointer',
+          fontFamily: 'var(--font-sans)',
+          backdropFilter: 'blur(8px)',
+        }}
+      >
+        ✕ Cerrar
+      </button>
+
+      {/* Abrir en nueva pestaña */}
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 110,
+          background: 'rgba(255,255,255,0.15)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 8,
+          color: '#fff',
+          fontSize: 13,
+          fontWeight: 500,
+          padding: '6px 14px',
+          cursor: 'pointer',
+          fontFamily: 'var(--font-sans)',
+          backdropFilter: 'blur(8px)',
+          textDecoration: 'none',
+        }}
+      >
+        ↗ Abrir original
+      </a>
+
+      <img
+        src={src}
+        alt="Imagen ampliada"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '90vw',
+          maxHeight: '85vh',
+          objectFit: 'contain',
+          borderRadius: 8,
+          cursor: 'default',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}
+      />
     </div>
   )
 }
