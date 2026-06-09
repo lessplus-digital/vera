@@ -13,6 +13,23 @@
 
 ---
 
+### 2026-06-09 — Refactor estructura del frontend (feature-based)
+
+**Contexto:** `src/` era una carpeta plana con componentes gigantes. `App.jsx` tenía 379 líneas mezclando fetch, realtime, lógica de negocio y UI. `OrderCard.jsx` tenía el componente `Actions` incrustado. No había separación de responsabilidades.
+
+**Decisión:** Reorganizar `src/` con carpetas por dominio:
+- `hooks/` — lógica extraída de componentes (`useOrders`, `useSupportCount`, `useTheme`)
+- `utils/` — constantes, formateadores y audio desacoplados
+- `components/orders/` — todos los componentes de pedidos juntos
+- `components/support/` — panel de soporte
+- `components/layout/` — header
+- `pages/` — vistas montadas en App (DashboardPage)
+- `styles/` — CSS con secciones separadas por comentarios
+
+**Impacto:** `App.jsx` pasó de 379 a 30 líneas. `Actions` extraído a `OrderActions.jsx`. `DASHBOARD.md` actualizado. Build verificado sin errores.
+
+---
+
 ### 2025-XX-XX — Trigger para cálculo de totales
 
 **Contexto:** El LLM pasaba `total: 0` en crear_pedido porque los items no existían aún.

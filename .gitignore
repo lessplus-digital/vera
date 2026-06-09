@@ -1,1 +1,6 @@
 node_modules/
+dist/
+
+# Variables de entorno con secretos — nunca subir a git
+.env.local
+.env.*.local
