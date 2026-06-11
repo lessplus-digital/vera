@@ -31,16 +31,19 @@ Registro de clientes que han interactuado con el bot.
 
 | Columna | Tipo | Nullable | Descripción |
 |---|---|---|---|
-| `cliente_id` | uuid (PK) | NO | Generado automáticamente |
+| `cliente_id` | text (PK) | NO | Formato `CLI-XXX`, generado automáticamente (NO es uuid) |
 | `telefono` | text (UNIQUE) | NO | Número completo con código de país |
 | `nombre` | text | SI | "Pendiente" cuando es nuevo |
-| `direccion` | text | SI | Última dirección conocida |
-| `modo` | text | NO | `'bot'` o `'humano'` — default: `'bot'` |
-| `created_at` | timestamptz | NO | Auto |
+| `direccion_principal` | text | SI | Última dirección conocida (NO se llama `direccion`) |
+| `modo` | text | NO | `'bot'`, `'humano'` o `'esperando_feedback'` — default: `'bot'` |
+| `fecha_registro` | timestamptz | NO | **Sin default** — quien inserta debe enviarla (el dashboard manda `new Date().toISOString()`). NO se llama `created_at` |
+
+> La tabla tiene más columnas (un estado tipo `'nuevo'`, un boolean, etc.) aún no documentadas — verificar en Supabase antes de usarlas.
 
 **Regla de `modo`:**
 - `bot` → mensajes van al agente IA
 - `humano` → mensajes van a `mensajes_soporte`, el agente NO los procesa
+- `esperando_feedback` → el bot espera la calificación del cliente tras la entrega
 
 > **2026-06-09:** Las columnas `total_pedidos`, `gasto_total`, `ultimo_pedido_fecha` y `ultimo_pedido_detalle` se eliminaron — nada las escribía (siempre 0/null) y nada las leía. Cualquier acumulado de cliente se calcula agregando desde `pedidos`.
 
@@ -54,7 +57,7 @@ Cada pedido registrado por el bot o editado manualmente.
 | `cliente_id` | uuid (FK → clientes) | SI | Referencia al cliente |
 | `telefono` | text | NO | Teléfono del cliente |
 | `tipo_pedido` | text | NO | `'domicilio'` o `'recoger'` |
-| `metodo_pago` | text | NO | `'transferencia'` o `'efectivo'` |
+| `metodo_pago` | text | NO | `'Transferencia'` o `'Efectivo'` — **capitalizado** (el frontend compara contra estos valores: `METODO_LABEL`, `OrderCard`) |
 | `direccion_entrega` | text | SI | Solo si tipo_pedido = 'domicilio' |
 | `total` | numeric | NO | **Calculado por trigger**, nunca por el LLM |
 | `estado` | text | NO | `'pendiente'`, `'en_cocina'`, `'en_camino'`, `'recoger'`, `'entregado'`, `'cancelado'` |

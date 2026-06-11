@@ -23,7 +23,8 @@ src/
 ├── pages/
 │   ├── dashboard/                   ← Vista Kanban (DashboardPage + columnas/cards/modals)
 │   ├── support/                     ← Chat de soporte (SupportPanel + burbujas/lightbox)
-│   └── statistics/                  ← Tab Estadísticas (StatisticsPage + KPIs + gráficas Recharts)
+│   ├── statistics/                  ← Tab Estadísticas (StatisticsPage + KPIs + gráficas Recharts)
+│   └── clients/                     ← Tab Clientes (ClientsPage + ClientModal crear/editar)
 │
 ├── components/
 │   ├── layout/
@@ -33,6 +34,7 @@ src/
 │   │   ├── OrderCard.jsx            ← Card de pedido: datos, comprobante, modals
 │   │   ├── OrderActions.jsx         ← Botones de acción según estado del pedido
 │   │   ├── EditOrderModal.jsx       ← Modal para editar items, cantidades, notas
+│   │   ├── CreateOrderModal.jsx     ← Modal crear pedido manual (cliente + items + WA)
 │   │   └── RejectModal.jsx          ← Modal con motivos de rechazo predeterminados
 │   └── support/
 │       └── SupportPanel.jsx         ← Chat WhatsApp: sidebar + burbuja + lightbox
@@ -41,6 +43,7 @@ src/
 │   ├── useOrders.js                 ← Fetch pedidos, realtime, stats del día, newIds
 │   ├── useStatistics.js             ← Filtros + fetch + agregados de la tab Estadísticas
 │   ├── useSupportCount.js           ← Badge de conversaciones activas (modo=humano)
+│   ├── useClients.js                ← Fetch clientes + realtime UPDATE + saveClient (insert/update)
 │   └── useTheme.js                  ← Toggle dark/light con persistencia localStorage
 │
 ├── utils/
@@ -77,6 +80,13 @@ src/
 | `en_cocina` | Marcar listo → en_camino (domicilio) o recoger (pickup) |
 | `en_camino` | Marcar entregado |
 | `recoger` | Marcar entregado |
+
+**Crear pedido manual (`CreateOrderModal`):**
+- Botón compacto "+ Crear" junto al label de la columna "Por aprobar" (no desplaza las cards)
+- Selecciona cliente de la tabla `clientes` (búsqueda por nombre o teléfono); la dirección se prellena con `direccion_principal`
+- Tipo (domicilio/recoger), método de pago (`'Efectivo'`/`'Transferencia'` — capitalizado, como espera `METODO_LABEL`), items del menú (misma UX que `EditOrderModal`) y notas
+- Insert directo: `pedidos` (`estado: 'pendiente'`, `total: 0`) → `detalle_pedidos` (ids `DET-M<uuid>-N`); el trigger calcula el total. Si fallan los items, borra el pedido (rollback best-effort)
+- Lee el total final de la BD y notifica al cliente por WhatsApp con el resumen; si WA falla, el pedido queda creado y se muestra advertencia en el modal
 
 ### 2. Soporte (Chat)
 
@@ -120,6 +130,22 @@ src/
 - Tiempo de entrega: solo pedidos entregados con `fecha_entrega` válida (0 < duración ≤ 3h); el Kanban escribe `fecha_entrega` al marcar entregado desde 2026-06-09
 - **Clientes fieles se agregan desde `pedidos` (histórico completo)**, NO desde `clientes.total_pedidos`/`gasto_total` — esos contadores no se mantienen en la BD (verificado: están en 0 aunque hay pedidos). `clientes` solo aporta el nombre.
 
+### 4. Clientes (CRUD)
+
+**Vista:** Tabla de todos los clientes con toolbar de búsqueda y orden
+**Datos:** `useClients` hook — fetch completo de `clientes` + realtime UPDATE
+**Archivos:** `src/pages/clients/` + `src/hooks/useClients.js` + `src/styles/clients.less`
+
+**Funcionalidad:**
+- Buscar por nombre o teléfono (un solo input; el teléfono matchea solo dígitos)
+- Ordenar alfabéticamente por nombre (toggle A→Z / Z→A, `localeCompare` es)
+- Crear cliente nuevo y editar existentes (`ClientModal`: nombre, teléfono, dirección, modo)
+- Teléfono se sanitiza a solo dígitos en el input; valida mínimo 7 dígitos
+- Duplicado de teléfono (constraint UNIQUE, error 23505) se muestra como mensaje amigable
+- Modo editable con select (`CLIENT_MODES` en constants.js): 🤖 bot / 💬 humano / ⏳ esperando_feedback — default `bot` al crear
+- Al insertar, el dashboard envía `fecha_registro` (NOT NULL sin default en la BD)
+- El teléfono linkea a wa.me
+
 ## Hooks — responsabilidades
 
 | Hook | Qué hace | Devuelve |
@@ -127,6 +153,7 @@ src/
 | `useOrders` | Fetch pedidos del día, realtime, detecta nuevos, calcula stats | `orders, loading, newIds, stats, lastUpdate, fetchOrders` |
 | `useSupportCount` | Cuenta clientes con `modo=humano`, realtime | `number` |
 | `useStatistics` | Filtros de periodo, fetch pedidos/feedback/menu del rango + periodo anterior, agregados memoizados | `loading, error, aggregates, clients, categorias, range, filters, setters` |
+| `useClients` | Fetch todos los clientes, realtime UPDATE, crear/editar vía `saveClient` | `clients, loading, error, saveClient` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 
 ## Variables de entorno
@@ -149,6 +176,7 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 | `clientes-modo-changes` | clientes | * | `useSupportCount` → recount |
 | `soporte-messages-rt` | mensajes_soporte | INSERT | `SupportPanel` → append msg |
 | `soporte-clientes-rt` | clientes | UPDATE | `SupportPanel` → refetch convos |
+| `clientes-page-rt` | clientes | UPDATE | `useClients` → refetch lista |
 
 ## Tema
 

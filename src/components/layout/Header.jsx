@@ -52,6 +52,12 @@ export default function Header({ theme, onToggleTheme, activeTab, onTabChange, s
             label="Estadísticas"
             emoji="📊"
           />
+          <TabButton
+            active={activeTab === 'clientes'}
+            onClick={() => onTabChange('clientes')}
+            label="Clientes"
+            emoji="👥"
+          />
         </nav>
       </div>
 

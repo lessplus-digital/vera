@@ -39,6 +39,12 @@ export const METODO_LABEL = {
   Efectivo:      { icon: '💵', cls: 'green', color: 'var(--green)' },
 }
 
+export const CLIENT_MODES = [
+  { value: 'bot',                label: '🤖 Bot',                cls: 'bot'      },
+  { value: 'humano',             label: '💬 Humano',             cls: 'humano'   },
+  { value: 'esperando_feedback', label: '⏳ Esperando feedback', cls: 'feedback' },
+]
+
 export const SUPPORT_TABLES = {
   conversations: 'conversaciones_soporte',
   messages:      'mensajes_soporte',

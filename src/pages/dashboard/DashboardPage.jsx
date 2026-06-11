@@ -1,8 +1,11 @@
-import React from 'react'
+import React, { useState } from 'react'
 import Column from './Column'
+import CreateOrderModal from './CreateOrderModal'
 import { COLUMNS } from '../../utils/constants'
 
 export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
+  const [showCreate, setShowCreate] = useState(false)
+
   if (loading) {
     return (
       <div className="page-loading">
@@ -30,8 +33,16 @@ export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
           orders={getColumnOrders(col)}
           newIds={newIds}
           onUpdated={onUpdated}
+          onCreate={col.key === 'pendiente' ? () => setShowCreate(true) : undefined}
         />
       ))}
+
+      {showCreate && (
+        <CreateOrderModal
+          onClose={() => setShowCreate(false)}
+          onUpdated={onUpdated}
+        />
+      )}
     </main>
   )
 }
