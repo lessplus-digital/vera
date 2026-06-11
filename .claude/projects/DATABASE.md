@@ -42,6 +42,8 @@ Registro de clientes que han interactuado con el bot.
 - `bot` → mensajes van al agente IA
 - `humano` → mensajes van a `mensajes_soporte`, el agente NO los procesa
 
+> **2026-06-09:** Las columnas `total_pedidos`, `gasto_total`, `ultimo_pedido_fecha` y `ultimo_pedido_detalle` se eliminaron — nada las escribía (siempre 0/null) y nada las leía. Cualquier acumulado de cliente se calcula agregando desde `pedidos`.
+
 ### `pedidos`
 
 Cada pedido registrado por el bot o editado manualmente.
@@ -60,7 +62,8 @@ Cada pedido registrado por el bot o editado manualmente.
 | `comprobante_url` | text | SI | URL de imagen del comprobante |
 | `motivo_rechazo` | text | SI | Si el pedido fue rechazado/cancelado |
 | `notas` | text | SI | Observaciones del cliente |
-| `fecha_pedido` | timestamptz | NO | Auto |
+| `fecha_pedido` | timestamp (sin tz) | NO | Auto. **Ojo:** el valor es UTC pero la columna no tiene timezone — el REST lo devuelve sin sufijo `Z` y JS lo parsearía como hora local. El frontend usa `parseDb()` (`src/utils/dateRanges.js`) para forzar UTC |
+| `fecha_entrega` | timestamptz | SI | Escrita por el dashboard (`OrderCard.updateEstado`) al marcar entregado, desde 2026-06-09. Datos anteriores son incoherentes (de prueba) — las estadísticas descartan duraciones ≤0 o >3h |
 
 ### `detalle_pedidos`
 

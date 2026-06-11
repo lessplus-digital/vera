@@ -46,6 +46,12 @@ export default function Header({ theme, onToggleTheme, activeTab, onTabChange, s
             emoji="💬"
             badge={supportCount}
           />
+          <TabButton
+            active={activeTab === 'estadisticas'}
+            onClick={() => onTabChange('estadisticas')}
+            label="Estadísticas"
+            emoji="📊"
+          />
         </nav>
       </div>
 

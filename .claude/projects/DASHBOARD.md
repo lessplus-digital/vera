@@ -5,6 +5,7 @@
 - **React** (sin framework, SPA)
 - **Vite** (build tool)
 - **Supabase JS Client** (datos + realtime)
+- **Recharts** (gráficas de la tab Estadísticas)
 - **WhatsApp Cloud API** (envío directo desde soporte)
 - **Sin router** — navegación por tabs internas
 
@@ -20,7 +21,9 @@ src/
 │                                       Separado por secciones con comentarios ══
 │
 ├── pages/
-│   └── DashboardPage.jsx            ← Vista Kanban: renderiza las 3 columnas
+│   ├── dashboard/                   ← Vista Kanban (DashboardPage + columnas/cards/modals)
+│   ├── support/                     ← Chat de soporte (SupportPanel + burbujas/lightbox)
+│   └── statistics/                  ← Tab Estadísticas (StatisticsPage + KPIs + gráficas Recharts)
 │
 ├── components/
 │   ├── layout/
@@ -36,12 +39,15 @@ src/
 │
 ├── hooks/
 │   ├── useOrders.js                 ← Fetch pedidos, realtime, stats del día, newIds
+│   ├── useStatistics.js             ← Filtros + fetch + agregados de la tab Estadísticas
 │   ├── useSupportCount.js           ← Badge de conversaciones activas (modo=humano)
 │   └── useTheme.js                  ← Toggle dark/light con persistencia localStorage
 │
 ├── utils/
 │   ├── constants.js                 ← COLUMNS, ESTADO_PAGO_LABEL, METODO_LABEL
-│   ├── formatters.js                ← timeAgoShort(), formatPrice()
+│   ├── formatters.js                ← timeAgoShort(), formatPrice(), formatPriceShort()
+│   ├── dateRanges.js                ← Rangos de fecha con día de negocio Colombia (UTC-5)
+│   ├── statsAggregations.js         ← Agregaciones puras para Estadísticas
 │   └── audio.js                     ← playNotification() (Web Audio API)
 │
 └── lib/
@@ -85,12 +91,42 @@ src/
 - Resolver conversación → cambia `modo` a `'bot'` + notifica al cliente
 - Badge en el tab muestra cantidad de conversaciones activas (`useSupportCount`)
 
+### 3. Estadísticas (Recharts)
+
+**Vista:** KPIs + gráficas analíticas con filtros de periodo
+**Datos:** `useStatistics` hook — fetch por rango de fechas (sin realtime), agregación en el cliente
+**Archivos:** `src/pages/statistics/` + `src/utils/statsAggregations.js` + `src/utils/dateRanges.js` + `src/styles/statistics.less`
+
+**Componentes:**
+| Componente | Qué muestra |
+|---|---|
+| `PeriodSelector` | Presets (Hoy / 7d / 30d / 90d / Este mes / Personalizado) + granularidad Día/Semana/Mes |
+| `KpiCards` | Pedidos, ingresos, ticket promedio (con Δ% vs periodo anterior), tasa de cancelación, calificación |
+| `SalesChart` | ComposedChart: barras de pedidos + línea de ingresos por bucket |
+| `TopClients` | Top 10 clientes históricos, toggle por pedidos / por gasto |
+| `ProductsRanking` | Más/menos pedidos con filtro por categoría del menú |
+| `HourlyHeatmap` | Heatmap 7×24 (día × hora Colombia) con intensidad amber |
+| `CategoryRevenue` | Donut de ingresos por categoría (top 5 + "otras") |
+| `DeliveryStats` | Tiempo promedio de entrega (total / domicilio / recoger) + distribución |
+| `RiskClients` | Clientes recurrentes (3+ pedidos) sin pedir hace 30+ días, con link wa.me |
+| `CancellationStats` | Tasa + motivos de cancelación, calificación promedio de `feedback` |
+| `ChartTheme` | Tooltip custom + props de ejes/grid tematizados con CSS vars (dark/light) |
+
+**Criterios de negocio:**
+- Ingresos/KPIs/gráficas excluyen pedidos `cancelado` (mismo criterio que las stats del header)
+- Cancelados se muestran aparte como tasa con motivos (`motivo_rechazo`)
+- Hora/día se calculan en hora Colombia (UTC-5): fecha desplazada -5h y leída con `getUTC*()`
+- `fecha_pedido` llega sin timezone (columna `timestamp` con valor UTC): `parseDb()` en `dateRanges.js` le fuerza `Z` para que JS no lo interprete como hora local
+- Tiempo de entrega: solo pedidos entregados con `fecha_entrega` válida (0 < duración ≤ 3h); el Kanban escribe `fecha_entrega` al marcar entregado desde 2026-06-09
+- **Clientes fieles se agregan desde `pedidos` (histórico completo)**, NO desde `clientes.total_pedidos`/`gasto_total` — esos contadores no se mantienen en la BD (verificado: están en 0 aunque hay pedidos). `clientes` solo aporta el nombre.
+
 ## Hooks — responsabilidades
 
 | Hook | Qué hace | Devuelve |
 |---|---|---|
 | `useOrders` | Fetch pedidos del día, realtime, detecta nuevos, calcula stats | `orders, loading, newIds, stats, lastUpdate, fetchOrders` |
 | `useSupportCount` | Cuenta clientes con `modo=humano`, realtime | `number` |
+| `useStatistics` | Filtros de periodo, fetch pedidos/feedback/menu del rango + periodo anterior, agregados memoizados | `loading, error, aggregates, clients, categorias, range, filters, setters` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 
 ## Variables de entorno

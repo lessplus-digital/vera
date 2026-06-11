@@ -22,6 +22,7 @@ export default function OrderCard({ order, isNew, onUpdated }) {
     setLoading(true)
     const updates = { estado }
     if (estadoPago) updates.estado_pago = estadoPago
+    if (estado === 'entregado') updates.fecha_entrega = new Date().toISOString()
     const { error } = await supabase
       .from('pedidos')
       .update(updates)

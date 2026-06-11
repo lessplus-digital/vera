@@ -13,6 +13,32 @@
 
 ---
 
+### 2026-06-09 — Estadísticas avanzadas + limpieza de columnas en clientes
+
+**Contexto:** Segunda iteración de la tab Estadísticas: tiempo de entrega, ingresos por categoría, heatmap hora×día y clientes en riesgo. Al construirlas se encontraron dos problemas de datos.
+
+**Decisión:**
+- **`fecha_entrega` ahora la escribe el dashboard** (`OrderCard.updateEstado`) al marcar entregado — antes nadie la escribía de forma confiable y los datos históricos son incoherentes (hay entregas "antes" del pedido). `deliveryStats` descarta duraciones ≤0 o >3h.
+- **Fix timezone:** `fecha_pedido` es columna `timestamp` sin tz con valor UTC; JS la parseaba como hora local, corriendo la distribución horaria. Nuevo `parseDb()` en `dateRanges.js` fuerza UTC.
+- **Columnas eliminadas de `clientes`:** `total_pedidos`, `gasto_total`, `ultimo_pedido_fecha`, `ultimo_pedido_detalle` — nunca se escribían ni se leían. Los acumulados se calculan desde `pedidos`.
+- Nuevas vistas: `DeliveryStats` (promedio + distribución, domicilio vs recoger), `CategoryRevenue` (donut top 5), heatmap 7×24 en `HourlyHeatmap` (reemplaza las dos gráficas de barras), `RiskClients` (recurrentes 3+ pedidos inactivos 30+ días, con link wa.me para reactivarlos).
+
+**Impacto:** `OrderCard.jsx`, `dateRanges.js` (`parseDb`), `statsAggregations.js` (4 funciones nuevas, 2 eliminadas), `useStatistics.js`, 3 componentes nuevos + `HourlyHeatmap` reescrito, `statistics.less`. `DATABASE.md` y `DASHBOARD.md` actualizados. Verificado con Playwright headless contra datos reales sin errores de consola.
+
+### 2026-06-09 — Nueva tab Estadísticas (Recharts)
+
+**Contexto:** Los administradores necesitaban analizar el negocio: pedidos por periodo, ingresos, clientes fieles, productos más/menos pedidos por categoría, horas pico y cancelaciones.
+
+**Decisión:**
+- Tercera tab `estadisticas` en el dashboard con **Recharts** (se integra con las CSS vars del tema dark/light)
+- Agregación **en el cliente** (sin RPCs ni vistas SQL): fetch de pedidos del rango + agregación JS pura en `statsAggregations.js`
+- KPIs comparan contra el periodo inmediatamente anterior de la misma duración
+- Ingresos/KPIs excluyen `estado='cancelado'` (mismo criterio que el header); cancelados se muestran aparte como tasa con motivos
+- Hora/día en hora Colombia: fecha desplazada -5h leída con `getUTC*()`
+- **Clientes fieles se agregan desde `pedidos`**, no desde `clientes.total_pedidos`/`gasto_total`: se verificó que esos contadores están en 0 en la BD aunque existen pedidos (no se mantienen)
+
+**Impacto:** `src/pages/statistics/` (8 componentes), `useStatistics.js`, `dateRanges.js`, `statsAggregations.js`, `statistics.less`, tab nueva en `Header.jsx`/`App.jsx`, `formatPriceShort()` en formatters. Dependencia nueva: `recharts`. Verificado con Playwright headless contra datos reales (dark/light, presets, granularidades, filtro de categoría) sin errores de consola. `DASHBOARD.md` actualizado.
+
 ### 2026-06-09 — Refactor estructura del frontend (feature-based)
 
 **Contexto:** `src/` era una carpeta plana con componentes gigantes. `App.jsx` tenía 379 líneas mezclando fetch, realtime, lógica de negocio y UI. `OrderCard.jsx` tenía el componente `Actions` incrustado. No había separación de responsabilidades.
