@@ -82,6 +82,24 @@ Items individuales de cada pedido.
 | `cantidad` | int | NO | >= 1 |
 | `precio_unitario` | numeric | NO | Precio al momento del pedido |
 
+### `reservas`
+
+Reservas de mesa, creadas por el bot (WhatsApp) o manualmente desde el dashboard (tab Reservas).
+
+| Columna | Tipo | Nullable | Descripción |
+|---|---|---|---|
+| `reserva_id` | text (PK) | NO | Manual desde dashboard: `RSV-M<timestamp>` (M = manual, mismo patrón que `DET-M`) |
+| `cliente_id` | text (FK → clientes) | SI | El dashboard lo exige al crear (selector de clientes); el bot podría dejarlo null |
+| `telefono` | text | NO | Número completo con código de país |
+| `nombre_cliente` | text | NO | Desnormalizado (la reserva puede ser de alguien sin registro) |
+| `fecha` | date | NO | Día de la reserva |
+| `hora` | time | NO | Hora de inicio (la duración no se guarda — el dashboard dibuja 90 min) |
+| `personas` | int4 | NO | >= 1 |
+| `estado` | text | NO | `'pendiente'`, `'confirmada'`, `'cancelada'` (`RESERVATION_STATES` en el frontend) |
+| `origen` | text | NO | `'dashboard'` (manual) o el valor que escriba el bot (`'whatsapp'`) |
+| `notas` | text | SI | Observaciones (mesa, ocasión, etc.) |
+| `created_at` | timestamptz | NO | El dashboard la envía explícitamente (`new Date().toISOString()`) por si no hay default |
+
 ### `mensajes_soporte`
 
 Mensajes del chat humano (cuando modo = 'humano').

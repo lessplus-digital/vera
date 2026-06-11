@@ -7,6 +7,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 import SupportPanel from './pages/support/SupportPanel'
 import StatisticsPage from './pages/statistics/StatisticsPage'
 import ClientsPage from './pages/clients/ClientsPage'
+import ReservationsPage from './pages/reservations/ReservationsPage'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -31,6 +32,7 @@ export default function App() {
       {activeTab === 'soporte' && <SupportPanel />}
       {activeTab === 'estadisticas' && <StatisticsPage />}
       {activeTab === 'clientes' && <ClientsPage />}
+      {activeTab === 'reservas' && <ReservationsPage />}
     </div>
   )
 }

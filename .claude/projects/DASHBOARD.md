@@ -6,6 +6,7 @@
 - **Vite** (build tool)
 - **Supabase JS Client** (datos + realtime)
 - **Recharts** (gráficas de la tab Estadísticas)
+- **react-big-calendar + date-fns** (calendario de la tab Reservas, locale es)
 - **WhatsApp Cloud API** (envío directo desde soporte)
 - **Sin router** — navegación por tabs internas
 
@@ -24,7 +25,8 @@ src/
 │   ├── dashboard/                   ← Vista Kanban (DashboardPage + columnas/cards/modals)
 │   ├── support/                     ← Chat de soporte (SupportPanel + burbujas/lightbox)
 │   ├── statistics/                  ← Tab Estadísticas (StatisticsPage + KPIs + gráficas Recharts)
-│   └── clients/                     ← Tab Clientes (ClientsPage + ClientModal crear/editar)
+│   ├── clients/                     ← Tab Clientes (ClientsPage + ClientModal crear/editar)
+│   └── reservations/                ← Tab Reservas (ReservationsPage + ReservationModal + ReservationDetail)
 │
 ├── components/
 │   ├── layout/
@@ -44,6 +46,7 @@ src/
 │   ├── useStatistics.js             ← Filtros + fetch + agregados de la tab Estadísticas
 │   ├── useSupportCount.js           ← Badge de conversaciones activas (modo=humano)
 │   ├── useClients.js                ← Fetch clientes + realtime UPDATE + saveClient (insert/update)
+│   ├── useReservations.js           ← Fetch reservas + realtime * + createReservation/deleteReservation
 │   └── useTheme.js                  ← Toggle dark/light con persistencia localStorage
 │
 ├── utils/
@@ -146,6 +149,24 @@ src/
 - Al insertar, el dashboard envía `fecha_registro` (NOT NULL sin default en la BD)
 - El teléfono linkea a wa.me
 
+### 5. Reservas (Calendario)
+
+**Vista:** Calendario react-big-calendar con vistas Día / Semana / Mes, tematizado con las CSS vars del dashboard (dark/light)
+**Datos:** `useReservations` hook — fetch completo de `reservas` + realtime `*` (el bot también crea reservas)
+**Archivos:** `src/pages/reservations/` + `src/hooks/useReservations.js` + `src/styles/reservations.less`
+
+**Funcionalidad:**
+- Toolbar custom (`CalToolbar`): Hoy / ‹ › / label del periodo / leyenda de estados / switch de vista / botón "+ Nueva reserva"
+- Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
+- Click en una reserva abre `ReservationDetail` (datos completos + link wa.me) con eliminación en dos pasos (confirmación inline)
+- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte)
+- Toast propio (success/warn/error) abajo a la derecha, auto-dismiss 4.5s
+- Eventos coloreados por `estado` (`RESERVATION_STATES`): pendiente=amber, confirmada=green, cancelada=red tachada
+- Duración visual del evento: `RESERVATION_DURATION_MIN` (90 min) — la BD solo guarda `hora` de inicio
+- `reserva_id` manual: `RSV-M<timestamp>` (M = manual, mismo patrón que `DET-M`); `origen: 'dashboard'`
+- `cliente_id`, `nombre_cliente` y `telefono` salen del cliente seleccionado (desnormalizados en `reservas`); valida que la fecha/hora no haya pasado
+- Vistas de tiempo limitadas a 10:00–23:30, scroll inicial a las 17:00
+
 ## Hooks — responsabilidades
 
 | Hook | Qué hace | Devuelve |
@@ -154,6 +175,7 @@ src/
 | `useSupportCount` | Cuenta clientes con `modo=humano`, realtime | `number` |
 | `useStatistics` | Filtros de periodo, fetch pedidos/feedback/menu del rango + periodo anterior, agregados memoizados | `loading, error, aggregates, clients, categorias, range, filters, setters` |
 | `useClients` | Fetch todos los clientes, realtime UPDATE, crear/editar vía `saveClient` | `clients, loading, error, saveClient` |
+| `useReservations` | Fetch todas las reservas, realtime `*`, crear (con lookup de cliente por teléfono) y eliminar | `reservations, loading, error, createReservation, deleteReservation` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 
 ## Variables de entorno
@@ -177,6 +199,7 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 | `soporte-messages-rt` | mensajes_soporte | INSERT | `SupportPanel` → append msg |
 | `soporte-clientes-rt` | clientes | UPDATE | `SupportPanel` → refetch convos |
 | `clientes-page-rt` | clientes | UPDATE | `useClients` → refetch lista |
+| `reservas-rt` | reservas | * | `useReservations` → refetch lista |
 
 ## Tema
 

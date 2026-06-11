@@ -13,6 +13,21 @@
 
 ---
 
+### 2026-06-10 — Nueva tab Reservas (calendario)
+
+**Contexto:** La tabla `reservas` ya existe en Supabase (el bot tomará reservas por WhatsApp), pero el dashboard no tenía forma de visualizarlas ni de gestionarlas manualmente.
+
+**Decisión:**
+- Quinta tab `reservas` con **react-big-calendar** (localizado en español con el `date-fns` ya instalado) — vistas Día / Semana / Mes, toolbar custom y CSS sobreescrito por completo con las variables del tema dark/light (`reservations.less`)
+- Crear reserva manual (`ReservationModal`) y eliminar existentes (`ReservationDetail`, confirmación en dos pasos). **Siempre se notifica al cliente por WhatsApp** en ambas operaciones (best-effort: si WA falla, la operación queda hecha y un toast lo advierte)
+- `reserva_id` manual con prefijo `RSV-M<timestamp>`; `origen: 'dashboard'`
+- **Para reservar, el cliente debe existir**: el modal usa un selector de clientes con búsqueda por nombre/teléfono (mismo patrón que `CreateOrderModal`, reutiliza `useClients`) en lugar de inputs libres — `cliente_id`, `nombre_cliente` y `telefono` salen del cliente seleccionado
+- La BD solo guarda `hora` de inicio — el calendario dibuja bloques de 90 min (`RESERVATION_DURATION_MIN`)
+- Estados: `pendiente`/`confirmada`/`cancelada` (`RESERVATION_STATES`), coloreados amber/green/red en el calendario
+- Realtime `*` sobre `reservas` para reflejar las reservas que cree el bot
+
+**Impacto:** `src/pages/reservations/` (ReservationsPage, ReservationModal, ReservationDetail), `useReservations.js`, `reservations.less`, `constants.js` (RESERVATION_STATES, RESERVATION_DURATION_MIN), tab nueva en `Header.jsx`/`App.jsx`/`main.jsx`, dependencia `react-big-calendar`. `DATABASE.md` y `DASHBOARD.md` actualizados.
+
 ### 2026-06-10 — Creación manual de pedidos desde el Kanban
 
 **Contexto:** Todos los pedidos entraban únicamente por el bot de WhatsApp. Los administradores necesitaban registrar pedidos tomados por otros canales (teléfono, mostrador) sin perder el flujo normal de aprobación ni la notificación al cliente.

@@ -33,19 +33,12 @@ export function useReservations() {
     return () => supabase.removeChannel(channel)
   }, [fetchReservations])
 
-  async function createReservation({ nombre_cliente, telefono, fecha, hora, personas, estado, notas }) {
-    // Si el teléfono pertenece a un cliente registrado, enlazar la reserva
-    const { data: clientMatch } = await supabase
-      .from('clientes')
-      .select('cliente_id')
-      .eq('telefono', telefono.trim())
-      .maybeSingle()
-
+  async function createReservation({ cliente_id, nombre_cliente, telefono, fecha, hora, personas, estado, notas }) {
     const reservation = {
       reserva_id:     `RSV-M${Date.now()}`,
-      cliente_id:     clientMatch?.cliente_id || null,
-      telefono:       telefono.trim(),
-      nombre_cliente: nombre_cliente.trim(),
+      cliente_id,
+      telefono,
+      nombre_cliente,
       fecha,
       hora,
       personas:       Number(personas),

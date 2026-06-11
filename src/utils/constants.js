@@ -45,6 +45,15 @@ export const CLIENT_MODES = [
   { value: 'esperando_feedback', label: '⏳ Esperando feedback', cls: 'feedback' },
 ]
 
+export const RESERVATION_STATES = [
+  { value: 'pendiente',  label: '⏳ Pendiente',  short: 'Pendiente',  cls: 'amber' },
+  { value: 'confirmada', label: '✓ Confirmada', short: 'Confirmada', cls: 'green' },
+  { value: 'cancelada',  label: '✕ Cancelada',  short: 'Cancelada',  cls: 'red'   },
+]
+
+// Duración visual de una reserva en el calendario (minutos)
+export const RESERVATION_DURATION_MIN = 90
+
 export const SUPPORT_TABLES = {
   conversations: 'conversaciones_soporte',
   messages:      'mensajes_soporte',
