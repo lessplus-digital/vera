@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import Column from './Column'
 import CreateOrderModal from './CreateOrderModal'
 import { COLUMNS } from '../../utils/constants'
+import Icon from '../../components/Icon'
 
 export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
   const [showCreate, setShowCreate] = useState(false)
@@ -10,7 +11,7 @@ export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
     return (
       <div className="page-loading">
         <div className="inner">
-          <div className="icon">🍕</div>
+          <div className="icon" style={{ color: 'var(--amber)' }}><Icon name="pizza" size={32} /></div>
           <div className="msg">Cargando pedidos...</div>
         </div>
       </div>
@@ -28,7 +29,7 @@ export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
         <Column
           key={Array.isArray(col.key) ? col.key.join('-') : col.key}
           title={col.title}
-          emoji={col.emoji}
+          icon={col.icon}
           cls={col.cls}
           orders={getColumnOrders(col)}
           newIds={newIds}

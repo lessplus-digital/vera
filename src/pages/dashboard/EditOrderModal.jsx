@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
+import Icon from '../../components/Icon'
 
 export default function EditOrderModal({ order, onClose, onUpdated }) {
   const [items, setItems] = useState([])
@@ -202,11 +203,11 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
         <div className="m-head">
           <div>
             <div className="title">Editar pedido</div>
-            <div className="sub">
-              #{String(order.pedido_id).slice(0, 8)} · {order.tipo_pedido === 'domicilio' ? '🛵 Domicilio' : '🏃 Recoger'}
+            <div className="sub" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              #{String(order.pedido_id).slice(0, 8)} · <Icon name={order.tipo_pedido === 'domicilio' ? 'scooter' : 'bag'} size={12} /> {order.tipo_pedido === 'domicilio' ? 'Domicilio' : 'Recoger'}
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
 
         {/* Scrollable body */}
@@ -232,15 +233,15 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
 
                 <div className="subtotal">${(item.cantidad * item.precio_unitario).toLocaleString('es-CO')}</div>
 
-                <button className="del-btn" onClick={() => removeItem(item.key)}>✕</button>
+                <button className="del-btn" onClick={() => removeItem(item.key)}><Icon name="x" size={12} /></button>
               </div>
             ))}
           </div>
 
           {/* Botón / panel agregar */}
           {!showAddMenu ? (
-            <button className="em-add-btn" onClick={() => setShowAddMenu(true)}>
-              + Agregar producto del menú
+            <button className="em-add-btn" onClick={() => setShowAddMenu(true)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <Icon name="plus" size={14} /> Agregar producto del menú
             </button>
           ) : (
             <div className="em-menu">
@@ -278,11 +279,12 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
                       className={`add-confirm${selectedVariante ? ' ready' : ''}`}
                       onClick={confirmAddWithVariante}
                       disabled={!selectedVariante}
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
                     >
-                      ✓ Agregar
+                      <Icon name="check" size={13} /> Agregar
                     </button>
-                    <button className="back-btn" onClick={() => { setSelectedProduct(null); setSelectedVariante(null) }}>
-                      ← Volver
+                    <button className="back-btn" onClick={() => { setSelectedProduct(null); setSelectedVariante(null) }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Icon name="arrow-left" size={13} /> Volver
                     </button>
                   </div>
                 </div>
@@ -338,7 +340,7 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
           )}
 
           {/* Notas */}
-          <div className="em-notes-label">📝 Notas para cocina</div>
+          <div className="em-notes-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="note" size={13} /> Notas para cocina</div>
           <textarea
             className="em-notes"
             value={notas}
@@ -361,8 +363,8 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
               </div>
             )}
             {total !== orderTotal && (
-              <div className="delta" style={{ color: deltaColor }}>
-                {total > orderTotal ? '▲' : '▼'} ${Math.abs(total - orderTotal).toLocaleString('es-CO')} vs anterior
+              <div className="delta" style={{ color: deltaColor, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Icon name={total > orderTotal ? 'arrow-up' : 'arrow-down'} size={12} /> ${Math.abs(total - orderTotal).toLocaleString('es-CO')} vs anterior
               </div>
             )}
           </div>
@@ -373,8 +375,9 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
               className={`save${canSave ? ' ready' : ''}`}
               onClick={handleSave}
               disabled={!canSave}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
             >
-              {saving ? 'Guardando...' : '✓ Guardar cambios'}
+              {saving ? 'Guardando...' : <><Icon name="check" size={14} /> Guardar cambios</>}
             </button>
           </div>
         </div>

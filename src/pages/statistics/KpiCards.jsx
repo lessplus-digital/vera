@@ -1,12 +1,13 @@
 import React from 'react'
 import { formatPrice } from '../../utils/formatters'
+import Icon from '../../components/Icon'
 
 function Delta({ value }) {
   if (value == null) return <span className="kpi-delta muted">—</span>
   const up = value >= 0
   return (
-    <span className={`kpi-delta ${up ? 'up' : 'down'}`}>
-      {up ? '↑' : '↓'} {Math.abs(value).toFixed(1)}%
+    <span className={`kpi-delta ${up ? 'up' : 'down'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      <Icon name={up ? 'arrow-up' : 'arrow-down'} size={12} /> {Math.abs(value).toFixed(1)}%
     </span>
   )
 }
@@ -38,7 +39,9 @@ export default function KpiCards({ kpis, deltas, rating }) {
       />
       <KpiCard
         label="Calificación"
-        value={rating.promedio != null ? `★ ${rating.promedio.toFixed(1)}` : '—'}
+        value={rating.promedio != null
+          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="star" size={16} /> {rating.promedio.toFixed(1)}</span>
+          : '—'}
         hint={rating.count > 0 ? `${rating.count} reseña${rating.count === 1 ? '' : 's'}` : 'Sin reseñas'}
         color="var(--purple)"
       />

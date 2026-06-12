@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useClients } from '../../hooks/useClients'
 import { RESERVATION_STATES } from '../../utils/constants'
+import Icon from '../../components/Icon'
 
 export default function ReservationModal({ initial, onSave, onClose }) {
   const { clients, loading: clientsLoading } = useClients()
@@ -72,7 +73,7 @@ export default function ReservationModal({ initial, onSave, onClose }) {
             <div className="title">Nueva reserva</div>
             <div className="sub">Se notificará al cliente por WhatsApp</div>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
 
         <div className="rm-body">
@@ -93,7 +94,7 @@ export default function ReservationModal({ initial, onSave, onClose }) {
                   type="text"
                   value={clientSearch}
                   onChange={e => setClientSearch(e.target.value)}
-                  placeholder="🔍 Buscar por nombre o teléfono..."
+                  placeholder="Buscar por nombre o teléfono..."
                   autoFocus
                 />
                 {clientsLoading ? (
@@ -172,8 +173,8 @@ export default function ReservationModal({ initial, onSave, onClose }) {
 
         <div className="rm-foot">
           <button className="cancel" onClick={onClose}>Cancelar</button>
-          <button className={`save${canSave ? ' ready' : ''}`} onClick={handleSave} disabled={!canSave}>
-            {saving ? 'Guardando...' : '✓ Crear reserva'}
+          <button className={`save${canSave ? ' ready' : ''}`} onClick={handleSave} disabled={!canSave} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            {saving ? 'Guardando...' : <><Icon name="check" size={14} /> Crear reserva</>}
           </button>
         </div>
       </div>

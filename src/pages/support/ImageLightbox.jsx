@@ -1,3 +1,5 @@
+import Icon from '../../components/Icon'
+
 export default function ImageLightbox({ src, onClose }) {
   if (!src) return null
 
@@ -10,10 +12,11 @@ export default function ImageLightbox({ src, onClose }) {
           rel="noopener noreferrer"
           className="lb-btn"
           onClick={e => e.stopPropagation()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
         >
-          ↗ Abrir original
+          <Icon name="expand" size={14} /> Abrir original
         </a>
-        <button className="lb-btn close" onClick={onClose}>✕ Cerrar</button>
+        <button className="lb-btn close" onClick={onClose} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="x" size={14} /> Cerrar</button>
       </div>
       <img
         src={src}

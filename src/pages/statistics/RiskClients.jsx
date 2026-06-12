@@ -1,4 +1,5 @@
 import React from 'react'
+import Icon from '../../components/Icon'
 
 // Clientes recurrentes (3+ pedidos) sin pedir hace más de 30 días.
 // El link abre WhatsApp para reactivarlos con una promo.
@@ -11,7 +12,7 @@ export default function RiskClients({ clients }) {
       </div>
 
       {clients.length === 0 ? (
-        <div className="stats-empty">Ningún cliente recurrente inactivo 🎉</div>
+        <div className="stats-empty">Ningún cliente recurrente inactivo</div>
       ) : (
         <table className="stats-table" style={{ marginTop: 10 }}>
           <thead>
@@ -38,8 +39,9 @@ export default function RiskClients({ clients }) {
                     target="_blank"
                     rel="noreferrer"
                     title="Escribirle por WhatsApp"
+                    style={{ display: 'inline-flex' }}
                   >
-                    💬
+                    <Icon name="message" size={16} />
                   </a>
                 </td>
               </tr>

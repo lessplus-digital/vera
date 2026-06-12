@@ -5,6 +5,7 @@ import { useSupportConversations } from '../../hooks/useSupportConversations'
 import ConversationItem from './ConversationItem'
 import ChatBubble from './ChatBubble'
 import ImageLightbox from './ImageLightbox'
+import Icon from '../../components/Icon'
 
 export default function SupportPanel() {
   const {
@@ -93,8 +94,8 @@ export default function SupportPanel() {
                     : ''}
                 </div>
               </div>
-              <button className="resolve" onClick={resolveConversation} disabled={resolving}>
-                {resolving ? 'Resolviendo...' : '✓ Resolver'}
+              <button className="resolve" onClick={resolveConversation} disabled={resolving} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                {resolving ? 'Resolviendo...' : <><Icon name="check" size={14} /> Resolver</>}
               </button>
             </div>
 
@@ -147,7 +148,7 @@ export default function SupportPanel() {
 function EmptyState() {
   return (
     <div className="sp-empty">
-      <div className="icon">✅</div>
+      <div className="icon" style={{ color: 'var(--green)' }}><Icon name="check-circle" size={40} /></div>
       <div className="title">Sin conversaciones pendientes</div>
       <div className="sub">Cuando un cliente solicite hablar con un humano, aparecerá aquí.</div>
     </div>
@@ -157,7 +158,7 @@ function EmptyState() {
 function NoChatSelected() {
   return (
     <div className="no-chat">
-      <div className="icon">💬</div>
+      <div className="icon" style={{ color: 'var(--text-muted)' }}><Icon name="message" size={40} /></div>
       <div className="title">Selecciona una conversación</div>
       <div className="sub">Elige un cliente de la lista para ver sus mensajes y responderle directamente por WhatsApp.</div>
     </div>

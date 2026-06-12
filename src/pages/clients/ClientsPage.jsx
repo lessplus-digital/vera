@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { useClients } from '../../hooks/useClients'
 import { CLIENT_MODES } from '../../utils/constants'
 import ClientModal from './ClientModal'
+import Icon from '../../components/Icon'
 
 export default function ClientsPage() {
   const { clients, loading, error, saveClient } = useClients()
@@ -35,7 +36,7 @@ export default function ClientsPage() {
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 Buscar por nombre o teléfono..."
+          placeholder="Buscar por nombre o teléfono..."
         />
 
         <button className="clients-sort" onClick={() => setSortAsc(v => !v)} title="Cambiar orden alfabético">
@@ -47,8 +48,8 @@ export default function ClientsPage() {
           {search && ` de ${clients.length}`}
         </span>
 
-        <button className="clients-new" onClick={() => setModal('new')}>
-          + Nuevo cliente
+        <button className="clients-new" onClick={() => setModal('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon name="plus" size={14} /> Nuevo cliente
         </button>
       </div>
 
@@ -85,7 +86,7 @@ export default function ClientsPage() {
               <span>
                 {(() => {
                   const mode = CLIENT_MODES.find(m => m.value === client.modo) || CLIENT_MODES[0]
-                  return <span className={`mode-badge ${mode.cls}`}>{mode.label}</span>
+                  return <span className={`mode-badge ${mode.cls}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name={mode.icon} size={12} /> {mode.label}</span>
                 })()}
               </span>
               <span className="date">
@@ -94,7 +95,7 @@ export default function ClientsPage() {
                   : '—'}
               </span>
               <span className="actions">
-                <button className="edit-btn" onClick={() => setModal(client)}>✏️ Editar</button>
+                <button className="edit-btn" onClick={() => setModal(client)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="edit" size={13} /> Editar</button>
               </span>
             </div>
           ))}

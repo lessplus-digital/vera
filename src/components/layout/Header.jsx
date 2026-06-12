@@ -1,22 +1,32 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { timeAgoShort } from '../../utils/formatters'
+import Icon from '../Icon'
 
 export default function Header({ theme, onToggleTheme, activeTab, onTabChange, stats, supportCount, lastUpdate }) {
   return (
-    <header style={{
+    <header className="app-topbar" style={{
       background: 'var(--bg-surface)',
-      borderBottom: '1px solid var(--border)',
-      padding: '0 24px',
-      height: 56,
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-pill)',
+      boxShadow: 'var(--shadow-card), inset 0 1px 0 var(--glass-edge)',
+      padding: '0 16px 0 18px',
+      height: 60,
+      margin: '14px 16px 0',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       position: 'sticky',
-      top: 0,
+      top: 14,
       zIndex: 100,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 20 }}>🍕</span>
+        <span style={{
+          width: 34, height: 34,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--amber-dim)',
+          color: 'var(--amber)',
+          borderRadius: '50%',
+        }}><Icon name="pizza" size={18} /></span>
         <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
           Vera Pizzería
         </span>
@@ -24,67 +34,58 @@ export default function Header({ theme, onToggleTheme, activeTab, onTabChange, s
           background: 'var(--amber-dim)',
           color: 'var(--amber)',
           border: '1px solid var(--amber-border)',
-          borderRadius: 6,
-          padding: '2px 8px',
+          borderRadius: 'var(--radius-pill)',
+          padding: '2px 9px',
           fontSize: 11,
           fontWeight: 500,
         }}>
           Admin
         </span>
 
-        <nav style={{ display: 'flex', gap: 2, marginLeft: 20 }}>
+        <nav style={{
+          display: 'flex',
+          gap: 2,
+          marginLeft: 18,
+          background: 'var(--bg-base)',
+          borderRadius: 'var(--radius-pill)',
+          padding: 4,
+        }}>
           <TabButton
             active={activeTab === 'dashboard'}
             onClick={() => onTabChange('dashboard')}
             label="Pedidos"
-            emoji="📋"
+            icon="clipboard"
           />
           <TabButton
             active={activeTab === 'soporte'}
             onClick={() => onTabChange('soporte')}
             label="Soporte"
-            emoji="💬"
+            icon="message"
             badge={supportCount}
           />
           <TabButton
             active={activeTab === 'estadisticas'}
             onClick={() => onTabChange('estadisticas')}
             label="Estadísticas"
-            emoji="📊"
+            icon="chart"
           />
           <TabButton
             active={activeTab === 'clientes'}
             onClick={() => onTabChange('clientes')}
             label="Clientes"
-            emoji="👥"
+            icon="users"
           />
           <TabButton
             active={activeTab === 'reservas'}
             onClick={() => onTabChange('reservas')}
             label="Reservas"
-            emoji="📅"
+            icon="calendar"
           />
         </nav>
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-        <button
-          onClick={onToggleTheme}
-          style={{
-            border: '1px solid var(--border)',
-            background: 'var(--bg-card)',
-            color: 'var(--text-primary)',
-            borderRadius: 8,
-            padding: '6px 10px',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-            fontFamily: 'var(--font-sans)',
-          }}
-          title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-        >
-          {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-        </button>
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
 
         {activeTab === 'dashboard' && (
           <>
@@ -109,27 +110,63 @@ export default function Header({ theme, onToggleTheme, activeTab, onTabChange, s
   )
 }
 
-function TabButton({ active, onClick, label, emoji, badge }) {
+function ThemeToggle({ theme, onToggle }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onToggle}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        border: '1px solid var(--border)',
+        background: 'var(--bg-base)',
+        color: 'var(--text-primary)',
+        borderRadius: 'var(--radius-pill)',
+        padding: '7px 13px',
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer',
+        fontFamily: 'var(--font-sans)',
+        boxShadow: hover ? '0 0 16px color-mix(in srgb, var(--amber) 28%, transparent)' : 'none',
+        borderColor: hover ? 'var(--amber-border)' : 'var(--border)',
+        transition: 'all 0.18s ease',
+      }}
+      title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
+        {theme === 'dark' ? 'Light' : 'Dark'}
+      </span>
+    </button>
+  )
+}
+
+function TabButton({ active, onClick, label, icon, badge }) {
+  const [hover, setHover] = useState(false)
+  const glow = '0 0 16px color-mix(in srgb, var(--amber) 28%, transparent)'
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        padding: '6px 14px',
-        fontSize: 12,
-        fontWeight: active ? 600 : 400,
-        color: active ? 'var(--text-primary)' : 'var(--text-muted)',
-        background: active ? 'var(--bg-card)' : 'transparent',
-        border: active ? '1px solid var(--border)' : '1px solid transparent',
-        borderRadius: 8,
+        padding: '7px 15px',
+        fontSize: 12.5,
+        fontWeight: active ? 600 : 500,
+        color: active || hover ? 'var(--text-primary)' : 'var(--text-muted)',
+        background: active ? 'var(--bg-surface)' : 'transparent',
+        border: 'none',
+        borderRadius: 'var(--radius-pill)',
+        boxShadow: hover ? glow : active ? 'var(--shadow-card)' : 'none',
         cursor: 'pointer',
         fontFamily: 'var(--font-sans)',
-        transition: 'all 0.15s ease',
+        transition: 'all 0.18s ease',
       }}
     >
-      <span style={{ fontSize: 13 }}>{emoji}</span>
+      <Icon name={icon} size={15} />
       {label}
       {badge > 0 && (
         <span style={{

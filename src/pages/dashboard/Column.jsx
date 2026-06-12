@@ -1,16 +1,19 @@
 import React from 'react'
 import OrderCard from './OrderCard'
+import Icon from '../../components/Icon'
 
-export default function Column({ title, emoji, cls, orders, newIds, onUpdated, onCreate }) {
+export default function Column({ title, icon, cls, orders, newIds, onUpdated, onCreate }) {
   return (
     <div className="col">
       <div className="col-head">
         <div className={`dot ${cls}`} />
-        <span className="name">{emoji} {title}</span>
+        <span className="name" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Icon name={icon} size={15} /> {title}
+        </span>
         <span className={`badge mono ${cls}`}>{orders.length}</span>
         {onCreate && (
-          <button className="col-add-btn" onClick={onCreate} title="Crear pedido manual">
-            + Crear
+          <button className="col-add-btn" onClick={onCreate} title="Crear pedido manual" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Icon name="plus" size={13} /> Crear
           </button>
         )}
       </div>

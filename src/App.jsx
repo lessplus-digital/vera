@@ -16,7 +16,7 @@ export default function App() {
   const { orders, loading, newIds, stats, lastUpdate, fetchOrders } = useOrders()
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
+    <div style={{ minHeight: '100vh', background: 'transparent' }}>
       <Header
         theme={theme}
         onToggleTheme={toggleTheme}

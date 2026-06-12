@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { CLIENT_MODES } from '../../utils/constants'
+import Icon from '../../components/Icon'
 
 export default function ClientModal({ client, onSave, onClose }) {
   const isNew = !client
@@ -51,7 +52,7 @@ export default function ClientModal({ client, onSave, onClose }) {
               <div className="sub">#{String(client.cliente_id).slice(0, 8)}</div>
             )}
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
 
         <div className="cm-body">
@@ -100,8 +101,8 @@ export default function ClientModal({ client, onSave, onClose }) {
 
         <div className="cm-foot">
           <button className="cancel" onClick={onClose}>Cancelar</button>
-          <button className={`save${canSave ? ' ready' : ''}`} onClick={handleSave} disabled={!canSave}>
-            {saving ? 'Guardando...' : isNew ? '✓ Crear cliente' : '✓ Guardar cambios'}
+          <button className={`save${canSave ? ' ready' : ''}`} onClick={handleSave} disabled={!canSave} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            {saving ? 'Guardando...' : <><Icon name="check" size={14} /> {isNew ? 'Crear cliente' : 'Guardar cambios'}</>}
           </button>
         </div>
       </div>

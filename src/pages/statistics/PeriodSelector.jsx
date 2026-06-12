@@ -1,5 +1,6 @@
 import React from 'react'
 import { PRESETS } from '../../utils/dateRanges'
+import Icon from '../../components/Icon'
 
 const GRANULARITIES = [
   { key: 'dia', label: 'Día' },
@@ -34,7 +35,7 @@ export default function PeriodSelector({
             max={customTo || undefined}
             onChange={e => onCustomFrom(e.target.value)}
           />
-          <span>→</span>
+          <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}><Icon name="arrow-right" size={14} /></span>
           <input
             type="date"
             value={customTo}

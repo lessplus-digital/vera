@@ -1,29 +1,35 @@
 import React, { useState } from 'react'
+import Icon from '../../components/Icon'
 
 const MOTIVOS_PREDETERMINADOS = [
   {
     id: 'fuera_cobertura',
-    label: '📍 Fuera de cobertura',
+    icon: 'pin',
+    label: 'Fuera de cobertura',
     mensaje: 'Lo sentimos, tu dirección está fuera de nuestra zona de cobertura de domicilios',
   },
   {
     id: 'producto_agotado',
-    label: '🍕 Producto agotado',
+    icon: 'pizza',
+    label: 'Producto agotado',
     mensaje: 'Lo sentimos, uno o más productos de tu pedido se agotaron por hoy',
   },
   {
     id: 'local_cerrado',
-    label: '🔒 Local cerrado',
+    icon: 'lock',
+    label: 'Local cerrado',
     mensaje: 'Lo sentimos, el local ya cerró y no podemos procesar más pedidos por hoy',
   },
   {
     id: 'pago_no_verificado',
-    label: '🏦 Pago no verificado',
+    icon: 'bank',
+    label: 'Pago no verificado',
     mensaje: 'No pudimos verificar tu comprobante de pago. Por favor envía uno nuevo o contáctanos',
   },
   {
     id: 'datos_incompletos',
-    label: '📝 Datos incompletos',
+    icon: 'note',
+    label: 'Datos incompletos',
     mensaje: 'Tu pedido no tiene la información completa (dirección, productos, etc). Por favor vuelve a hacer el pedido',
   },
 ]
@@ -52,12 +58,12 @@ export default function RejectModal({ order, loading, onConfirm, onClose }) {
         {/* Header */}
         <div className="m-head">
           <div>
-            <div className="title-red">✕ Rechazar pedido</div>
+            <div className="title-red"><Icon name="x" size={15} /> Rechazar pedido</div>
             <div className="sub mono">
               #{String(order.pedido_id).slice(0, 8)} · ${Number(order.total || 0).toLocaleString('es-CO')}
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
 
         {/* Body */}
@@ -79,7 +85,7 @@ export default function RejectModal({ order, loading, onConfirm, onClose }) {
                     {isSelected && <div className="dot" />}
                   </div>
                   <div>
-                    <div className="opt-label">{motivo.label}</div>
+                    <div className="opt-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name={motivo.icon} size={13} /> {motivo.label}</div>
                     <div className="opt-msg">{motivo.mensaje}</div>
                   </div>
                 </button>
@@ -94,7 +100,7 @@ export default function RejectModal({ order, loading, onConfirm, onClose }) {
               <div className="radio">
                 {useCustom && <div className="dot" />}
               </div>
-              <div className="opt-label">✏️ Mensaje personalizado</div>
+              <div className="opt-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="edit" size={13} /> Mensaje personalizado</div>
             </button>
 
             {useCustom && (
@@ -121,8 +127,9 @@ export default function RejectModal({ order, loading, onConfirm, onClose }) {
             className={`rm-confirm${canConfirm ? ' active' : ''}`}
             onClick={handleConfirm}
             disabled={!canConfirm || loading}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
           >
-            {loading ? '...' : '✕ Confirmar rechazo'}
+            {loading ? '...' : <><Icon name="x" size={13} /> Confirmar rechazo</>}
           </button>
         </div>
       </div>

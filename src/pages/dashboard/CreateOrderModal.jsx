@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { sendWhatsAppMessage } from '../../lib/whatsapp'
+import Icon from '../../components/Icon'
 
 // Debe coincidir con costo_domicilio del trigger actualizar_total_pedido (solo preview;
 // el total real siempre lo escribe el trigger)
@@ -284,7 +285,7 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
             <div className="title">Crear pedido manual</div>
             <div className="sub">Se registra en "Por aprobar" y se notifica al cliente</div>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
 
         {/* Scrollable body */}
@@ -335,11 +336,13 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
                 <button
                   className={`opt${tipoPedido === 'domicilio' ? ' active' : ''}`}
                   onClick={() => setTipoPedido('domicilio')}
-                >🛵 Domicilio</button>
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                ><Icon name="scooter" size={14} /> Domicilio</button>
                 <button
                   className={`opt${tipoPedido === 'recoger' ? ' active' : ''}`}
                   onClick={() => setTipoPedido('recoger')}
-                >🏃 Recoger</button>
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                ><Icon name="bag" size={14} /> Recoger</button>
               </div>
             </div>
 
@@ -349,11 +352,13 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
                 <button
                   className={`opt${metodoPago === 'Efectivo' ? ' active' : ''}`}
                   onClick={() => setMetodoPago('Efectivo')}
-                >💵 Efectivo</button>
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                ><Icon name="cash" size={14} /> Efectivo</button>
                 <button
                   className={`opt${metodoPago === 'Transferencia' ? ' active' : ''}`}
                   onClick={() => setMetodoPago('Transferencia')}
-                >🏦 Transfer.</button>
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                ><Icon name="bank" size={14} /> Transfer.</button>
               </div>
             </div>
           </div>
@@ -394,7 +399,7 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
 
                   <div className="subtotal">${(item.cantidad * item.precio_unitario).toLocaleString('es-CO')}</div>
 
-                  <button className="del-btn" onClick={() => removeItem(item.key)}>✕</button>
+                  <button className="del-btn" onClick={() => removeItem(item.key)}><Icon name="x" size={12} /></button>
                 </div>
               ))}
             </div>
@@ -402,8 +407,8 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
 
           {/* Botón / panel agregar */}
           {!showAddMenu ? (
-            <button className="em-add-btn" onClick={() => setShowAddMenu(true)}>
-              + Agregar producto del menú
+            <button className="em-add-btn" onClick={() => setShowAddMenu(true)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+              <Icon name="plus" size={14} /> Agregar producto del menú
             </button>
           ) : (
             <div className="em-menu">
@@ -441,11 +446,12 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
                       className={`add-confirm${selectedVariante ? ' ready' : ''}`}
                       onClick={confirmAddWithVariante}
                       disabled={!selectedVariante}
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
                     >
-                      ✓ Agregar
+                      <Icon name="check" size={13} /> Agregar
                     </button>
-                    <button className="back-btn" onClick={() => { setSelectedProduct(null); setSelectedVariante(null) }}>
-                      ← Volver
+                    <button className="back-btn" onClick={() => { setSelectedProduct(null); setSelectedVariante(null) }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Icon name="arrow-left" size={13} /> Volver
                     </button>
                   </div>
                 </div>
@@ -501,7 +507,7 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
           )}
 
           {/* Notas */}
-          <div className="em-notes-label">📝 Notas para cocina</div>
+          <div className="em-notes-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="note" size={13} /> Notas para cocina</div>
           <textarea
             className="em-notes"
             value={notas}
@@ -511,7 +517,7 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
           />
 
           {error && <div className="em-error">{error}</div>}
-          {waWarning && <div className="co-warning">⚠️ {waWarning}</div>}
+          {waWarning && <div className="co-warning" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="alert" size={14} /> {waWarning}</div>}
         </div>
 
         {/* Footer */}
@@ -536,8 +542,9 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
                   className={`save${canSave ? ' ready' : ''}`}
                   onClick={handleSave}
                   disabled={!canSave}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
                 >
-                  {saving ? 'Creando...' : '✓ Crear pedido'}
+                  {saving ? 'Creando...' : <><Icon name="check" size={14} /> Crear pedido</>}
                 </button>
               </>
             )}

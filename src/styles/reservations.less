@@ -720,3 +720,19 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+// ── Calmer glass: flatten inner surfaces so the modal reads as one ─
+.rsv-modal {
+  .rm-field input,
+  .rm-field select,
+  .rm-client-selected,
+  .rm-client-selected .change,
+  .rm-client-picker .search,
+  .rm-client-picker .list,
+  .rm-client-picker .placeholder,
+  .rm-foot .cancel,
+  .rm-foot .save,
+  .rd-notes p {
+    background: var(--bg-inset);
+  }
+}

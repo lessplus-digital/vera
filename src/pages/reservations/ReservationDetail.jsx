@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { RESERVATION_STATES } from '../../utils/constants'
+import Icon from '../../components/Icon'
 
 export default function ReservationDetail({ reservation: r, legible, onDelete, onClose }) {
   const [confirming, setConfirming] = useState(false)
@@ -22,22 +23,22 @@ export default function ReservationDetail({ reservation: r, legible, onDelete, o
             <div className="title">{r.nombre_cliente || 'Sin nombre'}</div>
             <div className="sub">#{String(r.reserva_id).slice(0, 18)}</div>
           </div>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><Icon name="x" size={14} /></button>
         </div>
 
         <div className="rm-body">
           <div className="rd-grid">
             <div className="rd-item">
               <span className="rm-label">Fecha</span>
-              <span className="rd-value">📅 {legible.fecha}</span>
+              <span className="rd-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="calendar" size={13} /> {legible.fecha}</span>
             </div>
             <div className="rd-item">
               <span className="rm-label">Hora</span>
-              <span className="rd-value">🕗 {legible.hora}</span>
+              <span className="rd-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="clock" size={13} /> {legible.hora}</span>
             </div>
             <div className="rd-item">
               <span className="rm-label">Personas</span>
-              <span className="rd-value">👥 {r.personas}</span>
+              <span className="rd-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="users" size={13} /> {r.personas}</span>
             </div>
             <div className="rd-item">
               <span className="rm-label">Estado</span>
@@ -51,7 +52,7 @@ export default function ReservationDetail({ reservation: r, legible, onDelete, o
             </div>
             <div className="rd-item">
               <span className="rm-label">Origen</span>
-              <span className="rd-value">{r.origen === 'dashboard' ? '🖥️ Dashboard' : '🤖 WhatsApp'}</span>
+              <span className="rd-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name={r.origen === 'dashboard' ? 'desktop' : 'bot'} size={13} /> {r.origen === 'dashboard' ? 'Dashboard' : 'WhatsApp'}</span>
             </div>
           </div>
 
@@ -75,14 +76,14 @@ export default function ReservationDetail({ reservation: r, legible, onDelete, o
               <button className="cancel" onClick={() => setConfirming(false)} disabled={deleting}>
                 No, conservar
               </button>
-              <button className="delete confirm" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Eliminando...' : '🗑 Sí, eliminar'}
+              <button className="delete confirm" onClick={handleDelete} disabled={deleting} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                {deleting ? 'Eliminando...' : <><Icon name="trash" size={14} /> Sí, eliminar</>}
               </button>
             </>
           ) : (
             <>
-              <button className="delete" onClick={() => setConfirming(true)}>
-                🗑 Eliminar reserva
+              <button className="delete" onClick={() => setConfirming(true)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <Icon name="trash" size={14} /> Eliminar reserva
               </button>
               <button className="cancel" onClick={onClose}>Cerrar</button>
             </>

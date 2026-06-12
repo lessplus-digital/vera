@@ -1,4 +1,5 @@
 import React from 'react'
+import Icon from '../../components/Icon'
 
 export default function CancellationStats({ kpis, motivos, rating }) {
   const maxCount = motivos.length > 0 ? motivos[0].count : 0
@@ -18,7 +19,9 @@ export default function CancellationStats({ kpis, motivos, rating }) {
         </div>
         <div className="cancel-stat">
           <div className="cancel-stat-value purple">
-            {rating.promedio != null ? `★ ${rating.promedio.toFixed(1)}` : '—'}
+            {rating.promedio != null
+              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="star" size={17} /> {rating.promedio.toFixed(1)}</span>
+              : '—'}
           </div>
           <div className="cancel-stat-label">
             {rating.count > 0 ? `Calificación (${rating.count})` : 'Sin reseñas'}
@@ -28,7 +31,7 @@ export default function CancellationStats({ kpis, motivos, rating }) {
 
       <div className="stats-card-section">Motivos de cancelación</div>
       {motivos.length === 0 ? (
-        <div className="stats-empty">Sin cancelaciones en este periodo 🎉</div>
+        <div className="stats-empty">Sin cancelaciones en este periodo</div>
       ) : (
         <div className="reason-list">
           {motivos.map(m => (

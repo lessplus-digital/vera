@@ -205,7 +205,7 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 
 - Dark/Light toggle vía `useTheme` (persistido en `localStorage`)
 - CSS variables en `:root` (dark) y `[data-theme="light"]` en `styles/index.css`
-- Fuentes: DM Sans + DM Mono (Google Fonts)
+- Fuentes: Plus Jakarta Sans + JetBrains Mono (Google Fonts)
 
 ## Notas de implementación
 

@@ -1,3 +1,5 @@
+import Icon from '../../components/Icon'
+
 export default function ChatBubble({ msg, onImageClick }) {
   const isSystem = msg.origen === 'sistema'
   const isAdmin  = msg.origen === 'admin'
@@ -35,7 +37,7 @@ export default function ChatBubble({ msg, onImageClick }) {
               }}
             />
             <div className="img-error">
-              <span>⚠️</span>
+              <span style={{ display: 'inline-flex' }}><Icon name="alert" size={14} /></span>
               <span>No se pudo cargar la imagen</span>
             </div>
             {msg.mensaje && msg.mensaje !== '📷 Imagen' && (

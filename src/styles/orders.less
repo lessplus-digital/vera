@@ -55,9 +55,9 @@
 .kanban {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 18px;
   align-items: start;
-  padding: 20px 24px;
+  padding: 22px 20px 40px;
 }
 
 .page-loading {
@@ -143,10 +143,15 @@
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 14px;
+  padding: 16px;
   animation: fadeIn 0.3s ease;
-  transition: border-color 0.2s;
-  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-edge);
+
+  &:hover {
+    box-shadow: var(--shadow-float), 0 0 26px var(--glow-brand), inset 0 1px 0 var(--glass-edge);
+    border-color: var(--border-hover);
+  }
 
   &.is-new {
     border-color: var(--amber-border);
@@ -285,7 +290,7 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0,0,0,0.82);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -787,9 +792,9 @@
     background: var(--bg-card);
 
     .total {
-      .lbl       { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+      .lbl       { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
       .amount    { font-size: 18px; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); }
-      .breakdown { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+      .breakdown { font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono); }
       .delta     { font-size: 11px; font-family: var(--font-mono); } // color set inline (dynamic)
     }
 
@@ -998,5 +1003,69 @@
     font-size: 12px;
     font-weight: 500;
     margin-bottom: 12px;
+  }
+}
+
+// ── Calmer glass: flatten inner surfaces so the modal reads as one ─
+// The modal panel keeps the glass gradient; nested sections use a flat,
+// uniform inset tone instead of their own radial sheen + colour tint.
+.edit-modal,
+.create-order-modal {
+  .em-items,
+  .em-menu,
+  .em-menu .search,
+  .em-notes,
+  .co-client-selected,
+  .co-client-picker,
+  .co-client-picker .search,
+  .co-no-items,
+  .co-field input {
+    background: var(--bg-inset);
+  }
+
+  .em-foot { background: transparent; }
+
+  .em-foot .cancel,
+  .em-foot .save { background: var(--bg-inset); }
+}
+
+.reject-modal {
+  .option,
+  .custom-ta-wrap textarea,
+  .rm-cancel,
+  .rm-confirm {
+    background: var(--bg-inset);
+  }
+}
+
+// ── Order-card buttons: softer, smaller & gradual glow on hover ──
+// Glow lives on ::after so its opacity fades in from the very start of
+// the hover (box-shadow from `none` can't animate opacity smoothly).
+.order-card {
+  .act-btn,
+  .oc-btn {
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: 0 0 11px color-mix(in srgb, currentColor 20%, transparent);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+  }
+
+  // Neutralise the shared box-shadow glow so only the gradual one shows
+  .act-btn:not(:disabled):hover,
+  .oc-btn:hover {
+    box-shadow: none;
+  }
+
+  .act-btn:not(:disabled):hover::after,
+  .oc-btn:hover::after {
+    opacity: 1;
   }
 }
