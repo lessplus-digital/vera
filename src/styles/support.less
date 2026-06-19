@@ -1,15 +1,33 @@
 // ── Support Panel layout ─────────────────────────────────────────
 .sp {
   display: flex;
-  height: calc(100vh - 56px);
+  height: calc(100vh - 88px);
   overflow: hidden;
 
-  // ── Sidebar ────────────────────────────────────────────────────
+  // En móvil: lista arriba (altura acotada) + chat debajo
+  @media (max-width: 760px) {
+    flex-direction: column;
+
+    .side {
+      width: auto;
+      max-height: 38vh;
+      margin: 12px 14px 0;
+    }
+
+    .chat { min-height: 0; flex: 1; margin: 10px 14px 12px; }
+  }
+
+  // ── Sidebar — floating glass card (igual que la barra de navegación) ─
   .side {
     width: 320px;
     flex-shrink: 0;
-    border-right: 1px solid var(--border);
+    margin: 14px 16px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     background: var(--bg-surface);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-edge);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -49,13 +67,20 @@
     }
   }
 
-  // ── Chat area ──────────────────────────────────────────────────
+  // ── Chat area — floating glass card (alineada con el sidebar) ───
   .chat {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: var(--bg-base);
+    margin: 14px 16px 16px 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-edge);
 
     .no-chat {
       flex: 1;
@@ -74,7 +99,6 @@
     .chat-head {
       padding: 12px 20px;
       border-bottom: 1px solid var(--border);
-      background: var(--bg-surface);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -140,7 +164,6 @@
     .input-area {
       padding: 12px 20px;
       border-top: 1px solid var(--border);
-      background: var(--bg-surface);
       display: flex;
       gap: 10px;
       align-items: flex-end;
@@ -273,6 +296,8 @@
 
   .bubble {
     max-width: 70%;
+
+    @media (max-width: 600px) { max-width: 85%; }
 
     &.admin  { padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--blue-dim); border: 1px solid var(--blue-border); }
     &.client { padding: 8px 12px; border-radius: 12px 12px 12px 4px; background: var(--bg-card);  border: 1px solid var(--border);      }

@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { useTheme } from './hooks/useTheme'
 import { useOrders } from './hooks/useOrders'
 import { useSupportCount } from './hooks/useSupportCount'
+import { useMediaQuery } from './hooks/useMediaQuery'
+import Sidebar from './components/layout/Sidebar'
 import Header from './components/layout/Header'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import SupportPanel from './pages/support/SupportPanel'
@@ -11,28 +13,46 @@ import ReservationsPage from './pages/reservations/ReservationsPage'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
   const supportCount = useSupportCount()
   const { orders, loading, newIds, stats, lastUpdate, fetchOrders } = useOrders()
 
+  // Colapsa a solo-iconos en tablet; se vuelve cajón (drawer) en móvil.
+  const collapsed = useMediaQuery('(max-width: 1024px)')
+  const isMobile  = useMediaQuery('(max-width: 768px)')
+
   return (
-    <div style={{ minHeight: '100vh', background: 'transparent' }}>
-      <Header
-        theme={theme}
-        onToggleTheme={toggleTheme}
+    <div className="app-shell" style={{ display: 'flex', minHeight: '100vh' }}>
+      <Sidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        stats={stats}
         supportCount={supportCount}
-        lastUpdate={lastUpdate}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        collapsed={collapsed && !isMobile}
+        mobileOpen={isMobile && mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
       />
-      {activeTab === 'dashboard' && (
-        <DashboardPage loading={loading} orders={orders} newIds={newIds} onUpdated={fetchOrders} />
-      )}
-      {activeTab === 'soporte' && <SupportPanel />}
-      {activeTab === 'estadisticas' && <StatisticsPage />}
-      {activeTab === 'clientes' && <ClientsPage />}
-      {activeTab === 'reservas' && <ReservationsPage />}
+
+      <div className="app-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <Header
+          theme={theme}
+          activeTab={activeTab}
+          stats={stats}
+          lastUpdate={lastUpdate}
+          showHamburger={isMobile}
+          onToggleSidebar={() => setMobileOpen(true)}
+        />
+
+        {activeTab === 'dashboard' && (
+          <DashboardPage loading={loading} orders={orders} newIds={newIds} onUpdated={fetchOrders} />
+        )}
+        {activeTab === 'soporte' && <SupportPanel />}
+        {activeTab === 'estadisticas' && <StatisticsPage />}
+        {activeTab === 'clientes' && <ClientsPage />}
+        {activeTab === 'reservas' && <ReservationsPage />}
+      </div>
     </div>
   )
 }

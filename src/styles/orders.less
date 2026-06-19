@@ -58,6 +58,13 @@
   gap: 18px;
   align-items: start;
   padding: 22px 20px 40px;
+
+  @media (max-width: 1024px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 680px)  {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 16px 14px 32px;
+  }
 }
 
 .page-loading {
@@ -297,7 +304,7 @@
   padding: 16px;
 
   .panel {
-    background: var(--bg-card);
+    background: var(--bg-modal);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 20px;
@@ -936,6 +943,8 @@
     grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin-bottom: 16px;
+
+    @media (max-width: 480px) { grid-template-columns: 1fr; }
   }
 
   .co-field {

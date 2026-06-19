@@ -10,6 +10,8 @@
   flex-direction: column;
   gap: 14px;
   animation: fadeIn 0.2s ease;
+
+  @media (max-width: 560px) { padding: 16px 14px 28px; }
 }
 
 .rsv-empty {
@@ -366,6 +368,8 @@
     display: grid;
     grid-template-columns: 1.2fr 1fr 0.8fr;
     gap: 10px;
+
+    @media (max-width: 480px) { grid-template-columns: 1fr; }
   }
 
   .rm-field {
@@ -613,6 +617,8 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 14px 10px;
+
+    @media (max-width: 420px) { grid-template-columns: 1fr; }
   }
 
   .rd-item {

@@ -113,6 +113,25 @@
 
   &:last-child { border-bottom: none; }
 
+  // Responsive: ocultar columnas menos críticas (orden de celdas:
+  // 1 nombre · 2 teléfono · 3 dirección · 4 modo · 5 fecha · 6 editar)
+  @media (max-width: 860px) {
+    grid-template-columns: 1.4fr 1.1fr 1.6fr 0.8fr auto;
+    & > :nth-child(5) { display: none; } // fecha
+  }
+
+  @media (max-width: 620px) {
+    grid-template-columns: 1.4fr 1.1fr 0.8fr auto;
+    & > :nth-child(3) { display: none; } // dirección
+  }
+
+  @media (max-width: 460px) {
+    grid-template-columns: 1.3fr 1fr auto;
+    gap: 8px;
+    padding: 10px 12px;
+    & > :nth-child(4) { display: none; } // modo
+  }
+
   &.head {
     background: var(--bg-surface);
     font-size: 11px;

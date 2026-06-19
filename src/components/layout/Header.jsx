@@ -1,191 +1,188 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { timeAgoShort } from '../../utils/formatters'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import Icon from '../Icon'
 
-export default function Header({ theme, onToggleTheme, activeTab, onTabChange, stats, supportCount, lastUpdate }) {
+export default function Header({
+  theme,
+  activeTab,
+  stats,
+  lastUpdate,
+  onToggleSidebar,
+  showHamburger,
+}) {
+  const hideStats = useMediaQuery('(max-width: 900px)')
+  const compact   = useMediaQuery('(max-width: 560px)')
+
   return (
     <header className="app-topbar" style={{
       background: 'var(--bg-surface)',
       border: '1px solid var(--border)',
       borderRadius: 'var(--radius-pill)',
       boxShadow: 'var(--shadow-card), inset 0 1px 0 var(--glass-edge)',
-      padding: '0 16px 0 18px',
+      padding: compact ? '0 10px' : '0 16px 0 18px',
       height: 60,
       margin: '14px 16px 0',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
+      gap: 8,
       position: 'sticky',
       top: 14,
       zIndex: 100,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{
-          width: 34, height: 34,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--amber-dim)',
-          color: 'var(--amber)',
-          borderRadius: '50%',
-        }}><Icon name="pizza" size={18} /></span>
-        <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
-          Vera Pizzería
-        </span>
-        <span style={{
-          background: 'var(--amber-dim)',
-          color: 'var(--amber)',
-          border: '1px solid var(--amber-border)',
-          borderRadius: 'var(--radius-pill)',
-          padding: '2px 9px',
-          fontSize: 11,
-          fontWeight: 500,
-        }}>
-          Admin
-        </span>
-
-        <nav style={{
-          display: 'flex',
-          gap: 2,
-          marginLeft: 18,
-          background: 'var(--bg-base)',
-          borderRadius: 'var(--radius-pill)',
-          padding: 4,
-        }}>
-          <TabButton
-            active={activeTab === 'dashboard'}
-            onClick={() => onTabChange('dashboard')}
-            label="Pedidos"
-            icon="clipboard"
-          />
-          <TabButton
-            active={activeTab === 'soporte'}
-            onClick={() => onTabChange('soporte')}
-            label="Soporte"
-            icon="message"
-            badge={supportCount}
-          />
-          <TabButton
-            active={activeTab === 'estadisticas'}
-            onClick={() => onTabChange('estadisticas')}
-            label="Estadísticas"
-            icon="chart"
-          />
-          <TabButton
-            active={activeTab === 'clientes'}
-            onClick={() => onTabChange('clientes')}
-            label="Clientes"
-            icon="users"
-          />
-          <TabButton
-            active={activeTab === 'reservas'}
-            onClick={() => onTabChange('reservas')}
-            label="Reservas"
-            icon="calendar"
-          />
-        </nav>
+      {/* ─── Izquierda: hamburguesa + saludo ─── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: '1 1 auto' }}>
+        {showHamburger && (
+          <button className="topbar-burger" onClick={onToggleSidebar} aria-label="Abrir menú">
+            <BurgerIcon />
+          </button>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontSize: compact ? 14 : 15,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            letterSpacing: '-0.01em',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            Bienvenido de nuevo 👋
+          </div>
+          {!compact && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+              {SECTION_LABELS[activeTab] || 'Panel'}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-
-        {activeTab === 'dashboard' && (
+      {/* ─── Derecha: stats + en vivo + admin ─── */}
+      <div style={{ display: 'flex', gap: compact ? 10 : 18, alignItems: 'center', flexShrink: 0 }}>
+        {activeTab === 'dashboard' && !hideStats && (
           <>
             <Stat label="Pedidos hoy" value={stats.total} color="var(--text-secondary)" />
             <Stat label="Entregados" value={stats.entregados} color="var(--green)" />
             <Stat label="Ingresos" value={`$${stats.ingresos.toLocaleString('es-CO')}`} color="var(--amber)" />
+            <Divider />
           </>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <div style={{
             width: 6, height: 6, borderRadius: '50%',
+            flexShrink: 0,
             background: 'var(--green)',
             animation: 'pulse-dot 2s infinite',
           }} />
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            En vivo · {timeAgoShort(lastUpdate)}
-          </span>
+          {!compact && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              En vivo · {timeAgoShort(lastUpdate)}
+            </span>
+          )}
         </div>
+
+        <Divider />
+        <AdminMenu compact={compact} />
       </div>
     </header>
   )
 }
 
-function ThemeToggle({ theme, onToggle }) {
-  const [hover, setHover] = useState(false)
+const SECTION_LABELS = {
+  dashboard:    'Gestión de pedidos',
+  soporte:      'Soporte en vivo',
+  estadisticas: 'Estadísticas y reportes',
+  clientes:     'Base de clientes',
+  reservas:     'Reservas',
+}
+
+/* ─── Menú de administrador (placeholder de login) ─── */
+function AdminMenu({ compact }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   return (
-    <button
-      onClick={onToggle}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        border: '1px solid var(--border)',
-        background: 'var(--bg-base)',
-        color: 'var(--text-primary)',
-        borderRadius: 'var(--radius-pill)',
-        padding: '7px 13px',
-        fontSize: 12,
-        fontWeight: 600,
-        cursor: 'pointer',
-        fontFamily: 'var(--font-sans)',
-        boxShadow: hover ? '0 0 16px color-mix(in srgb, var(--amber) 28%, transparent)' : 'none',
-        borderColor: hover ? 'var(--amber-border)' : 'var(--border)',
-        transition: 'all 0.18s ease',
-      }}
-      title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-    >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
-        {theme === 'dark' ? 'Light' : 'Dark'}
-      </span>
-    </button>
+    <div className="admin-menu" ref={ref}>
+      <button
+        className="admin-trigger"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        <span className="admin-avatar">A</span>
+        {!compact && (
+          <span className="admin-id">
+            <span className="admin-name">Administrador</span>
+            <span className="admin-role">Vera Pizzería</span>
+          </span>
+        )}
+        <span className={`admin-caret${open ? ' open' : ''}`}><Icon name="arrow-down" size={14} /></span>
+      </button>
+
+      {open && (
+        <div className="admin-dropdown" role="menu">
+          <div className="ad-header">
+            <span className="admin-avatar lg">A</span>
+            <div>
+              <div className="ad-greet">Hola, Administrador</div>
+              <div className="ad-sub">Sesión de invitado</div>
+            </div>
+          </div>
+
+          <div className="ad-divider" />
+
+          <button className="ad-item" disabled>
+            <Icon name="lock" size={15} />
+            <span>Iniciar sesión</span>
+            <span className="ad-soon">Próximamente</span>
+          </button>
+          <button className="ad-item" disabled>
+            <Icon name="users" size={15} />
+            <span>Mi perfil</span>
+            <span className="ad-soon">Próximamente</span>
+          </button>
+          <button className="ad-item" disabled>
+            <Icon name="desktop" size={15} />
+            <span>Configuración</span>
+            <span className="ad-soon">Próximamente</span>
+          </button>
+
+          <div className="ad-divider" />
+
+          <div className="ad-note">
+            El inicio de sesión estará disponible próximamente.
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
-function TabButton({ active, onClick, label, icon, badge }) {
-  const [hover, setHover] = useState(false)
-  const glow = '0 0 16px color-mix(in srgb, var(--amber) 28%, transparent)'
+function BurgerIcon() {
   return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '7px 15px',
-        fontSize: 12.5,
-        fontWeight: active ? 600 : 500,
-        color: active || hover ? 'var(--text-primary)' : 'var(--text-muted)',
-        background: active ? 'var(--bg-surface)' : 'transparent',
-        border: 'none',
-        borderRadius: 'var(--radius-pill)',
-        boxShadow: hover ? glow : active ? 'var(--shadow-card)' : 'none',
-        cursor: 'pointer',
-        fontFamily: 'var(--font-sans)',
-        transition: 'all 0.18s ease',
-      }}
-    >
-      <Icon name={icon} size={15} />
-      {label}
-      {badge > 0 && (
-        <span style={{
-          background: 'var(--red)',
-          color: '#fff',
-          fontSize: 10,
-          fontWeight: 700,
-          borderRadius: 10,
-          padding: '1px 6px',
-          minWidth: 18,
-          textAlign: 'center',
-          fontFamily: 'var(--font-mono)',
-          lineHeight: '16px',
-        }}>
-          {badge}
-        </span>
-      )}
-    </button>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.9" strokeLinecap="round">
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
   )
+}
+
+function Divider() {
+  return <span style={{ width: 1, height: 26, background: 'var(--border)', flexShrink: 0 }} />
 }
 
 function Stat({ label, value, color }) {
