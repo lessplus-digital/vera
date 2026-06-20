@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { timeAgoShort } from '../../utils/formatters'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { useAuth } from '../../hooks/useAuth'
 import Icon from '../Icon'
 
 export default function Header({
@@ -98,10 +99,16 @@ const SECTION_LABELS = {
   reservas:     'Reservas',
 }
 
-/* ─── Menú de administrador (placeholder de login) ─── */
+/* ─── Menú de administrador (sesión real de Supabase Auth) ─── */
 function AdminMenu({ compact }) {
+  const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
   const ref = useRef(null)
+
+  const email   = user?.email || ''
+  const name    = user?.user_metadata?.nombre || email.split('@')[0] || 'Usuario'
+  const initial = (name[0] || 'U').toUpperCase()
 
   useEffect(() => {
     if (!open) return
@@ -115,6 +122,12 @@ function AdminMenu({ compact }) {
     }
   }, [open])
 
+  async function handleSignOut() {
+    setSigningOut(true)
+    await signOut()
+    // onAuthStateChange devuelve la app a la pantalla de login.
+  }
+
   return (
     <div className="admin-menu" ref={ref}>
       <button
@@ -123,10 +136,10 @@ function AdminMenu({ compact }) {
         aria-haspopup="true"
         aria-expanded={open}
       >
-        <span className="admin-avatar">A</span>
+        <span className="admin-avatar">{initial}</span>
         {!compact && (
           <span className="admin-id">
-            <span className="admin-name">Administrador</span>
+            <span className="admin-name">{name}</span>
             <span className="admin-role">Vera Pizzería</span>
           </span>
         )}
@@ -136,36 +149,21 @@ function AdminMenu({ compact }) {
       {open && (
         <div className="admin-dropdown" role="menu">
           <div className="ad-header">
-            <span className="admin-avatar lg">A</span>
-            <div>
-              <div className="ad-greet">Hola, Administrador</div>
-              <div className="ad-sub">Sesión de invitado</div>
+            <span className="admin-avatar lg">{initial}</span>
+            <div style={{ minWidth: 0 }}>
+              <div className="ad-greet">Hola, {name}</div>
+              <div className="ad-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {email}
+              </div>
             </div>
           </div>
 
           <div className="ad-divider" />
 
-          <button className="ad-item" disabled>
-            <Icon name="lock" size={15} />
-            <span>Iniciar sesión</span>
-            <span className="ad-soon">Próximamente</span>
+          <button className="ad-item ad-danger" onClick={handleSignOut} disabled={signingOut}>
+            <Icon name="logout" size={15} />
+            <span>{signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}</span>
           </button>
-          <button className="ad-item" disabled>
-            <Icon name="users" size={15} />
-            <span>Mi perfil</span>
-            <span className="ad-soon">Próximamente</span>
-          </button>
-          <button className="ad-item" disabled>
-            <Icon name="desktop" size={15} />
-            <span>Configuración</span>
-            <span className="ad-soon">Próximamente</span>
-          </button>
-
-          <div className="ad-divider" />
-
-          <div className="ad-note">
-            El inicio de sesión estará disponible próximamente.
-          </div>
         </div>
       )}
     </div>

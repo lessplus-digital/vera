@@ -13,6 +13,21 @@
 
 ---
 
+### 2026-06-19 — Autenticación (Supabase Auth) + RLS · Paso 1 hacia SaaS multi-cliente
+
+**Contexto:** Antes de salir a producción y empezar a vender el sistema a clientes (vera, somos, usb…) como SaaS, el dashboard usaba la `anon key` directa **sin login y sin RLS** — cualquiera con esa key (que es pública) podía leer toda la base. Decisión arquitectónica acordada: **un proyecto Supabase por cliente** (aislamiento físico, replicable con migraciones-como-código), una **sola app React** desplegada una vez que resuelve el tenant por subdominio (`vera.lessplus.net`), y cobro tipo SaaS con Stripe en un futuro "control plane". Este commit implementa el **paso 1: auth + RLS** sobre el proyecto actual (Vera).
+
+**Decisión:**
+- `AuthProvider` + `useAuth` (`src/hooks/useAuth.jsx`): expone `session`, `user`, `loading`, `signIn`, `signOut`. Usa `supabase.auth` (persistencia en localStorage + JWT automático en cada query/realtime) y `onAuthStateChange`.
+- `App.jsx` ahora es un **gate**: `loading` → splash; sin sesión → `LoginPage`; con sesión → `DashboardShell` (extraído para que los hooks que consultan datos —`useOrders`, `useSupportCount`— solo corran autenticados). `useTheme` se mantiene en el top para que el tema aplique también en el login.
+- `LoginPage` (`src/pages/auth/`, estilos `auth.less`): email+password, errores de Supabase traducidos al español, glassmorphism + toggle de tema.
+- El `AdminMenu` del Header dejó de ser placeholder ("Sesión de invitado / Próximamente"): muestra el usuario real y **Cerrar sesión** (`signOut`). Icono `logout` añadido a `Icon.jsx`.
+- **RLS como código** en `infra/supabase/migrations/0001_enable_rls.sql` (idempotente): activa RLS en las 6 tablas y crea política `auth_full_access` = acceso total solo para rol `authenticated`. El bot/n8n sigue escribiendo con `service_role` (salta RLS). `infra/supabase/README.md` documenta cómo aplicarla, crear el primer admin y verificar.
+
+**Modelo de seguridad:** `anon key` pública pero inútil sin sesión (RLS bloquea); `service_role` secreta solo en n8n; usuarios del panel creados manualmente (registro abierto OFF). Para multi-tenant pool (futuro, NO ahora) la política filtraría por `tenant_id` del JWT — comentado en el SQL.
+
+**Impacto:** `src/hooks/useAuth.jsx` (nuevo), `src/pages/auth/LoginPage.jsx` (nuevo), `src/styles/auth.less` (nuevo), `infra/supabase/` (nuevo: migración RLS + README), `App.jsx` (refactor a gate + `DashboardShell`), `main.jsx` (`AuthProvider`, import `auth.less`), `Header.jsx` (`AdminMenu` real), `Icon.jsx` (icono `logout`), `index.css` (`.ad-danger`).
+
 ### 2026-06-10 — Nueva tab Reservas (calendario)
 
 **Contexto:** La tabla `reservas` ya existe en Supabase (el bot tomará reservas por WhatsApp), pero el dashboard no tenía forma de visualizarlas ni de gestionarlas manualmente.

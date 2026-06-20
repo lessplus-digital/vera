@@ -1,7 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import { AuthProvider } from './hooks/useAuth'
 import './styles/index.css'
+import './styles/auth.less'
 import './styles/orders.less'
 import './styles/support.less'
 import './styles/statistics.less'
@@ -11,6 +13,8 @@ import './styles/reservations.less'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </React.StrictMode>
 )

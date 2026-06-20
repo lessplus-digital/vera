@@ -8,14 +8,15 @@
 - **Recharts** (gráficas de la tab Estadísticas)
 - **react-big-calendar + date-fns** (calendario de la tab Reservas, locale es)
 - **WhatsApp Cloud API** (envío directo desde soporte)
-- **Sin router** — navegación por tabs internas
+- **Supabase Auth** (login email+password, sesión persistida, RLS en BD)
+- **Sin router** — navegación por tabs internas; la app se separa en gate de auth (`App`) + shell autenticado (`DashboardShell`)
 
 ## Estructura de archivos
 
 ```
 src/
-├── App.jsx                          ← Shell principal: tabs + monta páginas
-├── main.jsx                         ← Entry point (monta App, importa CSS)
+├── App.jsx                          ← Gate de auth: splash / LoginPage / DashboardShell (tabs)
+├── main.jsx                         ← Entry point (envuelve en AuthProvider, importa CSS)
 │
 ├── styles/
 │   └── index.css                    ← Tokens CSS, base, animaciones, clases de layout
@@ -26,7 +27,8 @@ src/
 │   ├── support/                     ← Chat de soporte (SupportPanel + burbujas/lightbox)
 │   ├── statistics/                  ← Tab Estadísticas (StatisticsPage + KPIs + gráficas Recharts)
 │   ├── clients/                     ← Tab Clientes (ClientsPage + ClientModal crear/editar)
-│   └── reservations/                ← Tab Reservas (ReservationsPage + ReservationModal + ReservationDetail)
+│   ├── reservations/                ← Tab Reservas (ReservationsPage + ReservationModal + ReservationDetail)
+│   └── auth/                        ← LoginPage (email+password, Supabase Auth)
 │
 ├── components/
 │   ├── layout/
@@ -47,6 +49,7 @@ src/
 │   ├── useSupportCount.js           ← Badge de conversaciones activas (modo=humano)
 │   ├── useClients.js                ← Fetch clientes + realtime UPDATE + saveClient (insert/update)
 │   ├── useReservations.js           ← Fetch reservas + realtime * + createReservation/deleteReservation
+│   ├── useAuth.jsx                  ← AuthProvider + useAuth: sesión Supabase, signIn/signOut
 │   └── useTheme.js                  ← Toggle dark/light con persistencia localStorage
 │
 ├── utils/

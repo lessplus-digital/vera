@@ -40,6 +40,7 @@ const PATHS = {
   reply: <><path d="M9 14 4 9l5-5" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" /></>,
   expand: <><path d="M7 17 17 7" /><path d="M7 7h10v10" /></>,
   lock: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,
+  logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></>,
 }
 
 export default function Icon({ name, size = 16, strokeWidth = 1.75, style, className }) {

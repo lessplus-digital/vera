@@ -1,0 +1,159 @@
+/* ═══════════════════════════════════════════════════════════
+   LOGIN — pantalla de autenticación (glassmorphism)
+═══════════════════════════════════════════════════════════ */
+
+.login-screen {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: transparent;
+}
+
+.login-theme {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.login-theme:hover {
+  border-color: var(--amber-border);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--amber) 22%, transparent);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 30px 28px;
+  background: var(--bg-modal);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-float), 0 0 40px var(--glow-brand), inset 0 1px 0 var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  animation: fadeIn 0.25s ease;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.login-logo {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--amber-dim);
+  color: var(--amber);
+  border: 1px solid var(--amber-border);
+  border-radius: 14px;
+}
+.login-brand-text { display: flex; flex-direction: column; line-height: 1.25; }
+.login-brand-name { font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.login-brand-tag  { font-size: 10.5px; font-weight: 600; color: var(--amber); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.login-title { font-size: 21px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; margin-top: 6px; }
+.login-sub   { font-size: 13px; color: var(--text-secondary); margin-top: -6px; margin-bottom: 4px; }
+
+.login-field { display: flex; flex-direction: column; gap: 6px; }
+.login-field > span { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.login-field input {
+  width: 100%;
+  padding: 11px 13px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.login-field input::placeholder { color: var(--text-muted); }
+.login-field input:focus {
+  border-color: var(--amber-border);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+
+.login-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-md);
+}
+
+.login-submit {
+  margin-top: 4px;
+  padding: 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--amber);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.12s ease, opacity 0.16s ease;
+}
+.login-submit:not(:disabled):hover {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--amber) 40%, transparent);
+}
+.login-submit:not(:disabled):active { transform: translateY(1px); }
+.login-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.login-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Splash mientras se resuelve la sesión inicial */
+.auth-splash {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--text-muted);
+}
+.auth-splash .spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

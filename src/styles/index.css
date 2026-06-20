@@ -475,6 +475,8 @@ html, body {
   letter-spacing: 0.04em;
 }
 .ad-note { font-size: 10.5px; color: var(--text-muted); padding: 4px 10px 6px; line-height: 1.5; }
+.ad-danger { color: var(--red); }
+.ad-danger:not(:disabled):hover { background: var(--red-dim) !important; color: var(--red) !important; }
 
 /* ═══════════════════════════════════════════════════════════
    GLASSMORPHISM — frosted surfaces
