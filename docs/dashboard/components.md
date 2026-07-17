@@ -7,61 +7,74 @@
 - **Supabase JS Client** (datos + realtime)
 - **Recharts** (gráficas de la tab Estadísticas)
 - **react-big-calendar + date-fns** (calendario de la tab Reservas, locale es)
-- **WhatsApp Cloud API** (envío directo desde soporte)
-- **Supabase Auth** (login email+password, sesión persistida, RLS en BD)
-- **Sin router** — navegación por tabs internas; la app se separa en gate de auth (`App`) + shell autenticado (`DashboardShell`)
+- **WhatsApp Cloud API** (envío directo vía `src/lib/whatsapp.js`, Meta Graph API)
+- **Supabase Auth** (login email+password, sesión persistida)
+- **Estilos:** `index.css` (tokens/base) + un `.less` por feature (auth, orders, support, statistics, clients, reservations), importados en `main.jsx`
+- **Responsive:** `useMediaQuery` — el Sidebar colapsa a solo-iconos ≤1024px y a cajón (drawer) ≤768px
+- **Sin router** — navegación por tabs internas vía estado `activeTab`; la app se separa en gate de auth (`App`) + shell autenticado (`DashboardShell`, dentro de `App.jsx`). La navegación es un **Sidebar** colapsable, no el Header
 
 ## Estructura de archivos
 
 ```
 src/
-├── App.jsx                          ← Gate de auth: splash / LoginPage / DashboardShell (tabs)
-├── main.jsx                         ← Entry point (envuelve en AuthProvider, importa CSS)
-│
-├── styles/
-│   └── index.css                    ← Tokens CSS, base, animaciones, clases de layout
-│                                       Separado por secciones con comentarios ══
-│
-├── pages/
-│   ├── dashboard/                   ← Vista Kanban (DashboardPage + columnas/cards/modals)
-│   ├── support/                     ← Chat de soporte (SupportPanel + burbujas/lightbox)
-│   ├── statistics/                  ← Tab Estadísticas (StatisticsPage + KPIs + gráficas Recharts)
-│   ├── clients/                     ← Tab Clientes (ClientsPage + ClientModal crear/editar)
-│   ├── reservations/                ← Tab Reservas (ReservationsPage + ReservationModal + ReservationDetail)
-│   └── auth/                        ← LoginPage (email+password, Supabase Auth)
+├── App.jsx                       ← Gate de auth (splash / LoginPage / DashboardShell). DashboardShell
+│                                    vive aquí dentro: Sidebar + Header + la tab activa (activeTab)
+├── main.jsx                      ← Entry: AuthProvider + imports de estilos (index.css + *.less)
 │
 ├── components/
-│   ├── layout/
-│   │   └── Header.jsx               ← Header sticky + TabButton + Stat
-│   ├── orders/
-│   │   ├── Column.jsx               ← Columna Kanban con header y lista de cards
-│   │   ├── OrderCard.jsx            ← Card de pedido: datos, comprobante, modals
-│   │   ├── OrderActions.jsx         ← Botones de acción según estado del pedido
-│   │   ├── EditOrderModal.jsx       ← Modal para editar items, cantidades, notas
-│   │   ├── CreateOrderModal.jsx     ← Modal crear pedido manual (cliente + items + WA)
-│   │   └── RejectModal.jsx          ← Modal con motivos de rechazo predeterminados
-│   └── support/
-│       └── SupportPanel.jsx         ← Chat WhatsApp: sidebar + burbuja + lightbox
+│   ├── Icon.jsx                  ← Set de iconos SVG (name → path)
+│   └── layout/
+│       ├── Sidebar.jsx           ← Navegación principal: colapsable + drawer móvil + badge soporte + toggle tema
+│       └── Header.jsx            ← Barra superior: stats del día + hamburguesa (móvil)
+│
+├── pages/
+│   ├── auth/LoginPage.jsx        ← Login email+password (Supabase Auth)
+│   ├── dashboard/                ← Kanban de pedidos
+│   │   ├── DashboardPage · Column · OrderCard · OrderActions
+│   │   └── CreateOrderModal · EditOrderModal · RejectModal
+│   ├── support/                  ← Chat de soporte
+│   │   └── SupportPanel · ConversationItem · ChatBubble · ImageLightbox
+│   ├── statistics/               ← StatisticsPage + KPIs + ~10 componentes Recharts
+│   ├── clients/                  ← ClientsPage + ClientModal
+│   └── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
 │
 ├── hooks/
-│   ├── useOrders.js                 ← Fetch pedidos, realtime, stats del día, newIds
-│   ├── useStatistics.js             ← Filtros + fetch + agregados de la tab Estadísticas
-│   ├── useSupportCount.js           ← Badge de conversaciones activas (modo=humano)
-│   ├── useClients.js                ← Fetch clientes + realtime UPDATE + saveClient (insert/update)
-│   ├── useReservations.js           ← Fetch reservas + realtime * + createReservation/deleteReservation
-│   ├── useAuth.jsx                  ← AuthProvider + useAuth: sesión Supabase, signIn/signOut
-│   └── useTheme.js                  ← Toggle dark/light con persistencia localStorage
+│   ├── useAuth.jsx               ← AuthProvider + useAuth (sesión Supabase, signIn/signOut)
+│   ├── useOrders.js              ← Pedidos del día + realtime + newIds + stats
+│   ├── useStatistics.js          ← Filtros + fetch por rango + agregados
+│   ├── useSupportCount.js        ← Badge de conversaciones (modo=humano)
+│   ├── useSupportConversations.js← Conversaciones + mensajes del panel de soporte
+│   ├── useClients.js             ← Clientes + realtime UPDATE + saveClient
+│   ├── useReservations.js        ← Reservas + realtime * + create/deleteReservation
+│   ├── useTheme.js               ← Toggle dark/light (localStorage)
+│   └── useMediaQuery.js          ← Media queries (sidebar colapsado / móvil)
 │
 ├── utils/
-│   ├── constants.js                 ← COLUMNS, ESTADO_PAGO_LABEL, METODO_LABEL
-│   ├── formatters.js                ← timeAgoShort(), formatPrice(), formatPriceShort()
-│   ├── dateRanges.js                ← Rangos de fecha con día de negocio Colombia (UTC-5)
-│   ├── statsAggregations.js         ← Agregaciones puras para Estadísticas
-│   └── audio.js                     ← playNotification() (Web Audio API)
+│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*
+│   ├── formatters.js             ← timeAgoShort, formatPrice, formatPriceShort
+│   ├── dateRanges.js             ← parseDb + rangos con día de negocio Colombia (UTC-5)
+│   ├── statsAggregations.js      ← Agregaciones puras de Estadísticas
+│   └── audio.js                  ← playNotification (Web Audio)
 │
-└── lib/
-    └── supabase.js                  ← Inicialización del cliente Supabase
+├── lib/
+│   ├── supabase.js               ← Cliente Supabase (throws si faltan las VITE_SUPABASE_*)
+│   └── whatsapp.js               ← sendWhatsAppMessage (Meta Graph API, VITE_WA_*)
+│
+└── styles/
+    ├── index.css                 ← Tokens CSS, base, animaciones, layout, tema
+    └── {auth,orders,support,statistics,clients,reservations}.less
 ```
+
+## Layout y navegación
+
+`DashboardShell` (dentro de `App.jsx`) arma `Sidebar` + `Header` + la tab activa:
+
+- **`Sidebar`** — nav principal (`NAV_ITEMS`: Pedidos / Soporte / Estadísticas / Clientes /
+  Reservas), badge de soporte, toggle de tema en el pie. `collapsed` (solo iconos) en tablet
+  (≤1024px) y `mobile-open` (cajón con backdrop) en móvil (≤768px), vía `useMediaQuery`.
+- **`Header`** — muestra `stats` del día y `lastUpdate`; en móvil enseña la hamburguesa que
+  abre el cajón. Ya **no** contiene los tabs (migraron al Sidebar).
+- El tema (`useTheme`) vive en `App` para aplicar también en el login.
 
 ## Tabs principales
 
@@ -174,24 +187,29 @@ src/
 
 | Hook | Qué hace | Devuelve |
 |---|---|---|
+| `useAuth` | `AuthProvider` (en `main.jsx`) + `useAuth`: sesión Supabase, `signIn`/`signOut` | `session, loading, signIn, signOut` |
 | `useOrders` | Fetch pedidos del día, realtime, detecta nuevos, calcula stats | `orders, loading, newIds, stats, lastUpdate, fetchOrders` |
 | `useSupportCount` | Cuenta clientes con `modo=humano`, realtime | `number` |
+| `useSupportConversations` | Conversaciones activas + mensajes del panel de soporte | `conversations, messages, …` |
+| `useMediaQuery` | Evalúa una media query (sidebar colapsado / móvil) | `boolean` |
 | `useStatistics` | Filtros de periodo, fetch pedidos/feedback/menu del rango + periodo anterior, agregados memoizados | `loading, error, aggregates, clients, categorias, range, filters, setters` |
 | `useClients` | Fetch todos los clientes, realtime UPDATE, crear/editar vía `saveClient` | `clients, loading, error, saveClient` |
 | `useReservations` | Fetch todas las reservas, realtime `*`, crear (con lookup de cliente por teléfono) y eliminar | `reservations, loading, error, createReservation, deleteReservation` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 
-## Variables de entorno
+## Variables de entorno (`.env.local`, git-ignored — todas `VITE_`)
 
 ```env
 VITE_SUPABASE_URL=https://xxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_WA_PHONE_NUMBER_ID=...
+VITE_WA_ACCESS_TOKEN=...          # ⚠️ viaja en el bundle del cliente (riesgo diferido)
+VITE_WA_API_VERSION=v25.0         # opcional (default v25.0)
 ```
 
-**Hardcodeadas en `components/support/SupportPanel.jsx`** (pendiente mover a .env):
-- `WA_ACCESS_TOKEN`
-- `WA_PHONE_NUMBER_ID`
-- `WA_API_VERSION`
+`src/lib/supabase.js` lanza al arrancar si faltan las `VITE_SUPABASE_*`. El envío de WhatsApp
+vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage`, Meta Graph API) — ya **no** hardcodeado en
+`SupportPanel`. Gotcha: `VITE_WA_ACCESS_TOKEN` se empaqueta en el cliente (ver `CLAUDE.md`).
 
 ## Realtime subscriptions
 
