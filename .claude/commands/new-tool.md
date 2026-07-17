@@ -1,59 +1,49 @@
-# Comando: Agregar una nueva tool al agente IA
+---
+description: Agrega una nueva tool al agente IA (checklist + validación contra n8n/Supabase reales)
+argument-hint: [nombre de la tool, ej. consultar_horario]
+allowed-tools: mcp__n8n-mcp__get_node, mcp__n8n-mcp__search_nodes, mcp__n8n-mcp__n8n_get_workflow, mcp__supabase__list_tables, mcp__supabase__execute_sql, Read
+---
 
-> Usa este checklist cuando necesites agregar una nueva herramienta al agente de WhatsApp.
+Agregar la tool **$ARGUMENTS** al agente de WhatsApp. Sigue el checklist y **verifica contra las
+fuentes reales** (MCP) — no supongas el esquema ni la config de los nodos.
 
-## Checklist
+## 0. Contexto real (MCP) — antes de diseñar
+- `list_tables` / `execute_sql` (Supabase, read-only): confirma la tabla y columnas que tocará.
+- `get_node` / `search_nodes` (n8n): la config exacta del tipo de nodo.
+- `n8n_get_workflow` del workflow "Pizzeria Vera": mira cómo se cablean las tools existentes del
+  agente destino (Menú / Pedidos / Soporte / Reservas).
 
-### 1. Definir la tool
+## 1. Definir la tool
+- [ ] Nombre snake_case español · descripción clara para el LLM · input schema · output.
 
-- [ ] **Nombre** en snake_case español (ej: `consultar_horario`)
-- [ ] **Descripción** clara para el LLM (qué hace, cuándo usarla)
-- [ ] **Input schema** — qué parámetros recibe y de qué tipo
-- [ ] **Output** — qué retorna al agente
+## 2. Implementar en n8n
+- [ ] ¿Query simple? → nodo Supabase (**credencial `Supabase account`, NO key hardcodeada**).
+- [ ] ¿Lógica? → subworkflow (Code + HTTP). Valida inputs (`$json`, no `null`/`undefined`).
+- [ ] Probar el subworkflow aislado antes de conectarlo.
 
-### 2. Implementar en n8n
+## 3. Conectar al agente correcto
+- [ ] Nodo `toolWorkflow`/Supabase tool en el AI Agent · input mapping (`$fromAI(...)`) · verificar output.
 
-- [ ] ¿Es una query simple? → Nodo Supabase directo
-- [ ] ¿Necesita lógica? → Subworkflow (Code nodes + HTTP Request)
-- [ ] Validar que los inputs no sean `undefined` ni `null`
-- [ ] Probar el subworkflow aislado antes de conectar al agente
+## 4. System prompt
+- [ ] Reglas de uso (cuándo SÍ / cuándo NO) · si trae datos, ¿consultar antes de responder?
 
-### 3. Conectar al agente
+## 5. Documentar (obligatorio en este repo)
+- [ ] `docs/bot/subworkflows.md` — el subworkflow (si aplica) · `docs/bot/ai-agents.md` — la tool.
+- [ ] `docs/bot/agent-prompts.md` — el prompt verbatim si lo tocaste · `docs/shared/changelog.md` — la decisión.
 
-- [ ] Agregar como tool en el nodo AI Agent de n8n
-- [ ] Configurar input mapping
-- [ ] Verificar que el output llega correctamente al agente
-
-### 4. Actualizar system prompt
-
-- [ ] Agregar reglas de uso de la nueva tool
-- [ ] Definir cuándo DEBE usarla vs cuándo NO
-- [ ] Si trae datos, ¿el LLM debe consultar ANTES de responder?
-
-### 5. Actualizar documentación
-
-- [ ] `N8N-WORKFLOWS.md` — agregar especificación de la tool
-- [ ] `AI-AGENT.md` — agregar reglas en el system prompt
-- [ ] `CHANGELOG.md` — registrar la decisión
-
-### 6. Probar
-
-- [ ] Caso feliz: el LLM la usa correctamente
-- [ ] Caso sin resultados: el LLM responde sin mencionar internos
-- [ ] Caso con datos raros: inputs vacíos, caracteres especiales
-- [ ] El LLM NO la usa cuando no debería
+## 6. Probar
+- [ ] Caso feliz · sin resultados (sin mencionar internos) · inputs raros/vacíos · cuándo NO debe usarla.
 
 ## Template de especificación
 
 ```
 ### nombre_de_la_tool
-
 | Campo | Detalle |
 |---|---|
-| Tipo | Supabase INSERT / Subworkflow / HTTP Request |
+| Tipo | Supabase / Subworkflow / HTTP Request |
 | Tabla | `nombre_tabla` |
 | Input | `{ campo1: tipo, campo2?: tipo }` |
 | Output | `{ resultado }` |
-| Cuándo | Descripción de cuándo el LLM debe usarla |
-| NUNCA | Descripción de cuándo NO debe usarla |
+| Cuándo | cuándo el LLM debe usarla |
+| NUNCA | cuándo NO |
 ```

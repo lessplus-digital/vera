@@ -4,3 +4,6 @@ dist/
 # Variables de entorno con secretos — nunca subir a git
 .env.local
 .env.*.local
+
+# MCP local con API key de n8n — usar .mcp.json.example como plantilla
+.mcp.json

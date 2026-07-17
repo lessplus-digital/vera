@@ -1,39 +1,34 @@
-# Comando: Debug n8n Workflow
+---
+description: Depura un workflow o nodo de n8n usando el MCP (lee el workflow real, ejecuciones y docs de nodos)
+argument-hint: [workflow o nodo, ej. "Sub — Crear Reserva" o "crear_carrito"]
+allowed-tools: mcp__n8n-mcp__n8n_list_workflows, mcp__n8n-mcp__n8n_get_workflow, mcp__n8n-mcp__n8n_executions, mcp__n8n-mcp__n8n_validate_workflow, mcp__n8n-mcp__get_node, mcp__supabase__execute_sql, mcp__supabase__list_tables, Read, Grep
+---
 
-> Usa este contexto cuando necesites ayuda para depurar un problema en n8n.
+Depura el problema de n8n en: **$ARGUMENTS**
 
-## Información que necesito
+## 1. Traer el estado real (no suponer)
 
-Antes de depurar, reúne esta info:
+- Ubica el workflow con `n8n_list_workflows` si hace falta; tráelo con `n8n_get_workflow`
+  (`mode: structure` para el mapa, `mode: filtered` + `nodeNames` para un nodo pesado sin volcar todo).
+- Si falla en ejecución: `n8n_executions` (action `list` → luego `get` con `mode: error`) para ver
+  el error real, el input del nodo y el path de ejecución.
+- Valida con `n8n_validate_workflow`; consulta la config esperada del nodo con `get_node`.
+- Si toca datos, confírmalos en Supabase con `execute_sql` (solo lectura).
 
-1. **¿Qué nodo falla?** (nombre exacto del nodo en n8n)
-2. **¿Cuál es el error?** (mensaje de error completo)
-3. **¿Qué input recibió el nodo?** (JSON del panel de ejecución)
-4. **¿Es intermitente o constante?**
+## 2. Trampas conocidas de ESTE proyecto
 
-## Problemas comunes y dónde buscar
+- **Code node:** no existen `fetch`, `URLSearchParams`, `$helpers`. `undefined` se serializa como
+  string `"undefined"` → omite el campo. Usa `$json` (no `json`); todo valor de expresión empieza
+  con `=`. (BUG-001 y BUG-002 salieron exactamente de esto.)
+- **HTTP a Supabase:** ¿credencial `Supabase account` o key **hardcodeada**? La anon key choca con
+  RLS en tablas protegidas → INSERT bloqueado (BUG-007). Filtro `or`: `(nombre.ilike.*X*,categoria.ilike.*X*)`.
+- **AI Agent:** producto_id inventado, respuesta vacía (template var rota), loop de la misma tool.
+- **Webhook:** responder 200 inmediato; ¿cambió el payload de Meta?
 
-### Error en Code node
-- Revisa que no uses `fetch`, `URLSearchParams`, `$helpers` — no existen en n8n
-- Campos `undefined` se envían como string `"undefined"` — omite el campo si no tiene valor
-- Ver: `.claude/projects/vera-pizzeria/EDGE-CASES.md` → casos 3 y 4
+## 3. Diagnóstico + fix
 
-### Error en HTTP Request (Supabase)
-- ¿Headers correctos? `apikey` y `Authorization: Bearer`
-- ¿El filtro tiene `%` o wildcards? No deben ir si consultar_menu los limpia
-- ¿El campo `or` tiene paréntesis? Debe ser: `(nombre.ilike.*X*,categoria.ilike.*X*)`
+Da la **causa raíz con evidencia** (nodo + expresión/línea) y el fix concreto. Si es un bug nuevo,
+regístralo en `docs/shared/bug-tracker.md` con el formato del tracker.
 
-### Error en AI Agent
-- ¿El LLM inventó un producto_id? → Revisar logs de tool calls
-- ¿La respuesta está vacía? → Revisar si el sistema prompt tiene template vars rotas
-- ¿Loop infinito de tools? → Revisar si el agente llama la misma tool repetidamente
-
-### Error en Webhook
-- ¿Meta está reenviando? → Verificar que el webhook responde 200 inmediato
-- ¿Payload cambió? → Revisar versión de la API de WhatsApp Business
-
-## Archivos de referencia
-
-- Flujo del workflow: `.claude/projects/vera-pizzeria/N8N-WORKFLOWS.md`
-- Reglas del agente: `.claude/projects/vera-pizzeria/AI-AGENT.md`
-- Errores conocidos: `.claude/projects/vera-pizzeria/EDGE-CASES.md`
+Referencias: `docs/bot/n8n-workflow.md` · `docs/bot/subworkflows.md` · `docs/bot/ai-agents.md` ·
+`docs/shared/edge-cases.md`.
