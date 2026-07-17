@@ -159,11 +159,20 @@
 > Rescatados de los reportes de code-review archivados (jul-14 + jul-16, deduplicados).
 > Las **líneas exactas pueden estar desactualizadas** — verificar contra el código al arreglar.
 
-### BUG-014 — `useClients`: realtime solo `UPDATE`, no `INSERT` 🟡
-- **Síntoma:** el canal realtime de `clientes` solo escucha `UPDATE`. Un cliente **creado por el
-  bot** (WhatsApp) no aparece en el selector de clientes ni en el modal de reservas hasta recargar.
-- **Fix:** suscribir `event: '*'` (o añadir `INSERT`).
-- **Estado:** 🟡 Abierto
+### BUG-014 — `clientes` no está en la publicación realtime 🟠 (frontend hecho · falta DB)
+- **Síntoma:** un cliente creado por el bot (WhatsApp) no aparece en el selector de clientes ni en
+  el modal de reservas hasta recargar. También afecta al badge de soporte (`useSupportCount`).
+- **Causa REAL (verificada vía MCP):** la tabla `clientes` **no está** en la publicación
+  `supabase_realtime` (sus tablas son `pedidos, detalle_pedidos, mensajes_soporte, reservas`). Por
+  eso NINGÚN evento de `clientes` llega al front — ni INSERT ni UPDATE. Cambiar el front a `*` solo
+  no bastaba.
+- **Hecho (frontend, 2026-07-17):** `useClients` ahora escucha `event: '*'`.
+- **Pendiente (Supabase — aplicar a mano, el MCP es solo lectura):**
+  ```sql
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.clientes;
+  ```
+  Al aplicarlo se arregla también el realtime de `useSupportCount`.
+- **Estado:** 🟠 En progreso · falta el `ALTER PUBLICATION`
 
 ### BUG-015 — `OrderCard`: `fecha_pedido` sin `parseDb` 🟡
 - **Síntoma:** parsea `fecha_pedido` con `new Date()` directo → en navegadores ≠ UTC-5 el "hace X"

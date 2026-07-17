@@ -173,5 +173,9 @@ líneas** (`PED-109`, `PED-111`, `PED-113`). El bot debería escribir con `servi
 
 ## Realtime
 
-Según los hooks del dashboard, tienen Realtime activo: `pedidos` (INSERT/UPDATE/DELETE),
-`clientes` (UPDATE — cambios de modo), `mensajes_soporte` (INSERT).
+Publicación `supabase_realtime` (verificado vía MCP, 2026-07-16) — emite INSERT/UPDATE/DELETE de:
+**`pedidos`, `detalle_pedidos`, `mensajes_soporte`, `reservas`**.
+
+⚠️ `clientes` **NO** está en la publicación, aunque `useClients` y `useSupportCount` se suscriben a
+ella → esos hooks no reciben eventos realtime hasta correr
+`ALTER PUBLICATION supabase_realtime ADD TABLE public.clientes;` (ver BUG-014).

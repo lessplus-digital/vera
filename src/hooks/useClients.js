@@ -23,11 +23,14 @@ export function useClients() {
 
   useEffect(() => { fetchClients() }, [fetchClients])
 
-  // Realtime: la tabla clientes solo publica UPDATE (cambios de modo/datos)
+  // Realtime: escuchamos TODOS los eventos para que también aparezcan los clientes
+  // nuevos que crea el bot (INSERT), no solo los cambios de modo/datos (UPDATE).
+  // Requiere que la tabla `clientes` esté en la publicación `supabase_realtime`
+  // (ver BUG-014 en docs/shared/bug-tracker.md).
   useEffect(() => {
     const channel = supabase
       .channel('clientes-page-rt')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes' }, () => fetchClients())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => fetchClients())
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [fetchClients])
