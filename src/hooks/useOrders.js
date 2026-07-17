@@ -42,7 +42,11 @@ export function useOrders() {
       .in('estado', ['pendiente', 'en_cocina', 'en_camino', 'recoger'])
       .order('fecha_pedido', { ascending: false })
 
-    if (error) return
+    if (error) {
+      console.error('Error cargando pedidos:', error)
+      setLoading(false)
+      return
+    }
 
     if (!isFirstLoad.current) {
       const incoming = data || []
@@ -67,12 +71,14 @@ export function useOrders() {
     setLastUpdate(new Date())
     setLoading(false)
 
-    const { data: statsData } = await supabase
+    const { data: statsData, error: statsError } = await supabase
       .from('pedidos')
       .select('total, estado')
       .gte('fecha_pedido', today.toISOString())
 
-    if (statsData) {
+    if (statsError) {
+      console.error('Error cargando estadísticas del header:', statsError)
+    } else if (statsData) {
       const total = statsData.length
       const ingresos = statsData
         .filter(o => o.estado !== 'cancelado')

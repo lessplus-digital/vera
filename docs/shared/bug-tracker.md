@@ -159,14 +159,6 @@
 > Rescatados de los reportes de code-review archivados (jul-14 + jul-16, deduplicados).
 > Las **líneas exactas pueden estar desactualizadas** — verificar contra el código al arreglar.
 
-### BUG-013 — `useOrders`: fetch con error deja el Kanban en spinner infinito 🔴
-- **Síntoma:** ante error de la query de `pedidos` (red/RLS/timeout) el hook hace `if (error) return`
-  sin `setLoading(false)` → `loading` queda `true` para siempre, sin mensaje. Además la 2ª query
-  (stats del header) desestructura sin `error` → falla en silencio.
-- **Fix:** `setLoading(false)` + `console.error` en el branch de error; idealmente exponer `error`
-  en el hook y mostrarlo en el UI. Capturar el error de la query de stats.
-- **Estado:** 🔴 Abierto
-
 ### BUG-014 — `useClients`: realtime solo `UPDATE`, no `INSERT` 🟡
 - **Síntoma:** el canal realtime de `clientes` solo escucha `UPDATE`. Un cliente **creado por el
   bot** (WhatsApp) no aparece en el selector de clientes ni en el modal de reservas hasta recargar.
@@ -214,4 +206,11 @@
 
 ## Resueltos
 
-_(ninguno todavía)_
+### BUG-013 — `useOrders` dejaba el Kanban en spinner infinito ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** en `src/hooks/useOrders.js`, el branch de error ahora hace `setLoading(false)`
+  + `console.error` (antes `if (error) return` dejaba `loading` en `true` para siempre). Además la
+  2ª query (stats del header) captura su `error` y lo loguea en vez de tragarlo.
+- **Verificado con:** `npm run build` (2223 módulos, sin errores).
+- **Mejora opcional pendiente:** exponer un estado `error` en el hook y mostrarlo en el UI (no
+  bloqueante — el síntoma crítico, el spinner infinito, ya está resuelto).
