@@ -159,21 +159,6 @@
 > Rescatados de los reportes de code-review archivados (jul-14 + jul-16, deduplicados).
 > Las **líneas exactas pueden estar desactualizadas** — verificar contra el código al arreglar.
 
-### BUG-014 — `clientes` no está en la publicación realtime 🟠 (frontend hecho · falta DB)
-- **Síntoma:** un cliente creado por el bot (WhatsApp) no aparece en el selector de clientes ni en
-  el modal de reservas hasta recargar. También afecta al badge de soporte (`useSupportCount`).
-- **Causa REAL (verificada vía MCP):** la tabla `clientes` **no está** en la publicación
-  `supabase_realtime` (sus tablas son `pedidos, detalle_pedidos, mensajes_soporte, reservas`). Por
-  eso NINGÚN evento de `clientes` llega al front — ni INSERT ni UPDATE. Cambiar el front a `*` solo
-  no bastaba.
-- **Hecho (frontend, 2026-07-17):** `useClients` ahora escucha `event: '*'`.
-- **Pendiente (Supabase — aplicar a mano, el MCP es solo lectura):**
-  ```sql
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.clientes;
-  ```
-  Al aplicarlo se arregla también el realtime de `useSupportCount`.
-- **Estado:** 🟠 En progreso · falta el `ALTER PUBLICATION`
-
 ### BUG-015 — `OrderCard`: `fecha_pedido` sin `parseDb` 🟡
 - **Síntoma:** parsea `fecha_pedido` con `new Date()` directo → en navegadores ≠ UTC-5 el "hace X"
   muestra un desfase de horas. Es el único sitio de la app que omite `parseDb()`.
@@ -223,3 +208,10 @@
 - **Verificado con:** `npm run build` (2223 módulos, sin errores).
 - **Mejora opcional pendiente:** exponer un estado `error` en el hook y mostrarlo en el UI (no
   bloqueante — el síntoma crítico, el spinner infinito, ya está resuelto).
+
+### BUG-014 — `clientes` no llegaba por realtime ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** (frontend) `useClients` ahora escucha `event: '*'` en vez de solo `UPDATE`; (DB)
+  se agregó `clientes` a la publicación: `ALTER PUBLICATION supabase_realtime ADD TABLE public.clientes;`
+  — **verificado vía MCP** que `clientes` ya está en `supabase_realtime`. Los clientes nuevos del bot
+  aparecen en tiempo real y se arregla de paso el badge de soporte (`useSupportCount`).
