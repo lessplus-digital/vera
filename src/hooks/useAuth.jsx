@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase'
  *
  * El cliente JS de Supabase persiste la sesión en localStorage y adjunta
  * automáticamente el JWT a cada petición REST/Realtime. Combinado con RLS
- * activado en todas las tablas (ver infra/supabase/migrations), esto hace
+ * activado en todas las tablas (ver infra/supabase/rls_reference.sql), esto hace
  * que ninguna consulta del dashboard funcione sin un usuario autenticado.
  */
 

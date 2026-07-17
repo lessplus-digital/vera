@@ -1,68 +1,48 @@
-# infra/supabase — Esquema y seguridad como código
+# infra/supabase — Seguridad como código (RLS)
 
-Esto es la base para **replicar el sistema en cada cliente nuevo** (vera, somos, usb…)
-sin configurar nada a mano en el dashboard de Supabase.
-
-## Contenido
+`rls_reference.sql` es el script **idempotente** que activa Row Level Security y crea la
+política `auth_full_access` (acceso total solo para el rol `authenticated`). Es la referencia
+del modelo de permisos y el paso obligatorio antes de producción.
 
 ```
 infra/supabase/
-├── README.md                       ← este archivo
-└── migrations/
-    └── 0001_enable_rls.sql         ← activa RLS en todas las tablas
+├── README.md
+└── rls_reference.sql   ← ALTER … ENABLE RLS + política auth_full_access (idempotente)
 ```
 
-> A medida que el esquema crezca, exporta tablas/triggers/RPCs como nuevas
-> migraciones numeradas (`0002_…`, `0003_…`) para que un cliente nuevo se
-> levante con un solo comando.
+## Aplicar
 
-## Aplicar la migración de RLS (paso obligatorio antes de producción)
+1. Supabase → **SQL Editor**.
+2. Pega el contenido de [`rls_reference.sql`](rls_reference.sql) y **Run** (idempotente).
 
-### Opción A — Rápida (SQL Editor del dashboard)
-1. Abre tu proyecto en https://supabase.com/dashboard → **SQL Editor**.
-2. Pega el contenido de [`migrations/0001_enable_rls.sql`](migrations/0001_enable_rls.sql).
-3. **Run**. Es idempotente: puedes correrlo varias veces sin romper nada.
+## Verificar
 
-### Opción B — Reproducible (Supabase CLI, recomendada para escalar)
-```bash
-# una sola vez
-npm i -g supabase
-
-# enlazar el proyecto (te pedirá el project-ref y la db password)
-supabase link --project-ref <TU_PROJECT_REF>
-
-# aplicar todas las migraciones de esta carpeta
-supabase db push
-```
-
-## Cómo verificar que quedó bien
-
-En el **SQL Editor**, corre:
 ```sql
-select tablename, rowsecurity
-from pg_tables
-where schemaname = 'public';
+select tablename, rowsecurity from pg_tables where schemaname = 'public';
 ```
-`rowsecurity` debe ser `true` en todas las tablas de la app.
 
-Prueba real: abre el dashboard **sin iniciar sesión** — no debe cargar ningún
-dato. Inicia sesión y todo vuelve a aparecer.
+Prueba real: abre el dashboard **sin iniciar sesión** → no debe cargar datos de las tablas con
+RLS. Inicia sesión y reaparecen.
+
+> ⚠️ **Estado real (2026-07-16):** el script cubre 6 tablas core (`menu`, `clientes`, `pedidos`,
+> `detalle_pedidos`, `reservas`, `mensajes_soporte`). Otras **6 tablas siguen SIN RLS**
+> (`carritos`, `feedback`, `feedback_pendiente`, `info_negocio`, `n8n_chat_histories`,
+> `n8n_mensajes_pendientes`). Ver `docs/database/schema.md` (permisos) y `docs/shared/bug-tracker.md`
+> (**BUG-012**).
 
 ## Crear el primer usuario admin
 
-Supabase no trae usuarios por defecto. Crea el primero en:
-**Dashboard → Authentication → Users → Add user** (email + contraseña).
-Ese es el usuario con el que entrarás al panel.
+Supabase no trae usuarios por defecto: **Dashboard → Authentication → Users → Add user**
+(email + contraseña). Recomendado: **Authentication → Providers → Email → "Allow new users to
+sign up" = OFF** (los usuarios del panel los creas tú, no es registro público).
 
-> Recomendado: desactiva el registro abierto en **Authentication → Providers →
-> Email → "Allow new users to sign up"** = OFF. Los usuarios del panel los
-> creas tú manualmente; no es un registro público.
+## Modelo de seguridad
 
-## Reglas del modelo de seguridad
+- **anon key** → pública, va en el frontend. En las tablas con RLS no da acceso sin sesión de Auth.
+- **service_role key** → secreta, salta RLS. Debe vivir **solo en n8n** (servidor), nunca en el
+  frontend ni en git.
+- ⚠️ Hoy varios nodos n8n escriben con la **anon key hardcodeada** en vez de `service_role`
+  (BUG-003), lo que ya rompe `detalle_pedidos` (BUG-007). El diseño correcto es: bot ⇒ `service_role`.
 
-- **anon key** → pública, va en el frontend. Por sí sola NO da acceso a datos
-  (RLS lo bloquea). Solo sirve combinada con una sesión de Auth.
-- **service_role key** → secreta, salta RLS. Va **solo en n8n** (servidor),
-  nunca en el frontend ni en git.
-- El bot escribe pedidos/clientes con la service_role; por eso sigue
-  funcionando aunque RLS esté activo.
+> Replicar este setup a nuevos clientes (un proyecto Supabase por cliente) se hará más adelante
+> con el MCP de Supabase; por eso aquí no hay sistema de migraciones.
