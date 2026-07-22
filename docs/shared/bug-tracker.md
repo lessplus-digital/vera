@@ -166,6 +166,20 @@
 
 ## Resueltos
 
+### BUG-021 — más sitios sin `parseDb` (ConversationItem, ChatBubble, ClientsPage) ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Contexto:** hallados en un barrido de `new Date(` tras BUG-015/020. Mismo defecto de TZ:
+  - `ConversationItem.jsx:25` — la **lista** de conversaciones ("hace X" con `ultima_actividad`);
+    BUG-020 solo cubrió el header del chat en `SupportPanel`, la lista quedó igual.
+  - `ChatBubble.jsx:52` — la hora de cada mensaje (`created_at`); si es `timestamp` UTC-sin-Z la
+    hora sale corrida incluso en navegador Colombia.
+  - `ClientsPage.jsx:94` — la fecha de registro (`fecha_registro`); menor (solo día/mes/año, se
+    corre solo cerca de medianoche UTC).
+- **Qué se hizo:** los tres pasan por `parseDb()` (seguro: no-op si la columna ya trae zona).
+- **Nota:** `ReservationsPage.jsx:45,56` (`new Date(fecha+hora)` del calendario) se revisó y **no** es
+  bug — react-big-calendar trabaja en hora de pared local; forzar offset ahí desplazaría los slots.
+- **Verificado con:** `npm run build`.
+
 ### Deuda técnica dashboard — resuelta ✅
 - **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
 - **Qué se hizo (5 ítems):**

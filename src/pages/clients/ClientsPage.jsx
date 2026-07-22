@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { useClients } from '../../hooks/useClients'
 import { CLIENT_MODES } from '../../utils/constants'
+import { parseDb } from '../../utils/dateRanges'
 import ClientModal from './ClientModal'
 import Icon from '../../components/Icon'
 
@@ -91,7 +92,7 @@ export default function ClientsPage() {
               </span>
               <span className="date">
                 {client.fecha_registro
-                  ? new Date(client.fecha_registro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+                  ? parseDb(client.fecha_registro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
                   : '—'}
               </span>
               <span className="actions">

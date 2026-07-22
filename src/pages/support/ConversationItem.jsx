@@ -1,5 +1,6 @@
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { parseDb } from '../../utils/dateRanges'
 import Icon from '../../components/Icon'
 
 export default function ConversationItem({ convo, selected, onClick }) {
@@ -22,7 +23,7 @@ export default function ConversationItem({ convo, selected, onClick }) {
       )}
       {convo.ultima_actividad && (
         <span className="time">
-          {formatDistanceToNow(new Date(convo.ultima_actividad), { addSuffix: true, locale: es })}
+          {formatDistanceToNow(parseDb(convo.ultima_actividad), { addSuffix: true, locale: es })}
         </span>
       )}
     </button>
