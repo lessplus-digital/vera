@@ -16,6 +16,7 @@ export function useSupportConversations() {
   const [loadingMessages,  setLoadingMessages]  = useState(false)
   const [sending,          setSending]          = useState(false)
   const [resolving,        setResolving]        = useState(false)
+  const [error,            setError]            = useState(null)
 
   const fetchConversations = useCallback(async () => {
     const { data, error } = await supabase.from(SUPPORT_TABLES.conversations).select('*')
@@ -60,6 +61,7 @@ export function useSupportConversations() {
   }, [fetchConversations])
 
   function selectConversation(telefono) {
+    setError(null)
     setSelectedPhone(telefono)
     fetchMessages(telefono)
   }
@@ -68,6 +70,7 @@ export function useSupportConversations() {
     if (!text || !selectedPhone || sending) return
 
     setSending(true)
+    setError(null)
 
     const { error: dbError } = await supabase
       .from(SUPPORT_TABLES.messages)
@@ -75,14 +78,14 @@ export function useSupportConversations() {
 
     if (dbError) {
       setSending(false)
-      alert('Error guardando mensaje.')
+      setError('No se pudo guardar el mensaje. Intenta de nuevo.')
       return
     }
 
     try {
       await sendWhatsAppMessage(selectedPhone, text)
     } catch (err) {
-      alert(`Mensaje guardado, pero error WhatsApp: ${err.message}`)
+      setError(`Mensaje guardado, pero no se pudo enviar por WhatsApp: ${err.message}`)
     }
 
     setSending(false)
@@ -124,6 +127,8 @@ export function useSupportConversations() {
     loadingMessages,
     sending,
     resolving,
+    error,
+    dismissError: () => setError(null),
     selectConversation,
     sendMessage,
     resolveConversation,

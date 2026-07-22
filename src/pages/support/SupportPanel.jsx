@@ -18,6 +18,8 @@ export default function SupportPanel() {
     loadingMessages,
     sending,
     resolving,
+    error,
+    dismissError,
     selectConversation,
     sendMessage,
     resolveConversation,
@@ -116,6 +118,20 @@ export default function SupportPanel() {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {error && (
+              <div
+                className="sp-error"
+                onClick={dismissError}
+                style={{
+                  margin: '0 16px 8px', padding: '8px 12px', borderRadius: 8,
+                  background: 'var(--red-bg, rgba(220,38,38,.12))', color: 'var(--red, #dc2626)',
+                  fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                }}
+              >
+                <Icon name="x" size={12} /> {error}
+              </div>
+            )}
 
             <div className="input-area">
               <textarea
