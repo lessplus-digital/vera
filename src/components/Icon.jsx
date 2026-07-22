@@ -1,5 +1,3 @@
-import React from 'react'
-
 // Line-style icon set (Lucide-derived paths). All strokes use currentColor,
 // so each icon inherits the solid color of its surrounding text.
 const PATHS = {
