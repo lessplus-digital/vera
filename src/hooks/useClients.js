@@ -9,7 +9,7 @@ export function useClients() {
   const fetchClients = useCallback(async () => {
     const { data, error: fetchError } = await supabase
       .from('clientes')
-      .select('*')
+      .select('cliente_id, nombre, telefono, direccion_principal, modo, fecha_registro')
       .order('nombre', { ascending: true })
 
     if (fetchError) {
