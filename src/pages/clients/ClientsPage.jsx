@@ -1,15 +1,19 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useClients } from '../../hooks/useClients'
 import { CLIENT_MODES } from '../../utils/constants'
 import { parseDb } from '../../utils/dateRanges'
 import ClientModal from './ClientModal'
 import Icon from '../../components/Icon'
 
+const PAGE_SIZES = [25, 50, 100]
+
 export default function ClientsPage() {
   const { clients, loading, error, saveClient } = useClients()
   const [search, setSearch] = useState('')
   const [sortAsc, setSortAsc] = useState(true)
   const [modal, setModal] = useState(null) // null | 'new' | objeto cliente
+  const [pageSize, setPageSize] = useState(25)
+  const [page, setPage] = useState(1)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -27,6 +31,15 @@ export default function ClientsPage() {
       return sortAsc ? cmp : -cmp
     })
   }, [clients, search, sortAsc])
+
+  // Paginación client-side (los datos ya viven en memoria vía useClients).
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const pageClamped = Math.min(page, totalPages)
+  const startIdx = (pageClamped - 1) * pageSize
+  const paged = filtered.slice(startIdx, startIdx + pageSize)
+
+  // Volver a la primera página cuando cambia el resultado o el tamaño de página.
+  useEffect(() => { setPage(1) }, [search, sortAsc, pageSize])
 
   return (
     <div className="clients-page">
@@ -63,6 +76,7 @@ export default function ClientsPage() {
           {search ? 'No se encontraron clientes con esa búsqueda' : 'Aún no hay clientes registrados'}
         </div>
       ) : (
+        <>
         <div className="clients-table">
           <div className="clients-row head">
             <span>Nombre</span>
@@ -73,7 +87,7 @@ export default function ClientsPage() {
             <span></span>
           </div>
 
-          {filtered.map(client => (
+          {paged.map(client => (
             <div key={client.cliente_id} className="clients-row">
               <span className="name">{client.nombre || 'Pendiente'}</span>
               <span className="phone">
@@ -101,6 +115,36 @@ export default function ClientsPage() {
             </div>
           ))}
         </div>
+
+        <div className="clients-pagination">
+          <label className="cp-size">
+            Filas por página
+            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>
+              {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+
+          <span className="cp-range">
+            {startIdx + 1}–{Math.min(startIdx + pageSize, filtered.length)} de {filtered.length}
+          </span>
+
+          <div className="cp-nav">
+            <button
+              className="cp-btn"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={pageClamped <= 1}
+              aria-label="Página anterior"
+            ><Icon name="arrow-left" size={14} /></button>
+            <span className="cp-page">Página {pageClamped} de {totalPages}</span>
+            <button
+              className="cp-btn"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={pageClamped >= totalPages}
+              aria-label="Página siguiente"
+            ><Icon name="arrow-right" size={14} /></button>
+          </div>
+        </div>
+        </>
       )}
 
       {modal && (

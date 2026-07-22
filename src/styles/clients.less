@@ -203,6 +203,75 @@
   &.feedback { background: var(--purple-dim); color: var(--purple); border: 1px solid var(--purple-border); }
 }
 
+/* ── Paginación ── */
+
+.clients-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 2px 2px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+
+  .cp-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+
+    select {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 5px 8px;
+      cursor: pointer;
+
+      &:focus { outline: none; border-color: var(--border-hover); }
+    }
+  }
+
+  .cp-range { font-family: var(--font-mono); }
+
+  .cp-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cp-page {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .cp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-hover); }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  }
+
+  @media (max-width: 560px) {
+    justify-content: center;
+    .cp-range { order: 3; width: 100%; text-align: center; }
+  }
+}
+
 /* ── Modal crear/editar ── */
 
 .client-modal {

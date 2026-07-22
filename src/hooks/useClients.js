@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
+// Tope de clientes traídos a memoria (búsqueda/paginación son client-side). Es explícito
+// para no depender del límite por defecto de PostgREST (que puede capar en silencio); si se
+// alcanza, es la señal de migrar a búsqueda/paginación server-side.
+const CLIENTS_FETCH_CAP = 5000
+
 export function useClients() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -11,12 +16,16 @@ export function useClients() {
       .from('clientes')
       .select('cliente_id, nombre, telefono, direccion_principal, modo, fecha_registro')
       .order('nombre', { ascending: true })
+      .limit(CLIENTS_FETCH_CAP)
 
     if (fetchError) {
       setError(fetchError.message)
     } else {
       setClients(data || [])
       setError(null)
+      if (data && data.length >= CLIENTS_FETCH_CAP) {
+        console.warn(`useClients: se alcanzó el tope de ${CLIENTS_FETCH_CAP} clientes en memoria; es momento de pasar a búsqueda/paginación server-side.`)
+      }
     }
     setLoading(false)
   }, [])
