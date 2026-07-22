@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useSupportConversations } from '../../hooks/useSupportConversations'
+import { parseDb } from '../../utils/dateRanges'
 import ConversationItem from './ConversationItem'
 import ChatBubble from './ChatBubble'
 import ImageLightbox from './ImageLightbox'
@@ -90,7 +91,7 @@ export default function SupportPanel() {
                 <div className="ch-status">
                   Handoff activo
                   {selectedConvo?.ultima_actividad
-                    ? ` · ${formatDistanceToNow(new Date(selectedConvo.ultima_actividad), { addSuffix: true, locale: es })}`
+                    ? ` · ${formatDistanceToNow(parseDb(selectedConvo.ultima_actividad), { addSuffix: true, locale: es })}`
                     : ''}
                 </div>
               </div>
