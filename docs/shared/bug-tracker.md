@@ -159,34 +159,6 @@
 > Rescatados de los reportes de code-review archivados (jul-14 + jul-16, deduplicados).
 > Las **líneas exactas pueden estar desactualizadas** — verificar contra el código al arreglar.
 
-### BUG-015 — `OrderCard`: `fecha_pedido` sin `parseDb` 🟡
-- **Síntoma:** parsea `fecha_pedido` con `new Date()` directo → en navegadores ≠ UTC-5 el "hace X"
-  muestra un desfase de horas. Es el único sitio de la app que omite `parseDb()`.
-- **Fix:** usar `parseDb(order.fecha_pedido)`.
-- **Estado:** 🟡 Abierto
-
-### BUG-016 — `ReservationModal`: validación de fecha/hora ignora timezone 🟡
-- **Síntoma:** compara `new Date(\`${fecha}T${hora}\`)` (hora local del navegador) contra ahora →
-  en un navegador ≠ UTC-5 puede marcar como "en el pasado" una reserva que sí es futura en Colombia.
-- **Fix:** construir la fecha con offset `-05:00` (o helper de Colombia).
-- **Estado:** 🟡 Abierto
-
-### BUG-017 — `EditOrderModal`: error al guardar notas se descarta 🟡
-- **Síntoma:** el `update({ notas })` no verifica error → si falla, el usuario pierde el cambio sin aviso.
-- **Fix:** manejar el error (toast/estado) o al menos `console.error`.
-- **Estado:** 🟡 Abierto
-
-### BUG-018 — `useSupportConversations`: usa `alert()` nativo 🟡
-- **Síntoma:** errores mostrados con `alert()` (bloquea el hilo, inconsistente con los toasts del resto).
-- **Fix:** estado de error + mensaje inline en `SupportPanel`.
-- **Estado:** 🟡 Abierto
-
-### BUG-019 — `useReservations`: `reserva_id` con `Date.now()` 🟢
-- **Síntoma:** `RSV-M${Date.now()}` — dos reservas en el mismo ms colisionarían (error 23505).
-  La BD ya genera `reserva_id` por default (`generar_reserva_id()`).
-- **Fix:** dejar que la BD genere el id (no enviarlo), o usar `crypto.randomUUID()`.
-- **Estado:** 🟢 Abierto
-
 ### Deuda técnica / mejoras (dashboard)
 - **Duplicación ~120 líneas** del selector de menú entre `CreateOrderModal` y `EditOrderModal`
   (`getProductOptions`, `CATEGORY_LABELS`, JSX de búsqueda) → extraer `<MenuPicker>` / hook.
@@ -199,6 +171,59 @@
 ---
 
 ## Resueltos
+
+### BUG-020 — `SupportPanel`: `ultima_actividad` sin `parseDb` ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Contexto:** hallado al arreglar BUG-015 — desmiente que aquél fuera "el único sitio sin
+  `parseDb()`". En `SupportPanel.jsx:93` el "última actividad hace X" usaba
+  `new Date(selectedConvo.ultima_actividad)` directo (mismo desfase de TZ que BUG-015).
+- **Qué se hizo:** cambiado a `parseDb(selectedConvo.ultima_actividad)`. `parseDb` es seguro pase
+  lo que pase con el tipo de columna: solo añade `Z` si el string no trae offset, así que si
+  `ultima_actividad` ya fuera `timestamptz` el cambio es un no-op. (No se pudo verificar el tipo
+  vía MCP — token caído — pero el fix es correcto en ambos casos.)
+- **Verificado con:** `npm run build`.
+
+### BUG-019 — `useReservations`: `reserva_id` con `Date.now()` ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** `createReservation` ya **no envía** `reserva_id` (era `RSV-M${Date.now()}`, con
+  riesgo de colisión 23505 en el mismo ms); ahora lo genera la BD por default
+  (`generar_reserva_id()`, confirmado en `docs/database/schema.md`). El insert usa `.select().single()`
+  para leer la fila de vuelta con el id real generado (el objeto devuelto solo alimenta el WhatsApp,
+  que no usa el id, pero así queda consistente). `created_at` se mantiene explícito (no se confirmó
+  default y está fuera del alcance del bug).
+- **Verificado con:** `npm run build`.
+
+### BUG-015 — `OrderCard`: `fecha_pedido` sin `parseDb` ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** en `src/pages/dashboard/OrderCard.jsx` se importó `parseDb` y el "hace X"
+  ahora usa `parseDb(order.fecha_pedido)` en vez de `new Date()` directo. `fecha_pedido` es un
+  `timestamp` UTC sin `Z`, así que `new Date()` lo leía como hora local → desfase en navegadores
+  ≠ UTC-5. Era el único sitio de la app que omitía `parseDb()`.
+- **Verificado con:** `npm run build` (2223 módulos, sin errores).
+
+### BUG-016 — `ReservationModal`: validación de fecha/hora ignora timezone ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** en `src/pages/reservations/ReservationModal.jsx` la validación "ya pasó"
+  ahora construye la fecha con offset fijo de Colombia: `new Date(\`${fecha}T${hora}:00-05:00\`)`.
+  Antes `new Date(\`${fecha}T${hora}\`)` usaba la hora local del navegador → podía marcar como
+  pasada una reserva futura en Colombia (o viceversa) fuera de UTC-5.
+- **Verificado con:** `npm run build`.
+
+### BUG-017 — `EditOrderModal`: error al guardar notas se descarta ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** en `src/pages/dashboard/EditOrderModal.jsx` el `update({ notas })` ahora captura
+  su `error`; si falla, hace `console.error`, muestra un mensaje ("Los ítems se guardaron, pero no
+  se pudieron guardar las notas…") y **mantiene el modal abierto** para reintentar. Se deja claro
+  que los ítems ya se aplicaron vía el RPC `editar_pedido` (solo fallaron las notas).
+- **Verificado con:** `npm run build`.
+
+### BUG-018 — `useSupportConversations`: usa `alert()` nativo ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo:** el hook (`src/hooks/useSupportConversations.js`) ahora expone estado `error` +
+  `dismissError` en vez de dos `alert()` bloqueantes; se limpia al iniciar un envío y al cambiar de
+  conversación. `SupportPanel.jsx` renderiza un banner de error inline (descartable al clic) sobre
+  el área de escritura, consistente con el resto del UI.
+- **Verificado con:** `npm run build`.
 
 ### BUG-013 — `useOrders` dejaba el Kanban en spinner infinito ✅
 - **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
