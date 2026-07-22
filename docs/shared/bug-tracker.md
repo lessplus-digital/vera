@@ -160,17 +160,27 @@
 > Las **líneas exactas pueden estar desactualizadas** — verificar contra el código al arreglar.
 
 ### Deuda técnica / mejoras (dashboard)
-- **Duplicación ~120 líneas** del selector de menú entre `CreateOrderModal` y `EditOrderModal`
-  (`getProductOptions`, `CATEGORY_LABELS`, JSX de búsqueda) → extraer `<MenuPicker>` / hook.
-- **`useStatistics`:** `.limit(10000)` sin aviso de truncamiento; queries iniciales
-  (`menu`/`pedidos`/`clientes`) sin manejo de error (listas vacías silenciosas).
-- **`useClients`:** `select('*')` → traer solo las columnas usadas.
-- **`useOrders`:** debounce de `fetchOrders` ante ráfagas de realtime (evita queries en cascada).
-- **`import React`** innecesario en `Header.jsx` / `Icon.jsx` (JSX transform de Vite/React 17+).
+✅ **Toda la lista fue resuelta** (2026-07-17). Ver "Deuda técnica dashboard — resuelta" en Resueltos.
 
 ---
 
 ## Resueltos
+
+### Deuda técnica dashboard — resuelta ✅
+- **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
+- **Qué se hizo (5 ítems):**
+  - **`<MenuPicker>` extraído:** el selector de menú duplicado (~120 líneas) entre `CreateOrderModal`
+    y `EditOrderModal` (`CATEGORY_LABELS`, `getProductOptions`, fetch del menú, estado y JSX del panel
+    de búsqueda/variantes) vive ahora en `src/pages/dashboard/MenuPicker.jsx` y emite `onAddItem()`.
+    Cada padre conserva su propia lista de ítems. (~172 líneas de duplicación menos.)
+  - **`useStatistics`:** las queries de montaje (`menu`/`pedidos`/`clientes`) ahora loguean su error
+    (antes: listas vacías silenciosas) + aviso `console.warn` si `pedidos` toca el límite de 10000 filas.
+  - **`useClients`:** `select('*')` → columnas explícitas usadas (`cliente_id, nombre, telefono,
+    direccion_principal, modo, fecha_registro`).
+  - **`useOrders`:** el handler de realtime hace debounce (300 ms) → una ráfaga colapsa en un solo
+    refetch (montaje y el `fetchOrders` exportado siguen inmediatos).
+  - **`import React`** removido de `Header.jsx` / `Icon.jsx` (runtime JSX automático de Vite/React 17+).
+- **Verificado con:** `npm run build` (sin errores).
 
 ### BUG-020 — `SupportPanel`: `ultima_actividad` sin `parseDb` ✅
 - **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`
