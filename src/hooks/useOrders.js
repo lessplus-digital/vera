@@ -91,12 +91,21 @@ export function useOrders() {
   useEffect(() => {
     fetchOrders()
 
+    let debounce
     const channel = supabase
       .channel('pedidos-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => fetchOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
+        // Debounce: una ráfaga de eventos realtime (varios INSERT/UPDATE seguidos)
+        // colapsa en un solo refetch en vez de encadenar queries en cascada.
+        clearTimeout(debounce)
+        debounce = setTimeout(() => fetchOrders(), 300)
+      })
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
+    return () => {
+      clearTimeout(debounce)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   return { orders, loading, newIds, stats, lastUpdate, fetchOrders }
