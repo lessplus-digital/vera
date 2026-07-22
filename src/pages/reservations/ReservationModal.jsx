@@ -36,7 +36,9 @@ export default function ReservationModal({ initial, onSave, onClose }) {
   async function handleSave() {
     if (!canSave) return
 
-    if (new Date(`${fecha}T${hora}`) < new Date()) {
+    // La reserva es en hora Colombia (UTC-5): fijamos ese offset para no
+    // interpretar `fecha`+`hora` como hora local del navegador.
+    if (new Date(`${fecha}T${hora}:00-05:00`) < new Date()) {
       setError('La fecha y hora de la reserva ya pasaron. Elige un horario futuro.')
       return
     }
