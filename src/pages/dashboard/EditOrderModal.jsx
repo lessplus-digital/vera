@@ -162,7 +162,18 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
     }
 
     if (notas !== (order.notas || '')) {
-      await supabase.from('pedidos').update({ notas: notas || null }).eq('pedido_id', order.pedido_id)
+      const { error: notasError } = await supabase
+        .from('pedidos')
+        .update({ notas: notas || null })
+        .eq('pedido_id', order.pedido_id)
+
+      if (notasError) {
+        // Los ítems ya se guardaron vía el RPC; solo fallaron las notas.
+        setSaving(false)
+        console.error('Error guardando notas:', notasError)
+        setError('Los ítems se guardaron, pero no se pudieron guardar las notas. Intenta de nuevo.')
+        return
+      }
     }
 
     setSaving(false)
