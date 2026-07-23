@@ -1,0 +1,134 @@
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS — Tab Configuración (info_negocio)
+   Formularios con el patrón global .field y botones .btn
+   (index.css); aquí solo el layout de la página y sus cards.
+═══════════════════════════════════════════════════════════ */
+
+.settings-page {
+  padding: 20px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeIn 0.2s ease;
+
+  @media (max-width: 560px) { padding: 16px 14px 32px; }
+}
+
+/* ── Toolbar: intro + acciones de guardado ── */
+
+.settings-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings-intro {
+  min-width: 0;
+  max-width: 520px;
+}
+
+.settings-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.settings-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.settings-dirty {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+}
+
+/* ── Estados vacío / error ── */
+
+.settings-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.settings-error {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── Grid de cards por categoría ──
+   Dos stacks verticales balanceados (DS §7): las cards de cada columna se
+   apilan y la última crece (flex: 1) para que ambas columnas cierren parejas
+   abajo, sin huecos. */
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  align-items: stretch;
+
+  @media (max-width: 880px) { grid-template-columns: 1fr; }
+}
+
+.settings-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+
+  .settings-card:last-child { flex: 1; }
+}
+
+.settings-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-card-icon {
+  display: flex;
+  color: var(--amber);
+}
+
+.settings-card-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  textarea { resize: vertical; }
+}
