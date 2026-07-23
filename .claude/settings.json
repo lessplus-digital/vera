@@ -4,7 +4,9 @@
       "Edit(.env.local)",
       "Write(.env.local)",
       "Edit(.env.*.local)",
-      "Write(.env.*.local)",
+      "Write(.env.*.local)"
+    ],
+    "ask": [
       "Edit(.mcp.json)",
       "Write(.mcp.json)"
     ]
