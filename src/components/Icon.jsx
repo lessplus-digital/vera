@@ -35,6 +35,7 @@ const PATHS = {
   'arrow-right': <><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></>,
   'arrow-up': <><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></>,
   'arrow-down': <><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></>,
+  sort: <><path d="m7 15 5 5 5-5" /><path d="m7 9 5-5 5 5" /></>,
   reply: <><path d="M9 14 4 9l5-5" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" /></>,
   expand: <><path d="M7 17 17 7" /><path d="M7 7h10v10" /></>,
   lock: <><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></>,

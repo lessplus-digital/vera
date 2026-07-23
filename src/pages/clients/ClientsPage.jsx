@@ -7,13 +7,56 @@ import Icon from '../../components/Icon'
 
 const PAGE_SIZES = [25, 50, 100]
 
+// Orden de los modos al ordenar por columna: el índice en CLIENT_MODES (bot → humano → feedback).
+const MODE_ORDER = CLIENT_MODES.map(m => m.value)
+const modeIdx = modo => {
+  const i = MODE_ORDER.indexOf(modo)
+  return i === -1 ? 0 : i // desconocido cae en 'bot', igual que el render del badge
+}
+
+const byName = (a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
+
+// Encabezado de columna ordenable: siempre muestra un indicador (⇅ atenuado si está
+// inactiva, flecha ↑/↓ si es la columna activa) para que se note que es clickeable.
+function SortHeader({ label, colKey, sortKey, sortAsc, onSort, defaultAsc = true }) {
+  const active = sortKey === colKey
+  return (
+    <span
+      className={`sortable ${active ? 'active' : ''}`}
+      role="button"
+      tabIndex={0}
+      title={`Ordenar por ${label.toLowerCase()}`}
+      onClick={() => onSort(colKey, defaultAsc)}
+      onKeyDown={e => e.key === 'Enter' && onSort(colKey, defaultAsc)}
+    >
+      {label}
+      <Icon
+        name={active ? (sortAsc ? 'arrow-up' : 'arrow-down') : 'sort'}
+        size={11}
+        className={active ? undefined : 'sort-hint'}
+      />
+    </span>
+  )
+}
+
 export default function ClientsPage() {
-  const { clients, loading, error, saveClient } = useClients()
+  const { clients, loading, error, saveClient, deleteClient } = useClients()
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState('nombre') // 'nombre' | 'modo' | 'fecha_registro'
   const [sortAsc, setSortAsc] = useState(true)
   const [modal, setModal] = useState(null) // null | 'new' | objeto cliente
   const [pageSize, setPageSize] = useState(25)
   const [page, setPage] = useState(1)
+
+  // Click en un encabezado: misma columna invierte el orden, columna nueva arranca en su default.
+  function sortBy(key, defaultAsc = true) {
+    if (sortKey === key) {
+      setSortAsc(v => !v)
+    } else {
+      setSortKey(key)
+      setSortAsc(defaultAsc)
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -21,16 +64,25 @@ export default function ClientsPage() {
 
     const result = clients.filter(c => {
       if (!q) return true
-      const byName = (c.nombre || '').toLowerCase().includes(q)
+      const byNameMatch = (c.nombre || '').toLowerCase().includes(q)
       const byPhone = qDigits.length > 0 && (c.telefono || '').includes(qDigits)
-      return byName || byPhone
+      return byNameMatch || byPhone
     })
 
     return result.sort((a, b) => {
-      const cmp = (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
+      let cmp
+      if (sortKey === 'modo') {
+        cmp = modeIdx(a.modo) - modeIdx(b.modo)
+      } else if (sortKey === 'fecha_registro') {
+        // fecha_registro es 'YYYY-MM-DD': el orden lexicográfico es el cronológico.
+        cmp = (a.fecha_registro || '').localeCompare(b.fecha_registro || '')
+      } else {
+        cmp = byName(a, b)
+      }
+      if (cmp === 0) cmp = byName(a, b) // desempate estable por nombre
       return sortAsc ? cmp : -cmp
     })
-  }, [clients, search, sortAsc])
+  }, [clients, search, sortKey, sortAsc])
 
   // Paginación client-side (los datos ya viven en memoria vía useClients).
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -39,7 +91,7 @@ export default function ClientsPage() {
   const paged = filtered.slice(startIdx, startIdx + pageSize)
 
   // Volver a la primera página cuando cambia el resultado o el tamaño de página.
-  useEffect(() => { setPage(1) }, [search, sortAsc, pageSize])
+  useEffect(() => { setPage(1) }, [search, sortKey, sortAsc, pageSize])
 
   return (
     <div className="clients-page">
@@ -53,8 +105,8 @@ export default function ClientsPage() {
           placeholder="Buscar por nombre o teléfono..."
         />
 
-        <button className="clients-sort" onClick={() => setSortAsc(v => !v)} title="Cambiar orden alfabético">
-          {sortAsc ? 'A → Z' : 'Z → A'}
+        <button className="clients-sort" onClick={() => sortBy('nombre')} title="Ordenar alfabéticamente por nombre">
+          {sortKey === 'nombre' && !sortAsc ? 'Z → A' : 'A → Z'}
         </button>
 
         <span className="clients-count">
@@ -79,11 +131,11 @@ export default function ClientsPage() {
         <>
         <div className="clients-table">
           <div className="clients-row head">
-            <span>Nombre</span>
+            <SortHeader label="Nombre" colKey="nombre" sortKey={sortKey} sortAsc={sortAsc} onSort={sortBy} />
             <span>Teléfono</span>
             <span>Dirección</span>
-            <span>Modo</span>
-            <span>Registrado</span>
+            <SortHeader label="Modo" colKey="modo" sortKey={sortKey} sortAsc={sortAsc} onSort={sortBy} />
+            <SortHeader label="Registrado" colKey="fecha_registro" sortKey={sortKey} sortAsc={sortAsc} onSort={sortBy} defaultAsc={false} />
             <span></span>
           </div>
 
@@ -151,6 +203,7 @@ export default function ClientsPage() {
         <ClientModal
           client={modal === 'new' ? null : modal}
           onSave={saveClient}
+          onDelete={deleteClient}
           onClose={() => setModal(null)}
         />
       )}

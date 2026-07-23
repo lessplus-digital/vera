@@ -2,16 +2,18 @@ import React, { useState } from 'react'
 import { CLIENT_MODES } from '../../utils/constants'
 import Icon from '../../components/Icon'
 
-export default function ClientModal({ client, onSave, onClose }) {
+export default function ClientModal({ client, onSave, onDelete, onClose }) {
   const isNew = !client
   const [nombre,    setNombre]    = useState(client?.nombre || '')
   const [telefono,  setTelefono]  = useState(client?.telefono || '')
   const [direccion, setDireccion] = useState(client?.direccion_principal || '')
   const [modo,      setModo]      = useState(client?.modo || 'bot')
   const [saving,    setSaving]    = useState(false)
+  const [deleting,  setDeleting]  = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [error,     setError]     = useState(null)
 
-  const canSave = !saving && nombre.trim().length > 0 && telefono.trim().length >= 7
+  const canSave = !saving && !deleting && nombre.trim().length > 0 && telefono.trim().length >= 7
 
   async function handleSave() {
     if (!canSave) return
@@ -35,6 +37,28 @@ export default function ClientModal({ client, onSave, onClose }) {
     if (saveError) {
       setSaving(false)
       setError(saveError)
+      return
+    }
+
+    onClose()
+  }
+
+  async function handleDelete() {
+    // Primer click solo arma la confirmación; el segundo ejecuta.
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+
+    setDeleting(true)
+    setError(null)
+
+    const { error: deleteError } = await onDelete(client.cliente_id)
+
+    if (deleteError) {
+      setDeleting(false)
+      setConfirmDelete(false)
+      setError(deleteError)
       return
     }
 
@@ -102,6 +126,21 @@ export default function ClientModal({ client, onSave, onClose }) {
         </div>
 
         <div className="cm-foot">
+          {!isNew && (
+            <button
+              className="btn danger"
+              style={{ marginRight: 'auto' }}
+              onClick={handleDelete}
+              onBlur={() => setConfirmDelete(false)}
+              disabled={saving || deleting}
+            >
+              {deleting
+                ? 'Eliminando...'
+                : confirmDelete
+                  ? '¿Seguro? Click para confirmar'
+                  : <><Icon name="trash" size={14} /> Eliminar</>}
+            </button>
+          )}
           <button className="btn ghost" onClick={onClose}>Cancelar</button>
           <button className="btn primary" onClick={handleSave} disabled={!canSave}>
             {saving ? 'Guardando...' : <><Icon name="check" size={14} /> {isNew ? 'Crear cliente' : 'Guardar cambios'}</>}

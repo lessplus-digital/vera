@@ -157,8 +157,9 @@ src/
 
 **Funcionalidad:**
 - Buscar por nombre o teléfono (un solo input; el teléfono matchea solo dígitos)
-- Ordenar alfabéticamente por nombre (toggle A→Z / Z→A, `localeCompare` es)
+- Ordenar por columna clickeando el encabezado: Nombre (A→Z default), Modo (orden de `CLIENT_MODES`) y Registrado (más reciente primero al primer click); misma columna re-clickeada invierte el orden, desempate estable por nombre. El botón A→Z de la toolbar equivale a clickear Nombre
 - Crear cliente nuevo y editar existentes (`ClientModal`: nombre, teléfono, dirección, modo)
+- Eliminar cliente desde `ClientModal` (`.btn danger` con confirmación en dos clicks). Sin cascade: si el cliente tiene `pedidos`/`reservas`/`feedback` (FK 23503), se muestra mensaje amigable y no se borra — el historial de ventas se preserva a propósito
 - Teléfono se sanitiza a solo dígitos en el input; valida mínimo 7 dígitos
 - Duplicado de teléfono (constraint UNIQUE, error 23505) se muestra como mensaje amigable
 - Modo editable con select (`CLIENT_MODES` en constants.js): 🤖 bot / 💬 humano / ⏳ esperando_feedback — default `bot` al crear
@@ -193,7 +194,7 @@ src/
 | `useSupportConversations` | Conversaciones activas + mensajes del panel de soporte | `conversations, messages, …` |
 | `useMediaQuery` | Evalúa una media query (sidebar colapsado / móvil) | `boolean` |
 | `useStatistics` | Filtros de periodo, fetch pedidos/feedback/menu del rango + periodo anterior, agregados memoizados | `loading, error, aggregates, clients, categorias, range, filters, setters` |
-| `useClients` | Fetch todos los clientes, realtime UPDATE, crear/editar vía `saveClient` | `clients, loading, error, saveClient` |
+| `useClients` | Fetch todos los clientes, realtime UPDATE, crear/editar vía `saveClient`, eliminar vía `deleteClient` | `clients, loading, error, saveClient, deleteClient` |
 | `useReservations` | Fetch todas las reservas, realtime `*`, crear (con lookup de cliente por teléfono) y eliminar | `reservations, loading, error, createReservation, deleteReservation` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 

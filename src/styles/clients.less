@@ -129,6 +129,22 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 9px 16px;
+
+    // Encabezados ordenables (Nombre / Modo / Registrado). El icono ⇅ atenuado
+    // siempre visible es la señal de que la columna se puede ordenar.
+    .sortable {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      user-select: none;
+      border-radius: 4px;
+
+      .sort-hint { opacity: 0.4; }
+      &:hover { color: var(--text); .sort-hint { opacity: 0.8; } }
+      &.active { color: var(--text); }
+      &:focus-visible { outline: 1px solid var(--border); outline-offset: 2px; }
+    }
   }
 
   &:not(.head):hover { background: var(--bg-card-hover); }
