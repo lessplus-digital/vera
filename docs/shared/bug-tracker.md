@@ -18,42 +18,6 @@
 
 ## Abiertos
 
-### BUG-001 — `Guardar comentario` no persiste el comentario 🔴
-- **Componente:** n8n · subworkflow *Retener feedback* · nodo `Guardar comentario`
-- **Síntoma:** El comentario del cliente (calificación ≤ 3) nunca queda en `feedback.comentario`.
-- **Causa:** El filtro `pedido_id` tiene `keyValue: "{{ $json.pedido_id }}"` **sin el `=` inicial**,
-  así que n8n lo trata como texto literal y el `WHERE pedido_id = eq.{{ $json.pedido_id }}`
-  no matchea ninguna fila.
-- **Fix:** Poner el valor como expresión: `={{ $json.pedido_id }}`.
-- **Ref:** [`../bot/feedback.md`](../bot/feedback.md#-posibles-bugs-confirmar-en-n8n)
-- **Estado:** 🔴 Abierto · detectado 2026-07-16
-
-### BUG-002 — `Limpiar modo huérfano` no resetea el modo del cliente 🟡
-- **Componente:** n8n · subworkflow *Retener feedback* · nodo `Limpiar modo huérfano`
-- **Síntoma:** El `UPDATE clientes SET modo='bot'` de limpieza no matchea; un cliente en
-  modo de feedback sin fila pendiente queda atascado fuera del flujo del bot.
-- **Causa:** El filtro `cliente_id` usa `={{ json.cliente_id }}` — variable **`json` en vez
-  de `$json`** → la expresión resuelve a indefinido.
-- **Fix:** Corregir a `={{ $json.cliente_id }}`.
-- **Ref:** [`../bot/feedback.md`](../bot/feedback.md#-posibles-bugs-confirmar-en-n8n)
-- **Estado:** 🔴 Abierto · detectado 2026-07-16
-
-### BUG-003 — Secretos de Supabase hardcodeados en nodos HTTP (sistémico) 🔴
-- **Componente:** n8n · **24 instancias** confirmadas por `n8n_audit_instance` (2026-07-16)
-  en 4 workflows activos:
-  - **Pizzeria Vera** (main): `crear_carrito`, `Traer/Descargar imagen de whatsapp`, y los
-    nodos del job feedback (`Buscar pedidos…`, `Marcar pedido…`, `Activar modo…`, `feedback_pendiente`).
-  - **Sub — Consultar_menu**: `HTTP Request`.
-  - **Sub — Crear_orden_completa**: `Validar productos menu`, `INSERT detalle_pedidos`, `Limpiar carrito` (anon).
-  - **Sub — Editar pedido**: `HTTP Request`.
-- **Síntoma / Riesgo:** keys de Supabase (unas `service_role` = crítico, otras `anon`) en
-  texto plano en headers `apikey`/`Authorization`. Quedan en el export del workflow y la
-  `service_role` salta RLS. Muchos otros nodos ya usan la credencial `Supabase account`.
-- **Fix:** Migrar cada nodo a `authentication: predefinedCredentialType` (credencial
-  `Supabase account`), quitar las keys, y **rotar la `service_role`**. El MCP puede
-  auto-arreglarlo, pero está en solo-lectura → habilitar temporalmente o hacerlo a mano.
-- **Estado:** 🔴 Abierto · detectado 2026-07-16
-
 ### BUG-004 — Key `cliente_id ` con espacio en `crear_reserva` (frágil, funciona) 🟢
 - **Componente:** n8n · Agente Reservas · tool `crear_reserva` + `Sub — Crear Reserva`
 - **Verificado vía MCP (corrige el diagnóstico inicial):** el espacio está en TODO el camino
@@ -74,29 +38,6 @@
   Agente Reservas (como las otras tools de reservas).
 - **Estado:** 🔴 Abierto · detectado 2026-07-16
 
-### BUG-006 — `consultar_menu` no usa el RPC `buscar_menu` que ya existe 🟡
-- **Componente:** n8n · `Sub — Consultar_menu` + prompt del Agente Menú
-- **Síntoma:** El prompt decide según un campo `similitud` que la tool **nunca devuelve**, y
-  promete tolerar typos (`papatas`→`patatas`) que **no** ocurre — el subworkflow solo hace `ilike`.
-- **Hallazgo (vía MCP Supabase):** la BD **ya tiene el RPC `buscar_menu`** con búsqueda difusa
-  real (`pg_trgm` + `unaccent` + diccionario de correcciones `papata→patata`, `servex→cervez`…)
-  que **devuelve `similitud` (0–1)**. La infraestructura que el prompt asume ya existe.
-- **Fix (fácil):** apuntar `Sub — Consultar_menu` al RPC `buscar_menu` en vez del `ilike` casero.
-- **Estado:** 🟡 Abierto · re-evaluado 2026-07-16
-
-### BUG-007 — Pedidos del bot quedan SIN líneas (anon key bloqueada por RLS) 🔴🔴
-- **Componente:** n8n · `Sub — Crear_orden_completa` · `INSERT detalle_pedidos` (HTTP, anon key)
-- **CONFIRMADO (vía MCP Supabase):** `detalle_pedidos` **sí tiene RLS** (política solo
-  `authenticated`), pero el nodo inserta con la **anon key** → el INSERT **se bloquea**. Hay
-  pedidos con `total` pero **0 líneas de detalle**: `PED-113`, `PED-111`, `PED-109`.
-- **Impacto:** pérdida de datos real en producción — el pedido se ve con total (calculado en JS,
-  sin sumar domicilio porque el trigger nunca dispara) pero sin ítems. Rompe el detalle en el
-  dashboard y las estadísticas de productos.
-- **Fix:** que `INSERT detalle_pedidos` (y `Limpiar carrito`, `Validar productos menu`) usen la
-  credencial `service_role` (`Supabase account`) en vez de la anon key hardcodeada. Relacionado
-  con BUG-003 (mismo root: auth inconsistente en n8n).
-- **Estado:** 🔴 Abierto · **confirmado 2026-07-16 con datos reales**
-
 ### BUG-008 — `Sub — Crear Reserva`: chequeo JS de cupo/duplicado muerto 🟢
 - **Componente:** n8n · `Sub — Crear Reserva` · nodo `Validar y verificar cupo`
 - **Síntoma:** filtra `$input.all()` por `reserva_id`, pero nada le pasa reservas → siempre vacío
@@ -116,42 +57,6 @@
 - **Fix:** leer `input['telefono ']` (o renombrar el input a `telefono`) para que el check funcione.
 - **Estado:** 🔴 Abierto · detectado 2026-07-16 · (además el subworkflow no está cableado — BUG-005)
 
-### BUG-010 — `Sub — Editar pedido`: `phoneNumberId` distinto y sin cablear 🟡
-- **Componente:** n8n · `Sub — Editar pedido` · nodo `Send message`
-- **Síntoma:** usa `phoneNumberId` **1034474539749030**, distinto al del resto del sistema
-  (**1026022853935447**) → podría enviar desde otro número o fallar. Además el subworkflow no
-  aparece conectado como tool en el workflow de agentes actual (posible legacy).
-- **Fix:** unificar `phoneNumberId`; confirmar si el subworkflow sigue en uso.
-- **Estado:** 🟡 Abierto · detectado 2026-07-16
-
-### BUG-011 — Instancia n8n desactualizada + webhook sin auth 🟡
-- **Componente:** infraestructura n8n (`n8n_audit_instance`)
-- **Síntoma / Riesgo:** n8n en **2.10.4**, 19 versiones atrás (última 2.30.6) → posibles
-  vulnerabilidades. Hay **1 webhook sin autenticación**. (Aparte: el workflow ajeno `"Somos"`
-  tiene un dato tipo tarjeta hardcodeado en un `Send message` — revisar/limpiar.)
-- **Fix:** actualizar n8n; revisar el webhook (el de WhatsApp valida por verify token — confirmar).
-- **Estado:** 🟡 Abierto · detectado 2026-07-16
-
-### BUG-012 — RLS deshabilitado en 6 tablas (expuestas a la anon key) 🔴
-- **Componente:** Supabase · tablas `info_negocio`, `feedback`, `n8n_chat_histories`,
-  `n8n_mensajes_pendientes`, `carritos`, `feedback_pendiente`
-- **Síntoma / Riesgo (advisory de Supabase):** estas 6 tablas **no tienen RLS** → cualquiera con
-  la **anon key** (que es pública y va en el bundle del frontend) puede **leer o modificar todas
-  las filas**. Contradice lo que afirma `CLAUDE.md` ("every table has RLS enabled").
-- **Matiz:** habilitar RLS a secas **rompería el bot**, que hoy escribe en `carritos` /
-  `feedback_pendiente` con la anon key. Hay que (a) mover esos writes a `service_role` y
-  (b) habilitar RLS con políticas adecuadas. Ligado a BUG-003/BUG-007.
-- **SQL de remediación (NO aplicar sin políticas):**
-  ```sql
-  ALTER TABLE public.info_negocio ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.n8n_chat_histories ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.n8n_mensajes_pendientes ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.carritos ENABLE ROW LEVEL SECURITY;
-  ALTER TABLE public.feedback_pendiente ENABLE ROW LEVEL SECURITY;
-  ```
-- **Estado:** 🔴 Abierto · detectado 2026-07-16 (advisory Supabase)
-
 ---
 
 ## Dashboard (React)
@@ -165,6 +70,130 @@
 ---
 
 ## Resueltos
+
+### BUG-011 — Instancia n8n desactualizada + webhook sin auth ✅
+- **Resuelto:** 2026-07-22/23 · 4 partes, todas verificadas:
+  1. **Webhook `notificar-estado-pedido` autenticado** — es un Database Webhook de Supabase
+     (trigger AFTER UPDATE en `pedidos`). Se recreó el trigger con header `x-webhook-token`
+     (migración `bug011_webhook_auth_header`) y el nodo Webhook de n8n valida con **Header
+     Auth**. Probado: sin token → 403, con token → 200. (El webhook de WhatsApp ya estaba
+     protegido por OAuth + verify token de Meta.)
+  2. **Nodo `Webhook1` eliminado** — estaba huérfano (sin conexiones) y sin auth.
+  3. **Workflows archivados con secretos borrados** — `"Somos"` (dato tipo tarjeta en un
+     `Send message`) y `"Pizzeria Vera BACKUP PREVIO MULTI AGENTE"` (tokens WA hardcodeados
+     viejos), más la chatarra (`My workflow`, `My Sub-Workflow 1`, `Pizza`). Quedan solo los
+     7 workflows de producción.
+  4. **Instancia actualizada** (era 2.10.4, 20 versiones atrás) vía Docker Manager de
+     Hostinger — el audit ya no reporta "outdated"; los 7 workflows quedaron activos y el
+     webhook responde correcto post-update.
+- **Nota:** las 2 ejecuciones fallidas del main de ~00:30–00:35 UTC del 23-jul son de las
+  pruebas del webhook con payload vacío — ignorar.
+
+### BUG-010 — `Sub — Editar pedido`: `phoneNumberId` distinto y sin cablear ✅
+- **Resuelto:** 2026-07-22 · decisión: **archivar como legacy** (no cablear), verificado vía MCP
+  (`active: false, isArchived: true`).
+- **Análisis costo/beneficio:** el subworkflow tenía **0 ejecuciones históricas** y ningún
+  caller. Cablearlo bien exigía: rediseñarlo sobre el RPC `editar_pedido` (editaba
+  `detalle_pedidos` directo → habría perdido el recargo de domicilio al recalcular el total),
+  añadir validación de propiedad por `telefono` (mismo hueco que BUG-009), resolver el mapeo
+  `detalle_id` desde lenguaje natural, corregir el `phoneNumberId` y ampliar prompts de 2
+  agentes. El caso de uso ya lo cubre el dashboard (RPC `editar_pedido`).
+- **Mitigación conversacional añadida:** prompts del **Orquestador** ("modificar/cancelar un
+  pedido YA REGISTRADO → soporte, no menu") y del **Agente Soporte** (nueva señal de handoff:
+  cambio en pedido ya registrado → `solicitar_handoff` inmediato) — verificados vía MCP.
+- **Doc:** `docs/bot/subworkflows.md` actualizado (sección marcada ARCHIVADO con el análisis).
+
+### BUG-006 — `consultar_menu` no usa el RPC `buscar_menu` que ya existe ✅
+- **Resuelto:** 2026-07-22 · en 2 capas (BD por MCP + n8n por el usuario, verificado publicado
+  `ecc34926`).
+- **Qué se hizo:**
+  1. **BD** (migración `bug006_buscar_menu_categoria_descripcion`): el RPC solo buscaba en
+     `nombre` — se extendió a `categoria` (peso 0.8) y `descripcion` (peso 0.7) y ahora
+     devuelve `descripcion`. Sin esto, migrar el subworkflow habría *perdido* fidelidad vs. el
+     `ilike` viejo (que sí cubría esos campos): "bebidas"/"gaseosa" no encontraban nada y
+     "pollo"/"champiñones" no encontraban por ingrediente.
+  2. **n8n** (`Sub — Consultar_menu`): `Construir filtros` arma `{termino, umbral:0.2,
+     limite:30, solo_disponibles:true}`; `HTTP Request` ahora es POST a
+     `/rest/v1/rpc/buscar_menu`; el post-proceso agrupa por categoría e incluye
+     `descripcion` + `similitud` (el campo que el prompt del Agente Menú llevaba esperando).
+- **Verificado con:** SQL y REST — `papatas`→Patatas 1.0, `servesa`→cervezas 0.8 (antes: "Soda
+  Cereza" 0.5), `gaseosa`→bebidas 0.8, `champiñones`→incluye match por descripción 0.7,
+  término vacío→menú completo. Sin regresiones en los casos que ya funcionaban.
+- **Pendiente cosmético:** el nodo `Construir filtros` conserva **pinData viejo** (los query
+  params del `ilike`) — solo afecta pruebas manuales en el editor; despinnear cuando se abra.
+
+### BUG-001 — `Guardar comentario` no persiste el comentario ✅
+### BUG-002 — `Limpiar modo huérfano` no resetea el modo del cliente ✅
+- **Resueltos:** 2026-07-22 (juntos) · `Sub — Feedback Pendiente` · aplicado en la UI de n8n,
+  verificado vía MCP en la versión publicada (`b76b8a74`).
+- **Qué se hizo:**
+  - `Guardar comentario` → filtro `pedido_id` ahora es expresión: `={{ $json.pedido_id }}`
+    (le faltaba el `=` → n8n lo mandaba como texto literal y el UPDATE no matcheaba).
+  - `Limpiar modo huérfano` → el fix del tracker (`$json.cliente_id`) era **insuficiente**:
+    por la rama "sin fila pendiente" de `¿Existe feedback pendiente?` el item llega vacío y
+    `$json.cliente_id` seguiría undefined. Se usó la fuente confiable en ambos caminos:
+    `={{ $('When Executed by Another Workflow').first().json.cliente_id }}` (el trigger
+    siempre recibe `cliente_id` desde el main).
+- **Remediación de datos:** no hizo falta — se verificó por SQL que no hay clientes atascados
+  en `esperando_feedback` sin fila en `feedback_pendiente`.
+- **Nota:** primer intento de fix quedó mal por copy-paste del `=` (quedó `=={{...}}` y
+  ` ={{...}}` con espacio) — el `=` lo agrega n8n al activar modo Expression, no se pega.
+  Actualizado `docs/bot/feedback.md` (sección "posibles bugs" → resueltos).
+
+### BUG-012 — RLS deshabilitado en 6 tablas (expuestas a la key pública) ✅
+- **Resuelto:** 2026-07-22 · migración `bug012_enable_rls_exposed_tables` vía MCP `apply_migration`
+- **Qué se hizo:** RLS habilitado en `carritos`, `feedback`, `feedback_pendiente`, `info_negocio`,
+  `n8n_chat_histories`, `n8n_mensajes_pendientes`, con política `auth_full_access`
+  (`authenticated` puede todo — mismo patrón que el resto de tablas). Se aplicó **después** de
+  resolver BUG-003/007 (prerrequisito): el bot ya escribe todo con la `sb_secret_` (salta RLS)
+  y el Postgres Chat Memory conecta como `postgres`, dueño de las tablas (exento de RLS).
+  Antes de aplicar se auditó `Sub — Feedback Pendiente` vía MCP: todos sus nodos de BD son
+  nodos Supabase nativos con credencial → nada quedaba dependiendo de la key pública.
+- **Verificado con:** `pg_policies` (RLS ON + política en las 6); `curl` con la publishable key
+  devuelve `[]` en las 6 tablas mientras la BD confirma que tienen filas (18/1/18 muestreadas);
+  el dashboard solo usa `feedback` de las 6 (lectura en `useStatistics`) → cubierto por
+  `auth_full_access`.
+- **Nota:** `docs/database/schema.md` (modelo de permisos) y el "reality check" de `CLAUDE.md`
+  quedaron actualizados — ya no hay tablas sin RLS.
+
+### BUG-003 — Secretos de Supabase hardcodeados en nodos HTTP (sistémico) ✅
+- **Resuelto:** 2026-07-22 · nodos migrados por el usuario en la UI de n8n + rotación de keys;
+  todo verificado vía MCP y `curl`.
+- **Qué se hizo (2 partes):**
+  1. **Migración de nodos** — 13 nodos con secretos en texto plano migrados a
+     `authentication: predefinedCredentialType` y verificados en las **versiones publicadas**:
+     `Sub — Crear_orden_completa` (3, ver BUG-007), **Pizzeria Vera** (9 con credencial
+     `Supabase account` + 2 de imágenes WhatsApp con credencial `whatsAppApi`),
+     `Sub — Consultar_menu` (1), `Sub — Editar pedido` (1). El barrido halló 2 nodos que el
+     audit no listaba (`Obtener ultimo mensaje`/`1`).
+  2. **Rotación** — el proyecto usa el sistema nuevo de API keys de Supabase: se creó una
+     `sb_secret_...` para la credencial `Supabase account` de n8n, el dashboard pasó a la
+     `sb_publishable_...` en `VITE_SUPABASE_ANON_KEY`, y se pulsó **Disable legacy API keys**.
+     Las keys JWT filtradas en el historial de versiones de n8n quedaron inutilizables.
+- **Verificado con:** legacy `anon` y `service_role` → **401**; publishable → 200 en REST y
+  Auth; ejecución del job feedback post-cambio exitosa (nodo Supabase 200 con la credencial).
+- **Nota:** el token de WhatsApp también quedó en el historial de versiones de n8n y en el
+  bundle del dashboard — sigue siendo el riesgo diferido conocido (`VITE_WA_ACCESS_TOKEN`);
+  rotarlo implica actualizar credencial n8n + `.env.local`.
+
+### BUG-007 — Pedidos del bot quedan SIN líneas (anon key bloqueada por RLS) ✅
+- **Resuelto:** 2026-07-22 · aplicado por el usuario en la UI de n8n, verificado vía MCP
+- **Causa confirmada:** `detalle_pedidos` tiene RLS (política solo `authenticated`) y el nodo
+  `INSERT detalle_pedidos` de `Sub — Crear_orden_completa` insertaba con la **anon key
+  hardcodeada** → INSERT bloqueado. El daño real era **8 pedidos sin líneas** (no 3):
+  PED-096/097/098/099/100/109/111/113 — sus líneas son **irrecuperables** (el carrito se
+  borró tras el INSERT fallido); quedan como pedidos solo-total.
+- **Qué se hizo:** los 3 nodos HTTP del subworkflow (`INSERT detalle_pedidos`,
+  `Limpiar carrito`, `Validar productos menu`) migrados a
+  `authentication: predefinedCredentialType` con la credencial **`Supabase account`**
+  (service_role — la misma que ya usaba `INSERT pedido` y sí pasa RLS), keys eliminadas de
+  los headers. Verificado por MCP que la **versión publicada** (`152eff78`, 2026-07-22)
+  contiene el cambio.
+- **Efecto colateral positivo:** al insertarse las líneas, el trigger de total vuelve a
+  disparar → los totales vuelven a incluir el recargo de domicilio (antes quedaba el total
+  JS sin domicilio).
+- **Verificación pendiente:** confirmar que el próximo pedido real del bot trae líneas
+  (query: pedidos con `count(detalle)=0`).
 
 ### BUG-021 — más sitios sin `parseDb` (ConversationItem, ChatBubble, ClientsPage) ✅
 - **Resuelto:** 2026-07-17 · rama `fix/BUG-013-useorders-error-handling`

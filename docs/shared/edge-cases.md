@@ -62,6 +62,19 @@
 **Causa:** El cliente respondía con algo que no es un nombre real.
 **Solución:** Regla en prompt: si el nombre parece raro, religioso, emoji o no real → saludar sin nombre y no registrarlo.
 
+## 11. RLS bloquea writes de n8n en silencio (pedidos sin líneas)
+
+**Síntoma:** Pedidos con `total` pero 0 filas en `detalle_pedidos` (8 casos en producción, BUG-007).
+**Causa:** Un nodo HTTP de n8n escribía con la **anon key hardcodeada** contra una tabla con RLS
+(política solo `authenticated`) → el INSERT devuelve 4xx pero el flujo siguió y borró el carrito,
+perdiendo los datos. RLS no "avisa": simplemente rechaza, y si el workflow no corta, el daño pasa
+desapercibido.
+**Solución:** Todo nodo n8n que toque Supabase usa `authentication: predefinedCredentialType` con
+la credencial `Supabase account` (service_role) — nunca keys pegadas en headers. Al auditar,
+verificar el rol decodificando el JWT del header (`"role":"anon"` vs `"service_role"`), y validar
+sobre la **versión publicada** del workflow, no el borrador.
+**Fecha:** 2026-07-22
+
 ---
 
 ## Plantilla para nuevos casos

@@ -51,11 +51,11 @@ JWT to every REST/Realtime call. The core tables the dashboard reads (`clientes`
 anon key alone returns nothing there — a logged-in session is required. The secret
 `service_role` key is meant to be used **only in n8n**, never here.
 
-> ⚠️ **Reality check (2026-07-16, verified via Supabase MCP):** RLS is *not* enabled on 6
-> tables (`carritos`, `feedback`, `feedback_pendiente`, `info_negocio`, `n8n_chat_histories`,
-> `n8n_mensajes_pendientes`) — they're exposed to the anon key. And several n8n nodes write with
-> a hardcoded anon key instead of `service_role`. See `docs/database/schema.md` (permissions)
-> and `docs/shared/bug-tracker.md` (BUG-003/007/012).
+> ✅ **Update (2026-07-22, verified via Supabase MCP):** RLS is now enabled on **every** table
+> (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),
+> and the project migrated to Supabase's new API keys: the dashboard uses the `sb_publishable_`
+> key, n8n uses an `sb_secret_` key, and the leaked legacy JWT keys were disabled. See
+> `docs/database/schema.md` (permissions) and `docs/shared/bug-tracker.md`.
 
 **Per-domain hooks own their data + realtime.** Each tab's data lives in one hook that
 does the fetch, subscribes to a Supabase realtime channel, and exposes mutators:

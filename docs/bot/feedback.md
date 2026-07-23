@@ -143,19 +143,17 @@ bot ──[job pregunta]──▶ esperando_feedback
    sin fila pendiente ────▶ Limpiar modo huérfano ─────────────▶ bot
 ```
 
-### ⚠️ Posibles bugs (confirmar en n8n)
+### ✅ Bugs de expresiones — resueltos (2026-07-22, BUG-001/002)
 
-En n8n un valor de campo debe empezar con `=` para evaluarse como expresión, y la
-variable del item es `$json` (no `json`):
+Ambos se confirmaron vía MCP y se corrigieron (en n8n un valor debe empezar con `=` para
+evaluarse como expresión, y la variable del item es `$json`, no `json`):
 
-- **`Guardar comentario`** — filtro `pedido_id` con `keyValue: "{{ $json.pedido_id }}"`
-  **sin `=` inicial** → se trata como texto literal, el `WHERE` no matchea y el
-  **comentario no se guarda**. (Los demás nodos usan `={{ ... }}`.)
-- **`Limpiar modo huérfano`** — filtro `cliente_id` con `={{ json.cliente_id }}`
-  (**`json` en vez de `$json`**) → expresión indefinida; el reset de modo huérfano
-  no matchea al cliente.
-
-> Si se confirman, registrar en [`../shared/edge-cases.md`](../shared/edge-cases.md).
+- **`Guardar comentario`** — al filtro `pedido_id` le faltaba el `=` inicial (texto literal,
+  el comentario nunca se guardaba). Ahora: `={{ $json.pedido_id }}`.
+- **`Limpiar modo huérfano`** — usaba `json.cliente_id` (undefined). Además `$json` era poco
+  fiable ahí: por la rama "sin fila pendiente" el item puede llegar vacío. Ahora lee del
+  trigger, que siempre trae el dato:
+  `={{ $('When Executed by Another Workflow').first().json.cliente_id }}`.
 
 ### Nota de diseño
 

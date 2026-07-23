@@ -117,24 +117,20 @@ When Executed → [Supabase GET reservas WHERE reserva_id]  (nodo mal nombrado "
 
 ---
 
-## Sub — Editar pedido
+## Sub — Editar pedido — 🗄️ ARCHIVADO (2026-07-22, BUG-010)
 
-- **ID:** `CPJcILNiaw20eRye` · **no aparece cableado** como tool en el workflow de agentes actual
-  (posible legacy; el dashboard edita pedidos por su cuenta vía RPC).
-- **Input:** `filtro` (JSON: `{ operacion, pedido_id, payload/campos }`)
-
-```
-When Executed → Code(parse) → Mapear datos → HTTP GET pedido (WHERE pendiente + detalle_pedidos)  ⚠️ service_role
-  └─ If (¿pedido pendiente?) → Switch(operacion)  |  Send message "ya está en cocina, no editable"
-       ├─ agregar          → Get a row (menu) → agregar (variante/precio) → Create a row (detalle)
-       ├─ eliminar         → Delete a row (detalle)
-       ├─ cambiar_cantidad → Cambiar Cantidad → Update a row (detalle.cantidad)
-       └─ campo            → Cambiar campos → Switch1 → actualizar_direccion / Actualizar notas
-```
-
-- **⚠️ BUG-010:** el `Send message` usa `phoneNumberId` **1034474539749030**, distinto al del
-  resto del sistema (**1026022853935447**) → podría enviar desde otro número o fallar. Además el
-  subworkflow no aparece conectado a los agentes (confirmar si sigue en uso).
+- **ID:** `CPJcILNiaw20eRye` · desactivado y archivado en n8n. Nunca estuvo cableado a los
+  agentes y tenía **0 ejecuciones** en toda su historia.
+- **Por qué se archivó y no se cableó** (análisis BUG-010): editaba `detalle_pedidos` fila a
+  fila directo (se saltaba el RPC `editar_pedido` → habría perdido el recargo de domicilio al
+  recalcular), no validaba `telefono` (cualquiera con un `pedido_id` editaba pedidos ajenos),
+  exigía `detalle_id` que el cliente no conoce, y usaba un `phoneNumberId` equivocado. El caso
+  de uso ya está cubierto: el admin edita desde el dashboard (RPC `editar_pedido`).
+- **Flujo conversacional que lo reemplaza:** "quiero cambiar mi pedido" (ya registrado) →
+  el Orquestador enruta a **soporte** → `solicitar_handoff` → el admin edita en el dashboard
+  (reglas añadidas a los prompts del Orquestador y Agente Soporte).
+- **Si algún día se quiere como feature:** diseñarlo de cero sobre el RPC `editar_pedido`
+  con validación de propiedad por `telefono`.
 
 ---
 
