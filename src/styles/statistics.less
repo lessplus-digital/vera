@@ -453,3 +453,113 @@
 
   &:hover { opacity: 1; }
 }
+
+.promo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--amber);
+    border-color: var(--amber-border);
+    background: var(--amber-dim);
+  }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+}
+
+/* ── Modal de promo (reactivación) ── */
+
+.promo-modal {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+
+  .pr-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+    .sub   { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+  }
+
+  .pr-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .pr-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    .pr-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    input {
+      background: var(--bg-inset);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      padding: 9px 12px;
+
+      &::placeholder { color: var(--text-muted); font-weight: 400; }
+      &:focus { outline: none; border-color: var(--border-hover); }
+    }
+  }
+
+  .pr-preview {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    b { color: var(--text-primary); font-weight: 700; }
+  }
+
+  .pr-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+
+    svg { color: var(--amber); flex-shrink: 0; margin-top: 1px; }
+    b { color: var(--text-secondary); font-weight: 700; }
+  }
+
+  .pr-foot {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}
