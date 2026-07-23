@@ -9,7 +9,7 @@
 - **react-big-calendar + date-fns** (calendario de la tab Reservas, locale es)
 - **WhatsApp Cloud API** (envío directo vía `src/lib/whatsapp.js`, Meta Graph API)
 - **Supabase Auth** (login email+password, sesión persistida)
-- **Estilos:** `index.css` (tokens/base) + un `.less` por feature (auth, orders, support, statistics, clients, reservations), importados en `main.jsx`
+- **Estilos:** `index.css` (tokens/base) + un `.less` por feature (auth, orders, support, statistics, clients, reservations, menu), importados en `main.jsx`
 - **Responsive:** `useMediaQuery` — el Sidebar colapsa a solo-iconos ≤1024px y a cajón (drawer) ≤768px
 - **Sin router** — navegación por tabs internas vía estado `activeTab`; la app se separa en gate de auth (`App`) + shell autenticado (`DashboardShell`, dentro de `App.jsx`). La navegación es un **Sidebar** colapsable, no el Header
 
@@ -24,6 +24,7 @@ src/
 ├── components/
 │   ├── Icon.jsx                  ← Set de iconos SVG (name → path)
 │   ├── Toast.jsx                 ← Toast global del DS (con useToast; patrón .toast en index.css)
+│   ├── SortHeader.jsx            ← Encabezado de columna ordenable (patrón .sortable en index.css)
 │   └── layout/
 │       ├── Sidebar.jsx           ← Navegación principal: colapsable + drawer móvil + badge soporte + toggle tema
 │       └── Header.jsx            ← Barra superior: stats del día + hamburguesa (móvil)
@@ -36,8 +37,12 @@ src/
 │   ├── support/                  ← Chat de soporte
 │   │   └── SupportPanel · ConversationItem · ChatBubble · ImageLightbox
 │   ├── statistics/               ← StatisticsPage + KPIs + ~10 componentes Recharts
+│   ├── history/                  ← HistoryPage + OrderDetailModal (pedidos por rango)
 │   ├── clients/                  ← ClientsPage + ClientModal
-│   └── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
+│   ├── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
+│   ├── menu/                     ← MenuPage + ProductModal (disponibilidad del catálogo)
+│   ├── reviews/                  ← ReviewsPage + SatisfactionSummary + ReviewCard + ReplyModal + Stars + sentiment.js
+│   └── settings/                 ← SettingsPage (edita info_negocio — lo que responde el bot)
 │
 ├── hooks/
 │   ├── useAuth.jsx               ← AuthProvider + useAuth (sesión Supabase, signIn/signOut)
@@ -47,32 +52,37 @@ src/
 │   ├── useSupportConversations.js← Conversaciones + mensajes del panel de soporte
 │   ├── useClients.js             ← Clientes + realtime UPDATE + saveClient
 │   ├── useReservations.js        ← Reservas + realtime * + create/deleteReservation
+│   ├── useMenu.js                ← Catálogo `menu` + realtime * + setDisponible (optimista)
+│   ├── useReviews.js             ← `feedback` + clientes/pedidos embebidos + realtime * (canal feedback-rt)
+│   ├── useBusinessInfo.js        ← `info_negocio` clave/valor + saveInfo (sin realtime, adrede)
+│   ├── useOrderHistory.js        ← Pedidos server-side (rango+filtros+orden+página) + realtime *
 │   ├── useTheme.js               ← Toggle dark/light (localStorage)
 │   ├── useToast.js               ← Estado + timer del toast global (con components/Toast.jsx)
 │   └── useMediaQuery.js          ← Media queries (sidebar colapsado / móvil)
 │
 ├── utils/
-│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*
-│   ├── formatters.js             ← timeAgoShort, formatPrice, formatPriceShort
+│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*, CATEGORY_LABELS/categoryLabel, ORDER_STATES
+│   ├── formatters.js             ← timeAgoShort, timeAgo, formatPrice, formatPriceShort, formatPhone
+│   ├── exportHistory.js          ← Export del historial: CSV (BOM) + Excel con formato (exceljs lazy)
 │   ├── dateRanges.js             ← parseDb + rangos con día de negocio Colombia (UTC-5)
 │   ├── statsAggregations.js      ← Agregaciones puras de Estadísticas
 │   └── audio.js                  ← playNotification + playDeleted (Web Audio)
 │
 ├── lib/
 │   ├── supabase.js               ← Cliente Supabase (throws si faltan las VITE_SUPABASE_*)
-│   └── whatsapp.js               ← sendWhatsAppMessage (Meta Graph API, VITE_WA_*)
+│   └── whatsapp.js               ← sendWhatsAppMessage (texto) + sendWhatsAppTemplate (plantillas, fuera de 24h)
 │
 └── styles/
     ├── index.css                 ← Tokens CSS, base, animaciones, layout, tema
-    └── {auth,orders,support,statistics,clients,reservations}.less
+    └── {auth,orders,support,statistics,clients,reservations,menu,settings,history}.less
 ```
 
 ## Layout y navegación
 
 `DashboardShell` (dentro de `App.jsx`) arma `Sidebar` + `Header` + la tab activa:
 
-- **`Sidebar`** — nav principal (`NAV_ITEMS`: Pedidos / Soporte / Estadísticas / Clientes /
-  Reservas), badge de soporte, toggle de tema en el pie. `collapsed` (solo iconos) en tablet
+- **`Sidebar`** — nav principal (`NAV_ITEMS`: Pedidos / Soporte / Estadísticas / Historial /
+  Clientes / Reservas / Menú / Reseñas / Configuración), badge de soporte, toggle de tema en el pie. `collapsed` (solo iconos) en tablet
   (≤1024px) y `mobile-open` (cajón con backdrop) en móvil (≤768px), vía `useMediaQuery`.
 - **`Header`** — muestra `stats` del día y `lastUpdate`; en móvil enseña la hamburguesa que
   abre el cajón. Ya **no** contiene los tabs (migraron al Sidebar).
@@ -139,7 +149,7 @@ src/
 | `HourlyHeatmap` | Heatmap 7×24 (día × hora Colombia) con intensidad amber |
 | `CategoryRevenue` | Donut de ingresos por categoría (top 5 + "otras") |
 | `DeliveryStats` | Tiempo promedio de entrega (total / domicilio / recoger) + distribución |
-| `RiskClients` | Clientes recurrentes (3+ pedidos) sin pedir hace 30+ días, con link wa.me |
+| `RiskClients` | Clientes recurrentes (3+ pedidos) sin pedir hace 30+ días; botón **Promo** → `PromoModal` envía la plantilla `reactivacion_cliente` (Marketing, cupón editable). Están fuera de 24h → siempre plantilla |
 | `CancellationStats` | Tasa + motivos de cancelación, calificación promedio de `feedback` |
 | `ChartTheme` | Tooltip custom + props de ejes/grid tematizados con CSS vars (dark/light) |
 
@@ -187,6 +197,170 @@ src/
 - `cliente_id`, `nombre_cliente` y `telefono` salen del cliente seleccionado (desnormalizados en `reservas`); valida que la fecha/hora no haya pasado
 - Vistas de tiempo limitadas a 10:00–23:30, scroll inicial a las 17:00
 
+### 6. Menú (Disponibilidad del catálogo)
+
+**Vista:** Tabla de todos los productos de la tabla `menu` con toolbar de búsqueda y filtros
+**Datos:** `useMenu` hook — fetch completo de `menu` + realtime `*` (canal `menu-rt`)
+**Archivos:** `src/pages/menu/` + `src/hooks/useMenu.js` + `src/styles/menu.less`
+
+**Propósito:** la tab **NO crea, edita ni elimina productos** — solo cambia `menu.disponible`
+(true/false). Es lo que el bot consume: `buscar_menu`/`buscar_menu_categoria` filtran con
+`solo_disponibles=true`, así que marcar un producto como agotado lo saca del menú de WhatsApp
+al instante (y de `MenuPicker` en los modales de pedido, que también filtra `disponible=true`).
+
+**Funcionalidad:**
+- Buscar por nombre, descripción, categoría o `producto_id` (un solo input)
+- Filtros: categoría (dropdown dinámico con `CATEGORY_LABELS` de `constants.js`, movidas ahí
+  desde `MenuPicker`) y estado (Todos / Disponibles / Agotados); contador con "N agotados" en rojo
+- Ordenar por columna (`<SortHeader>` compartido): Producto, Categoría (default, A→Z por label),
+  Precio (mínimo entre tamaños) y Estado (asc = agotados primero); desempate estable por nombre
+- Columnas: Producto (+variante si no es Estándar) · Categoría · Precio ("Desde $X" si hay
+  varios tamaños, vía `getProductOptions` de `MenuPicker`) · Descripción (ellipsis + title) ·
+  Estado (**switch** `.switch` + badge verde/rojo `stock-label`) · botón "Ver"
+- El switch aplica un **update optimista** (`setDisponible`): la UI responde al instante y se
+  revierte con toast `error` si la BD falla; éxito confirma con toast `success`
+- "Ver" abre `ProductModal` (solo lectura): bloque de disponibilidad (mismo switch), precios
+  por tamaño y descripción completa. El producto se deriva de la lista por id, así que el
+  realtime mantiene el modal fresco
+- Paginación client-side (`.table-pagination`, mismo patrón que Clientes)
+- Responsive: se ocultan descripción (≤980px), precio (≤680px) y categoría (≤500px)
+
+### 7. Historial (pedidos por rango)
+
+**Vista:** Tabla de pedidos de un rango de fechas con detalle completo por pedido
+**Datos:** `useOrderHistory` hook — **100% server-side** (paginación `range()` + `count:
+exact`, filtros y orden como parámetros de la query) + realtime `*` (canal
+`pedidos-historial-rt`, los pedidos de hoy cambian de estado)
+**Archivos:** `src/pages/history/` + `src/hooks/useOrderHistory.js` + `src/styles/history.less`
+
+**Propósito:** control exacto de todo lo pedido — qué se completó, cuándo, en cuánto tiempo y
+con qué detalle. Las acciones operativas del día viven en el kanban; el historial solo permite
+**corregir pedidos colgados** en un estado intermedio (ver abajo). A diferencia de
+Clientes/Menú (datasets chicos en memoria), el historial crece sin límite: **nunca se baja
+más de una página** a memoria.
+
+**Funcionalidad:**
+- Periodo con los mismos presets Colombia-aware de Estadísticas (`PRESETS`/`getRange` de
+  `dateRanges.js`): Hoy / 7d / 30d / 90d / Este mes / Personalizado (dos date inputs)
+- Filtros **server-side**: estado (`ORDER_STATES` en constants.js), tipo (domicilio/recoger)
+  y búsqueda con debounce 300ms por # de pedido (`ilike`), teléfono (dígitos) y nombre de
+  cliente (paso previo: `clientes.nombre ilike` → `cliente_id in (...)`, porque el nombre
+  vive en otra tabla). El término se sanea (`,()%`) para no romper la sintaxis del `or()`
+- Línea de resumen sobre **todo el conjunto filtrado** (no solo la página) vía RPC
+  `historial_resumen` (mismos filtros; ingresos excluyen cancelados, criterio del header)
+- Orden server-side (`<SortHeader>`): Fecha (default, más reciente primero) y Total, con
+  desempate por fecha. Estado no es ordenable (el orden alfabético del servidor no sigue el
+  ciclo de vida; el filtro de estado cubre ese caso); paginación `.table-pagination` sobre
+  `totalCount`, con clamp de página si el total se achica en vivo (PGRST103)
+- Columnas: #Pedido · Fecha (dd MMM · h:mm, hora Colombia vía `timeZone: America/Bogota`) ·
+  Cliente (nombre + teléfono) · Tipo · Total · Estado (badge `state-badge` por ciclo de vida:
+  amber/purple/blue/green/red) · "Ver"
+- **Exportar** (botón secondary con menú en la toolbar): baja **todo el conjunto filtrado**
+  (no solo la página; cap 10.000 con aviso) vía `fetchAllFiltered` (reusa los mismos
+  filtros server-side) y genera con `src/utils/exportHistory.js`: **CSV** plano (coma,
+  BOM UTF-8 para que Excel respete tildes, fechas `YYYY-MM-DD HH:mm` hora Colombia,
+  productos aplanados "2× Pizza (Mediana) | …") o **Excel** con formato (título, periodo,
+  línea de resumen, encabezado naranja de marca, filas alternadas, total como moneda,
+  estados coloreados, autofiltro, panel congelado). `exceljs` se carga con **dynamic
+  import** → chunk aparte (~940KB) que solo se descarga al exportar
+- **Corrección de estado desde `OrderDetailModal`** (para pedidos que quedaron en
+  pendiente/en_cocina/en_camino/recoger y no se movieron a tiempo): "Marcar entregado"
+  (primary) y "Cancelar pedido" (danger, motivo obligatorio). Confirmación inline en el
+  footer (patrón de ClientModal) que **advierte la notificación automática**: el trigger de
+  BD `notificar-estado-pedido` dispara el webhook de n8n en cada UPDATE de `pedidos` → el
+  cliente SIEMPRE recibe el WhatsApp del nuevo estado (y el motivo se interpola en el
+  mensaje de cancelación — por eso es obligatorio). `fecha_entrega` NO se escribe desde el
+  cliente: la fija el trigger `set_fecha_entrega`. Estados finales (entregado/cancelado) no
+  muestran acciones. Cancelar replica la semántica del kanban (`estado_pago: 'rechazado'` +
+  `motivo_rechazo`). Éxito → toast; el modal queda abierto mostrando el estado nuevo
+- `OrderDetailModal` (detalle): cliente con link wa.me, tipo, método de pago (+ badge de
+  `estado_pago` si es Transferencia), dirección de entrega, repartidor, fecha de entrega con
+  duración en minutos (criterio ≤3h), link al comprobante, items con cantidad/variante/notas
+  por línea, recargo de domicilio (diferencia total − items), total, notas del cliente y
+  motivo de cancelación (bloque rojo)
+- Responsive: se ocultan tipo (≤940px), total (≤720px) y fecha (≤540px)
+
+### 8. Configuración (info del negocio)
+
+**Vista:** Formulario agrupado en cards por categoría (Identidad / Contacto y ubicación /
+Horarios / Operación y domicilios)
+**Datos:** `useBusinessInfo` hook — fetch completo de `info_negocio` (clave/valor/categoria)
+**Archivos:** `src/pages/settings/` + `src/hooks/useBusinessInfo.js` + `src/styles/settings.less`
+
+**Propósito:** editar los **valores** de `info_negocio` — la tabla que el bot lee completa vía
+la tool `info_local` (Agente Soporte) para responder horarios, dirección, pagos, zonas, etc.
+Lo que se guarda aquí es literalmente lo que el bot dicta por WhatsApp. No se crean ni
+eliminan claves desde la UI (la estructura la define la BD; ver `docs/database/schema.md`).
+
+**Funcionalidad:**
+- Registro de campos (`SECTIONS` en `SettingsPage`): orden, agrupación, label, help,
+  placeholder y si es multilínea (textarea: descripción, datos de transferencia, política de
+  cancelación). Claves de la BD que no estén en el registro caen en una card **"Otros"** con
+  render genérico — nada queda invisible
+- Borrador local (`draft`) contra valores originales: contador de "N cambios sin guardar",
+  botón **Descartar** (ghost) y **Guardar cambios** (primary, deshabilitado sin cambios)
+- `saveInfo(changes)` actualiza **solo** las claves que cambiaron (un UPDATE por clave) y
+  refetchea; toast success/error
+- **Sin realtime, adrede:** es un formulario — un evento entrante pisaría lo que el admin
+  está escribiendo. Si dos admins editan a la vez, gana el último guardado
+- Campos con el patrón global `.field`; cards planas en **dos stacks balanceados** (DS §7):
+  izquierda Identidad + Contacto (+ "Otros"), derecha Horarios + Operación; la última card
+  de cada stack crece (`flex: 1`) para cerrar parejo abajo. 1 columna en ≤880px
+
+### 9. Reseñas (satisfacción + recuperación)
+
+**Vista:** Panel de satisfacción arriba (promedio, distribución 5→1, tarjetas pastel de sentimiento) + feed de tarjetas de reseña
+**Datos:** `useReviews` hook — fetch de `feedback` con `clientes(nombre,telefono)` y `pedidos(total,tipo_pedido)` embebidos + realtime `*` (canal `feedback-rt`)
+**Archivos:** `src/pages/reviews/` + `src/hooks/useReviews.js` + `src/styles/reviews.less`
+
+**Propósito (doble):** la tabla `feedback` la escribe el bot (workflow n8n **Sub — Feedback Pendiente**):
+tras un pedido entregado pide nota 1–5 y **solo si es ≤3 pide comentario** (las de 4–5 se invitan
+a dejar reseña en Google, nodo `¿Nota > 3?`). Por eso los comentarios que llegan son casi siempre
+negativos/neutros → esta tab **no es un muro de elogios, es la cola de clientes a recuperar**.
+Dos trabajos: (1) **pulso** — promedio, distribución y sentimiento sobre todas las notas; (2)
+**recuperación** — cada reseña con su CTA "Responder por WhatsApp" (`wa.me` con texto prellenado
+según el tono).
+
+**Funcionalidad:**
+- `SatisfactionSummary`: nota promedio grande + `Stars`, distribución de barras 5→1 en **tono pastel**
+  (verde 5-4 / ámbar 3 / rojo 2-1, vía `color-mix` con la superficie), **tarjetas pastel de
+  sentimiento** (positivas/neutras/negativas con fondo `-dim`, conteo y %), y "≈N invitadas a Google"
+  (las de nota ≥4). Todo agregado en cliente. Rediseñado a pastel (2026-07-23) por feedback del usuario
+  (el termómetro segmentado anterior se veía genérico)
+- Feed en grid de `ReviewCard`: avatar con inicial, nombre, `Stars`, "hace X" (tooltip con fecha
+  Colombia), **teléfono visible** (`formatPhone`), badge de sentimiento, comentario (o nota sin
+  comentario), pedido enlazado con total. Borde izquierdo de color por sentimiento. **Solo las
+  negativas/neutras traen botón Responder** (abre `ReplyModal`); las **positivas** muestran "Invitado
+  a Google" (el bot ya las manda a la reseña pública, no se contactan desde aquí)
+- **Las positivas nunca muestran comentario:** el bot solo pide comentario para nota ≤3 (las ≥4 van a
+  Google sin comentario — verificado en n8n `Sub — Feedback Pendiente`). La tarjeta de una positiva
+  omite el cuerpo del comentario y deja solo el label "Invitado a Google". (Datos viejos de prueba con
+  comentario en positivas se limpiaron en BD el 2026-07-23.)
+- **Estado resuelta:** al contactar al cliente se marca `feedback.resuelta_at` (`marcarResuelta`); la
+  tarjeta pasa a **"Resuelta"** (check verde, atenuada) y **ya no se puede volver a responder**
+- **Orden por prioridad:** el feed ordena **negativas → neutras → positivas** y, dentro de cada grupo,
+  **pendientes antes que resueltas** (sort estable → conserva fecha desc en empates). Los chips de
+  filtro también arrancan con **Negativas** primero, "Todas" al final. Objetivo: que el operador vea
+  y resuelva primero los casos negativos
+- **`ReplyModal`** — contactar por una reseña negativa/neutra, con un flujo **a la fija**: envía
+  **siempre la plantilla aprobada `seguimiento_resena`** (`sendWhatsAppTemplate`, params nombre +
+  pedido_id) — **no texto libre**. Razón: fuera de la ventana de 24h la Cloud API **acepta** el texto
+  libre (responde 200) pero **no lo entrega** (el fallo llega async por webhook) → daba "enviado" en
+  falso; la plantilla es la única vía confiable (y falla sincrónicamente si algo está mal). Muestra
+  una **vista previa** del mensaje y, al enviar, hace **handoff automático** (`modo=humano`) para que
+  la respuesta del cliente caiga en Soporte. Sin teléfono → no se puede contactar. (Ya no hay textarea,
+  ni botón de ticket manual, ni `wa.me`: se simplificó por feedback del usuario.)
+- Filtros: segmented por sentimiento (Todas/Positivas/Neutras/Negativas con conteos), búsqueda
+  (cliente/comentario/pedido) y chip "Con comentario". Todo client-side (volumen acotado)
+- **Feed por lotes ("Mostrar más", `BATCH = 24`)** en vez de paginación numerada: encaja con el
+  grid de cards y el resumen sigue agregando sobre TODO el conjunto. `visible` se resetea al cambiar
+  cualquier filtro. `useReviews` cachea hasta 2000 filas; superado eso, migrar a server-side (Historial)
+- `sentiment.js`: `sentimentOf(nota)` (≥4 pos, 3 neu, ≤2 neg) + `SENTIMENT_META`, compartido por
+  summary, card y page
+- `Stars`: 5 estrellas, las llenas con `fill: currentColor` (el estilo inline gana al `fill="none"`
+  del `<svg>` de Icon). Reutilizable
+- Empty state con explicación del flujo cuando no hay reseñas
+
 ## Hooks — responsabilidades
 
 | Hook | Qué hace | Devuelve |
@@ -199,6 +373,10 @@ src/
 | `useStatistics` | Filtros de periodo, fetch pedidos/feedback/menu del rango + periodo anterior, agregados memoizados | `loading, error, aggregates, clients, categorias, range, filters, setters` |
 | `useClients` | Fetch todos los clientes, realtime UPDATE, crear/editar vía `saveClient`, eliminar vía `deleteClient` | `clients, loading, error, saveClient, deleteClient` |
 | `useReservations` | Fetch todas las reservas, realtime `*`, crear (con lookup de cliente por teléfono) y eliminar | `reservations, loading, error, createReservation, deleteReservation` |
+| `useMenu` | Fetch todo el catálogo `menu`, realtime `*`, cambia `disponible` con update optimista (rollback si falla) | `products, loading, error, setDisponible` |
+| `useReviews` | Fetch `feedback` con `clientes`/`pedidos` embebidos, realtime `*`, normaliza a filas planas; handoff a Soporte (`modo=humano`) | `reviews, loading, error, refetch, handoffToSupport` |
+| `useBusinessInfo` | Fetch `info_negocio`, guarda solo claves cambiadas (sin realtime — es un formulario) | `info, loading, error, saveInfo` |
+| `useOrderHistory` | Página de pedidos server-side (rango + filtros + orden + paginación como parámetros; resumen vía RPC `historial_resumen`), realtime `*`, correcciones de estado, export del conjunto filtrado | `orders, totalCount, summary, loading, error, range, marcarEntregado, cancelarPedido, fetchAllFiltered` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 
 ## Variables de entorno (`.env.local`, git-ignored — todas `VITE_`)
@@ -212,7 +390,9 @@ VITE_WA_API_VERSION=v25.0         # opcional (default v25.0)
 ```
 
 `src/lib/supabase.js` lanza al arrancar si faltan las `VITE_SUPABASE_*`. El envío de WhatsApp
-vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage`, Meta Graph API) — ya **no** hardcodeado en
+vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage` texto + `sendWhatsAppTemplate` plantillas
+aprobadas para escribir fuera de la ventana de 24h; nombres/idiomas en `WA_TEMPLATES` de
+constants.js) — ya **no** hardcodeado en
 `SupportPanel`. Gotcha: `VITE_WA_ACCESS_TOKEN` se empaqueta en el cliente (ver `CLAUDE.md`).
 
 ## Realtime subscriptions
@@ -225,6 +405,9 @@ vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage`, Meta Graph API) — ya **n
 | `soporte-clientes-rt` | clientes | UPDATE | `SupportPanel` → refetch convos |
 | `clientes-page-rt` | clientes | UPDATE | `useClients` → refetch lista |
 | `reservas-rt` | reservas | * | `useReservations` → refetch lista |
+| `menu-rt` | menu | * | `useMenu` → refetch catálogo |
+| `pedidos-historial-rt` | pedidos | * | `useOrderHistory` → refetch rango |
+| `feedback-rt` | feedback | * | `useReviews` → refetch reseñas |
 
 ## Tema
 

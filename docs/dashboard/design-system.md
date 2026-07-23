@@ -92,6 +92,28 @@ por tema para el popup nativo. Los overrides por página **solo ajustan tamaño*
 (font-size/padding). ⚠️ Nunca usar el shorthand `background:` sobre un select — borra
 el chevron (usar `background-color`).
 
+**Switch (toggle binario):** patrón `.switch` en `index.css` — un `<button
+role="switch" aria-checked={bool}>` sin contenido; el CSS pinta track + thumb desde
+`aria-checked`. ON = verde (es **estado**, no acción → no usa el ámbar), OFF = neutro
+(`--bg-inset` + thumb muted). Focus ring ámbar como los inputs. Para mutaciones
+directas desde una fila (sin modal) se acompaña de update optimista + toast de
+error si la BD falla. Uso actual: disponibilidad del menú (tab Menú, fila y modal).
+
+## 4b. Tablas (listados)
+
+Patrones globales en `index.css`, compartidos por Clientes y Menú:
+
+- **Encabezado ordenable:** componente `<SortHeader>` (`src/components/SortHeader.jsx`)
+  + clase `.sortable` — el icono ⇅ atenuado siempre visible señala que la columna es
+  clickeable; la activa muestra ↑/↓. Misma columna re-clickeada invierte el orden;
+  desempate estable por nombre.
+- **Paginación:** `.table-pagination` (selector de filas por página 25/50/100, rango
+  "X–Y de N" en `tabular-nums`, nav ‹ ›). Client-side: los datos ya viven en memoria
+  en el hook de la tab.
+- Filas: grid con `gap: 12px`, head en `--bg-inset` uppercase `--fs-caption`, hover
+  `--bg-card-hover`, columnas menos críticas se ocultan por breakpoints
+  (`display: none` por `nth-child`).
+
 ## 5. Tipografía
 
 - **Todo** en Plus Jakarta Sans. Cifras (precios, teléfonos, fechas, KPIs, rangos
@@ -142,6 +164,20 @@ que cierra un modal) confirma con un toast. Patrón global desde 2026-07-22
 - **Sonido:** solo en eventos que ocurren sin interacción (pedido nuevo → `playNotification`)
   o destructivos irreversibles (cliente eliminado → `playDeleted`, en `src/utils/audio.js`).
   No sonar en saves rutinarios.
+
+## 8b. Estados de carga (`.spinner` / `.loading-state` en `index.css`)
+
+Promovidos desde el splash de auth al hacer server-side el historial (2026-07-23):
+
+- **`.loading-state`** — carga inicial de una vista: spinner 30px + texto muted centrados
+  (`<div class="loading-state"><div class="spinner" />Cargando…</div>`). Es el reemplazo
+  estándar de los "Cargando…" de solo texto.
+- **`.spinner.sm`** (16px) — refetch con datos ya visibles (paginación/filtros server-side):
+  el contenido se atenúa (`opacity: 0.55` + `pointer-events: none`) y el spinner chico flota
+  encima en un overlay absoluto (ver `.hist-table-wrap.loading` en `history.less`). Nunca
+  reemplazar contenido visible por un spinner — atenuar y superponer.
+- El spinner gira en `--amber` sobre `--border` (marca, no estado). No inventar variantes
+  de color por página.
 
 ## 9. Qué NO hacer (resumen del feedback origen)
 

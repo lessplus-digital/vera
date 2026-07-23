@@ -12,7 +12,7 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-026**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-027**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
@@ -20,7 +20,21 @@
 
 ## Abiertos
 
-*(ninguno — resueltos BUG-022/024/025 el 2026-07-22, ver changelog)*
+### BUG-026 · 🟡 Media · 🔴 Abierto — `info_negocio` contiene datos de plantilla de otro negocio
+
+- **Componente:** BD (`info_negocio`) → bot (tool `info_local`, Agente Soporte)
+- **Síntoma:** el bot responde información de **"La Pizzería Don Carlo"** cuando le preguntan
+  por el local: teléfonos +58 (Venezuela), "Banco Venezuela" en `datos_transferencia`,
+  "municipio Sucre" en `zona_delivery`, instagram `@doncarlопizzeria` (¡con caracteres
+  cirílicos!). Son valores semilla de una plantilla, nunca se reemplazaron con los datos
+  reales de Vera Pizzería.
+- **Causa (verificada vía MCP 2026-07-23):** la tabla se pobló con data de ejemplo y ningún
+  flujo la actualizaba — no existía UI para editarla.
+- **Fix aplicado parcialmente:** la tab **Configuración** del dashboard (2026-07-23) ya
+  permite editarla. **Pendiente (requiere al operador):** llenar los valores reales de Vera
+  Pizzería en la tab — en especial `direccion`, `telefono_principal`, `whatsapp`, `instagram`,
+  `datos_transferencia`, `zona_delivery`, `horario_*`, `link_menu` y `costo_delivery` (los
+  dos últimos se crearon vacíos). Cerrar este bug cuando la tabla tenga la data real.
 
 ---
 

@@ -88,7 +88,9 @@
 
 ### `feedback` — calificaciones (1 fila · RLS ✅)
 `feedback_id` 🔑 (`FB-`), `cliente_id` (FK, **ON DELETE CASCADE**), `pedido_id` (FK, **unique**,
-**ON DELETE CASCADE**), `fecha`, `calificacion_general` smallint (**check 1–5**), `comentario`.
+**ON DELETE CASCADE**), `fecha`, `calificacion_general` smallint (**check 1–5**), `comentario`,
+`resuelta_at` timestamptz (NULL = pendiente; se setea al contactar al cliente desde la tab Reseñas —
+migración `feedback_add_resuelta_at`, 2026-07-23; solo aplica a negativas/neutras).
 
 > **Borrado en cascada (migración `cascade_delete_cliente`, 2026-07-22):** eliminar un cliente
 > borra sus `pedidos` (→ `detalle_pedidos`), `reservas` y `feedback`. Es una acción destructiva
@@ -104,8 +106,22 @@
 `id` uuid 🔑, `telefono`, `origen` (check `cliente`/`admin`/`sistema`), `mensaje`,
 `created_at`, `tipo_contenido` (`texto`/`imagen`), `imagen_url`.
 
-### `info_negocio` — config clave/valor (18 filas · PK `clave` · RLS ✅)
-`clave` 🔑, `valor`, `categoria`. Ej.: `horario_semana`, `telefono_principal`, `datos_transferencia`.
+### `info_negocio` — config clave/valor (17 filas · PK `clave` · RLS ✅)
+`clave` 🔑, `valor`, `categoria`. El bot la lee completa vía la tool `info_local` (getAll, sin
+filtros por clave) y el dashboard la edita en la **tab Configuración**. Reestructurada con la
+migración `info_negocio_single_sede_y_claves_dashboard` (2026-07-23): al haber **una sola
+sede**, `sede_1_direccion` → `direccion` (categoria `contacto`) y `sede_1_nombre` se eliminó;
+se agregaron `link_menu` (contacto) y `costo_delivery` (operacion), creadas vacías.
+
+Claves por `categoria`:
+- `identidad`: `nombre_negocio`, `slogan`, `descripcion_general`
+- `contacto`: `direccion`, `telefono_principal`, `whatsapp`, `instagram`, `link_menu`
+- `horarios`: `horario_semana`, `horario_finsemana`, `horario_feriados`
+- `operacion`: `metodos_pago`, `datos_transferencia`, `zona_delivery`, `costo_delivery`,
+  `tiempo_entrega_delivery`, `politica_cancelacion`
+
+> ⚠️ Los **valores** actuales son de plantilla ("La Pizzería Don Carlo", teléfonos +58) —
+> ver BUG-026: el operador debe llenar la data real desde la tab Configuración.
 
 ### `n8n_chat_histories` — memoria conversacional de los agentes (RLS ✅)
 `id` 🔑, `session_id` (= telefono), `message` jsonb, `created_at`.
@@ -147,6 +163,7 @@ WHERE pedido_id = NEW.pedido_id;
 | `buscar_menu_categoria` | `(cat text, solo_disponibles bool=true)` | Lista productos de una categoría. |
 | `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio**, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. |
 | `generar_reserva_id` | `() → text` | Default de `reservas.reserva_id`. |
+| `historial_resumen` | `(p_from, p_to timestamp, p_estado, p_tipo, p_search, p_search_digits text, p_cliente_ids text[]) → jsonb` | Agregados del historial (total/entregados/cancelados/ingresos sin cancelados) con los mismos filtros que la lista paginada de la tab Historial. **SECURITY INVOKER** (respeta RLS: sin sesión cuenta 0). Migración `historial_resumen_rpc_e_indice_fecha` (2026-07-23), que también creó el índice `idx_pedidos_fecha_pedido`. |
 | `normalizar_texto` | `(text) → text` | unaccent + lower (base de `buscar_menu`). |
 | `limpiar_carritos_abandonados` / `limpiar_historial_chat` | `()` | Housekeeping. |
 
@@ -196,5 +213,8 @@ público; los usuarios del panel los crea el operador).
 ## Realtime
 
 Publicación `supabase_realtime` — emite INSERT/UPDATE/DELETE de:
-**`pedidos`, `detalle_pedidos`, `mensajes_soporte`, `reservas`, `clientes`**
-(`clientes` se agregó al resolver BUG-014, verificado vía MCP 2026-07-17).
+**`pedidos`, `detalle_pedidos`, `mensajes_soporte`, `reservas`, `clientes`, `menu`, `feedback`**
+(`clientes` se agregó al resolver BUG-014, verificado vía MCP 2026-07-17; `menu` se agregó
+con la migración `menu_add_to_realtime_publication` al crear la tab Menú del dashboard,
+2026-07-22; `feedback` con `feedback_add_to_realtime_publication` al crear la tab Reseñas,
+2026-07-23).

@@ -15,6 +15,183 @@
 
 ---
 
+### 2026-07-23 — Reseñas: estado "resuelta" + orden por prioridad (negativas primero)
+
+**Contexto:** Tras contactar a un cliente por una reseña, no había forma de saber que ya se atendió —
+se podía responder de nuevo. Y el feed no priorizaba lo accionable.
+**Decisión:** (1) Nueva columna `feedback.resuelta_at` (migración `feedback_add_resuelta_at`): al
+enviar el seguimiento desde `ReplyModal` se marca resuelta (`marcarResuelta`); la tarjeta muestra
+**"Resuelta"** (check verde, atenuada) y desaparece el botón Responder — no se puede volver a
+responder. (2) El feed ordena **negativas → neutras → positivas** y, dentro de cada grupo,
+**pendientes antes que resueltas** (sort estable conserva fecha desc). Los chips de filtro también
+arrancan con **Negativas** y dejan "Todas" al final. `feedback` ya tenía `auth_full_access` (ALL) para
+`authenticated`, así que el UPDATE desde el dashboard no necesitó política nueva.
+**Impacto:** `hooks/useReviews.js` (`resueltaAt` + `marcarResuelta`), `pages/reviews/ReviewCard.jsx`
+(badge + sin botón), `ReplyModal.jsx` (marca al enviar), `ReviewsPage.jsx` (reorden chips + sort),
+`styles/reviews.less`, `docs/database/schema.md`.
+
+---
+
+### 2026-07-23 — Plantillas de WhatsApp: escribir fuera de la ventana de 24h
+
+**Contexto:** El dashboard solo mandaba texto libre (`type: text`), que Meta **solo entrega dentro de
+la ventana de servicio de 24h** desde el último mensaje del cliente. Fuera de ella (reseñas viejas,
+clientes inactivos) el envío falla con **131047**. La única vía es una **plantilla aprobada**
+(`type: template`).
+**Decisión:** El operador creó 3 plantillas en Meta (`seguimiento_resena` Utility ·
+`reactivacion_cliente` Marketing · `recordatorio_reserva` Utility). Nuevo `sendWhatsAppTemplate` en
+`lib/whatsapp.js`; nombres/idiomas centralizados en `WA_TEMPLATES` (constants.js). Flujo por caso:
+- **Reseñas** (`ReplyModal`): texto libre best-effort → si falla con 131047, se revela la plantilla
+  `seguimiento_resena`; al enviarla se hace **handoff automático** (`modo=humano`) para que la
+  respuesta caiga en Soporte.
+- **Clientes inactivos** (`RiskClients` en Estadísticas): botón **Promo** → `PromoModal` envía
+  `reactivacion_cliente` con cupón editable (siempre fuera de 24h → siempre plantilla). Envío
+  individual; el masivo/bulk queda para n8n (límites de tier + token).
+- **No se tocó n8n:** el handoff aprovecha el enrutado a Soporte existente; en reactivación, la
+  respuesta ("Quiero pedir") la atiende el bot en modo bot.
+**Pendiente (elegido para después):** `recordatorio_reserva` requiere un **cron nuevo en n8n**
+(diario → reservas de mañana → enviar → manejar Confirmar/Cancelar). Ver backlog.
+**Impacto:** `lib/whatsapp.js` (`sendWhatsAppTemplate`), `utils/constants.js` (`WA_TEMPLATES`),
+`pages/reviews/ReplyModal.jsx`, `pages/statistics/PromoModal.jsx` + `RiskClients.jsx`,
+`styles/statistics.less`, `styles/reviews.less`.
+**Corrección (misma fecha):** el primer diseño de reseñas intentaba texto libre y solo mostraba la
+plantilla si fallaba con 131047. Pero **la Cloud API acepta (200) el texto libre fuera de la ventana
+y no lo entrega** (el fallo llega async por webhook) → daba "enviado" en falso. Se simplificó el
+`ReplyModal`: **siempre plantilla** `seguimiento_resena` + handoff automático, con vista previa; sin
+textarea/`wa.me`/ticket manual. El botón Responder queda **solo en negativas/neutras**; las positivas
+muestran "Invitado a Google" (el bot las manda a la reseña pública). Además se corrigió el **link de
+Google** en el bot (n8n `Sub — Feedback Pendiente`, nodo "Invitar reseña Google": era
+`www.lessplusdigital.com`, ahora el Google Maps real de La Vera Pizzería).
+
+---
+
+### 2026-07-23 — Nueva tab Reseñas: satisfacción + recuperación de clientes
+
+**Contexto:** La tabla `feedback` solo se usaba para el promedio en Estadísticas. Analizando el
+flujo del bot (workflow n8n **Sub — Feedback Pendiente**, verificado vía MCP) se ve que hace
+*review gating*: tras un pedido entregado pide nota 1–5 y **solo si es ≤3 pide comentario**; las de
+4–5 se invitan a dejar reseña en Google (nodo `¿Nota > 3?`). Es decir, los comentarios que llegan a
+la BD son casi siempre negativos/neutros → `feedback` es en la práctica la cola de clientes a
+recuperar, no un muro de elogios.
+**Decisión:** Tab **Reseñas** (Sidebar, entre Menú y Configuración) con doble propósito: (1) un
+panel de satisfacción (promedio + `Stars`, distribución 5→1, termómetro de sentimiento verde/ámbar/
+rojo, "≈N invitadas a Google") y (2) un feed de tarjetas con CTA **Responder por WhatsApp** (`wa.me`
++ `?text=` prellenado según el tono, sin hardcodear el nombre del negocio). Filtros por sentimiento
+(con conteos), búsqueda y chip "con comentario"; todo client-side (volumen acotado, subconjunto de
+pedidos que calificaron). `sentimentOf` (≥4 pos / 3 neu / ≤2 neg) alineado con la lógica del bot.
+Fiel al design system: superficies planas, tokens de estado, una tipografía, `.tnum`; sin glass ni
+degradados. `feedback` añadida a la publicación realtime (migración
+`feedback_add_to_realtime_publication`) para que las reseñas nuevas aparezcan sin recargar.
+**Impacto:** `src/pages/reviews/` (ReviewsPage, SatisfactionSummary, ReviewCard, Stars, sentiment.js),
+`src/hooks/useReviews.js`, `src/styles/reviews.less`, `timeAgo` en `utils/formatters.js`, wiring en
+`App.jsx` / `Sidebar.jsx` (icono `star`) / `Header.jsx` / `main.jsx`.
+**Iteración (misma fecha): respuesta + handoff desde un modal.** El feed pagina por lotes
+("Mostrar más", `BATCH = 24`; el resumen sigue sobre el total). Cada tarjeta muestra el **teléfono**
+del cliente (`formatPhone`) y un botón **Responder** que abre `ReplyModal` — el hub de acción de la
+reseña: textarea con texto sugerido por tono, **Enviar** por WhatsApp (best-effort vía
+`sendWhatsAppMessage`) y **Abrir ticket de soporte** (handoff `clientes.modo = 'humano'` → tab Soporte,
+reversible). El envío **respeta la ventana de 24h de Meta**: el texto libre solo se entrega si el
+cliente escribió en las últimas 24h; fuera de ella la Graph API falla (131047), el modal lo explica y
+queda **Abrir en WhatsApp** (`wa.me`) para escribir manualmente (no hay plantillas HSM configuradas).
+El panel de satisfacción se rediseñó a **pastel** (barras `color-mix`, tarjetas de sentimiento con
+fondo `-dim`) por feedback visual. Fix responsive del segmented de filtros en móvil (≤560px).
+
+---
+
+### 2026-07-23 — Nueva tab Historial: control exacto de todos los pedidos
+
+**Contexto:** El kanban solo muestra el día en curso y Estadísticas agrega — no había forma
+de revisar pedido por pedido qué pasó (cuándo entró, cuándo se entregó, con qué items,
+por qué se canceló).
+**Decisión:** Tab **Historial** (Sidebar, entre Estadísticas y Clientes), solo lectura.
+Reutiliza los presets Colombia-aware de `dateRanges.js` (Hoy/7d/30d/90d/mes/custom) y trae
+`pedidos` + `detalle_pedidos` + `clientes(nombre)` por rango (cap 5000 con warning), realtime
+sobre `pedidos` para los estados del día. Filtros por estado/tipo/búsqueda, resumen de lo
+visible (entregados/cancelados/ingresos sin cancelados), orden por Fecha/Total/Estado y
+paginación global. `OrderDetailModal`: cliente + wa.me, pago con `estado_pago`, dirección,
+repartidor, entrega con duración (≤3h), comprobante, items con variante/notas, recargo de
+domicilio derivado, motivo de cancelación. Nuevo `ORDER_STATES` en constants.js (badges del
+ciclo de vida alineados al kanban).
+**Iteración (misma fecha): 100% server-side.** El primer corte filtraba/ordenaba/paginaba
+client-side con cap de 5000 por rango — el historial crece sin límite, así que ahora
+paginación (`range()` + `count: exact`), filtros y orden viajan en la query; la búsqueda por
+nombre resuelve `clientes.nombre ilike` → `cliente_id in (...)` y el resumen agrega sobre
+todo el conjunto filtrado vía el RPC **`historial_resumen`** (SECURITY INVOKER, migración
+`historial_resumen_rpc_e_indice_fecha`, que también creó `idx_pedidos_fecha_pedido`).
+Búsqueda con debounce 300ms; Estado dejó de ser ordenable (el orden alfabético del servidor
+no sigue el ciclo de vida; el filtro cubre ese caso). RPC verificado vía MCP con filtros
+compuestos. Loaders para el round-trip: `.spinner`/`.loading-state` promovidos a patrón
+global del DS (§8b) — carga inicial con spinner + texto, refetch con tabla atenuada y
+spinner `sm` en overlay; los "Cargando…" de Menú/Clientes/Configuración migraron al mismo
+patrón.
+**Export CSV/Excel:** botón "Exportar" en la toolbar baja todo el conjunto filtrado (cap
+10.000 con aviso) y genera CSV plano (BOM UTF-8, fechas hora Colombia, para CRM) o Excel
+con formato vía `exceljs` — título/periodo/resumen, encabezado de marca, banding, moneda,
+estados coloreados, autofiltro y panel congelado. `exceljs` va en chunk aparte (dynamic
+import, ~940KB) que solo se descarga al exportar; nueva dependencia en `package.json`.
+Archivos: `src/utils/exportHistory.js`, `fetchAllFiltered` en el hook (reusa los filtros
+de la lista vía `applyFilters`/`buildSearchParts` compartidos).
+**Corrección de estado desde el modal:** pedidos colgados en estado intermedio se pueden
+marcar entregado o cancelado (motivo obligatorio) con confirmación inline. Verificado vía
+MCP antes de implementar: el trigger `notificar-estado-pedido` (BD → webhook n8n) notifica
+al cliente por WhatsApp en CADA cambio de estado (n8n filtra con estado≠estado_anterior y
+arma el mensaje por estado, interpolando `motivo_rechazo` al cancelar) — la confirmación lo
+advierte; y `fecha_entrega` la fija el trigger `set_fecha_entrega` (la escritura client-side
+del kanban es redundante), así que el historial no la envía. Cancelar replica al kanban:
+`estado_pago: 'rechazado'` + `motivo_rechazo`.
+**Impacto:** `src/pages/history/{HistoryPage,OrderDetailModal}.jsx`,
+`src/hooks/useOrderHistory.js`, `src/styles/history.less`, `src/utils/constants.js`,
+`src/{App,main}.jsx`, `src/components/{Icon,layout/Sidebar,layout/Header}.jsx`,
+`docs/dashboard/components.md`.
+
+### 2026-07-23 — Nueva tab Configuración: edita `info_negocio` (lo que el bot responde)
+
+**Contexto:** No existía forma de editar la info del negocio que el bot dicta por WhatsApp
+(tool `info_local` = getAll de `info_negocio`). Al revisarla se encontró que **toda la tabla
+era data de plantilla de otro negocio** ("La Pizzería Don Carlo", teléfonos +58, Banco
+Venezuela) — el bot responde info falsa (BUG-026, abierto hasta que el operador llene la
+data real). Además la estructura contemplaba varias sedes y solo hay una.
+**Decisión:** Migración `info_negocio_single_sede_y_claves_dashboard`: `sede_1_direccion` →
+`direccion` (contacto), `sede_1_nombre` eliminada, y claves nuevas `link_menu` (contacto) y
+`costo_delivery` (operacion). Verificado vía MCP que la tool del bot es getAll sin claves
+hardcodeadas y el prompt del Agente Soporte no menciona claves → reestructurar es seguro.
+Nueva tab **Configuración** (Sidebar, al final): formulario en cards por categoría con
+registro de campos (label/help/multilínea), borrador local con contador de cambios,
+Descartar + Guardar (solo actualiza claves cambiadas), card "Otros" para claves fuera del
+registro. **Sin realtime a propósito** (un evento entrante pisaría lo que se está escribiendo).
+**Impacto:** BD (`info_negocio` reestructurada), `src/pages/settings/SettingsPage.jsx`,
+`src/hooks/useBusinessInfo.js`, `src/styles/settings.less`, `src/{App,main}.jsx`,
+`src/components/{Icon,layout/Sidebar,layout/Header}.jsx`, `docs/database/schema.md`,
+`docs/dashboard/components.md`, `docs/shared/bug-tracker.md` (BUG-026).
+
+### 2026-07-22 — Nueva tab Menú: disponibilidad del catálogo desde el dashboard
+
+**Contexto:** Cuando un producto se agotaba no había forma de reflejarlo — el bot lo seguía
+ofreciendo (`buscar_menu`/`buscar_menu_categoria` filtran con `solo_disponibles=true`, pero
+`disponible` siempre era `true` porque nadie lo editaba).
+**Decisión:** Nueva sección **Menú** (Sidebar, debajo de Reservas) que **solo** gestiona
+`menu.disponible` — no crea/edita/elimina productos. Tabla con búsqueda (nombre/categoría/
+descripción/ID), filtros por categoría y estado, orden por columnas y paginación; el toggle es
+un **switch directo en la fila** (update optimista + toast) y un botón "Ver" abre un modal de
+detalle (precios por tamaño vía `getProductOptions`, descripción completa) con el mismo switch.
+**Además:** `menu` se agregó a la publicación realtime (migración
+`menu_add_to_realtime_publication`); `CATEGORY_LABELS` se movió de `MenuPicker` a
+`constants.js`; se promovieron a patrones globales del DS el switch (`.switch`), el encabezado
+ordenable (`<SortHeader>` + `.sortable`) y la paginación de tablas (`.table-pagination`).
+**Drift corregido en los labels de categoría:** 5 claves del mapa original de `MenuPicker`
+nunca matchearon los valores reales de `menu.categoria` (verificado vía MCP): `entrada`→
+`entradas`, `arepa`→`arepas`, `lasana`→`lasañas`, `pasta`→`pastas`, y `menu_completo` no
+existía — esas categorías se veían como slug crudo sin emoji (también en los modales de
+pedido). Se corrigieron las claves y se agregó `categoryLabel()` (`constants.js`): fallback
+que humaniza slugs nuevos con icono genérico (`"salsa_extra"` → `"🍴 Salsa extra"`) en vez
+de mostrarlos crudos.
+**Impacto:** `src/pages/menu/{MenuPage,ProductModal}.jsx`, `src/hooks/useMenu.js`,
+`src/components/SortHeader.jsx`, `src/styles/{menu.less,index.css,clients.less}`,
+`src/pages/clients/ClientsPage.jsx`, `src/pages/dashboard/MenuPicker.jsx`,
+`src/utils/constants.js`, `src/{App,main}.jsx`, `src/components/{Icon,layout/Sidebar,
+layout/Header}.jsx`, BD (publicación realtime), `docs/dashboard/{components,design-system}.md`,
+`docs/database/schema.md`.
+
 ### 2026-07-22 — Borrado de cliente en cascada + confirmación dentro del modal
 
 **Contexto:** Eliminar un cliente desde `ClientModal` fallaba con 23503 (FKs `NO ACTION` desde
