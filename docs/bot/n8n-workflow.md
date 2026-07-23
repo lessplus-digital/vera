@@ -187,7 +187,8 @@ Tras `Edit Fields`, un Switch enruta el mensaje según el modo del cliente.
        ├─ soporte  → AGENTE SOPORTE  · tools: info_local, actualizar_cliente,
        │                                      solicitar_handoff
        └─ reservas → AGENTE RESERVAS · tools: consultar_disponibilidad,
-                                              crear_reserva, consultar_reservas_cliente
+                                              crear_reserva, consultar_reservas_cliente,
+                                              cancelar_reserva
 
   Los 4 agentes convergen en → Code in JavaScript2 → Send message (WhatsApp)
 ```

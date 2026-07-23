@@ -75,6 +75,22 @@ verificar el rol decodificando el JWT del header (`"role":"anon"` vs `"service_r
 sobre la **versión publicada** del workflow, no el borrador.
 **Fecha:** 2026-07-22
 
+## 12. Keys con espacio invisible al final en inputs de n8n
+
+**Síntoma:** Validaciones que nunca se disparan: un Code node lee `input.telefono` /
+`input.cliente_id` y recibe `undefined`, aunque el dato "sí llega" (BUG-004 y BUG-009 — mordió
+dos veces con el mismo patrón).
+**Causa:** Al escribir los inputs de un subworkflow (o el schema de una tool) en la UI de n8n se
+coló un espacio al final del nombre (`'telefono '`, `'cliente_id '`). n8n lo acepta y lo propaga
+tal cual, así que los nodos que leen la key "bien escrita" (sin espacio) ven `undefined` — y un
+`if (input.x && ...)` se salta en silencio, incluso checks de seguridad.
+**Solución:** Renombrar la key sin espacio en **todo** el camino (schema de la tool en el main +
+trigger del subworkflow + cada nodo que la lea). Al auditar, comparar las keys del trigger
+carácter a carácter contra lo que leen los Code nodes. Y escribir los checks de seguridad
+**fail-closed** (`!input.x || ...`), para que un input ausente falle ruidoso en vez de saltarse
+la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el rename.
+**Fecha:** 2026-07-23
+
 ---
 
 ## Plantilla para nuevos casos

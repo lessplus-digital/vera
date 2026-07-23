@@ -18,44 +18,7 @@
 
 ## Abiertos
 
-### BUG-004 — Key `cliente_id ` con espacio en `crear_reserva` (frágil, funciona) 🟢
-- **Componente:** n8n · Agente Reservas · tool `crear_reserva` + `Sub — Crear Reserva`
-- **Verificado vía MCP (corrige el diagnóstico inicial):** el espacio está en TODO el camino
-  (schema del tool, trigger del subworkflow, y el INSERT lee `['cliente_id ']`), así que el
-  `cliente_id` **sí se inserta**. Pero en `Validar y verificar cupo` se lee `input.cliente_id`
-  (sin espacio) → `undefined` (latente, no rompe porque el INSERT no depende de ese nodo).
-- **Fix:** renombrar la key a `cliente_id` (sin espacio) en todo el camino para quitar la fragilidad.
-- **Estado:** 🟢 Abierto (bajo) · re-evaluado 2026-07-16
-
-### BUG-005 — Agente Reservas no puede cancelar (subworkflow existe pero sin cablear) 🟡
-- **Componente:** n8n · Agente Reservas
-- **Síntoma:** El system prompt describe un flujo "CANCELAR RESERVA" que llama
-  `cancelar_reserva`, pero esa tool **no está conectada** al agente (solo tiene
-  `consultar_disponibilidad`, `crear_reserva`, `consultar_reservas_cliente`).
-- **Causa (refinada vía MCP):** El subworkflow **`Sub — Cancelar Reserva` (id
-  `Jk8r0QtxYqYzK8cV`) SÍ existe**, solo falta agregarlo como tool al Agente Reservas.
-- **Fix:** Añadir un nodo `toolWorkflow` que apunte a `Sub — Cancelar Reserva` en el
-  Agente Reservas (como las otras tools de reservas).
-- **Estado:** 🔴 Abierto · detectado 2026-07-16
-
-### BUG-008 — `Sub — Crear Reserva`: chequeo JS de cupo/duplicado muerto 🟢
-- **Componente:** n8n · `Sub — Crear Reserva` · nodo `Validar y verificar cupo`
-- **Síntoma:** filtra `$input.all()` por `reserva_id`, pero nada le pasa reservas → siempre vacío
-  → los checks JS de **duplicado** y **cupo** nunca se disparan.
-- **Mitigación confirmada (vía MCP):** el **cupo SÍ está protegido** por el trigger de BD
-  `trigger_validar_cupo` (BEFORE INSERT en `reservas`, `RAISE EXCEPTION` si 8 solapadas). Lo que
-  **no** cubre nadie es el **duplicado** (misma persona, mismo día).
-- **Fix:** quitar el check JS muerto; si se quiere impedir duplicados, hacerlo en el trigger o
-  con un query real antes del INSERT.
-- **Estado:** 🟢 Abierto (bajo) · re-evaluado 2026-07-16
-
-### BUG-009 — `Sub — Cancelar Reserva`: verificación de propiedad muerta 🔴
-- **Componente:** n8n · `Sub — Cancelar Reserva` · nodo `Validar`
-- **Síntoma / Riesgo:** el check "esta reserva no es tuya" lee `input.telefono`, pero el input
-  llega como **`telefono `** (con espacio) → `undefined` → el check se salta **siempre**. Con
-  un `reserva_id` cualquiera se puede cancelar la reserva de otra persona.
-- **Fix:** leer `input['telefono ']` (o renombrar el input a `telefono`) para que el check funcione.
-- **Estado:** 🔴 Abierto · detectado 2026-07-16 · (además el subworkflow no está cableado — BUG-005)
+*(ninguno — 2026-07-23)*
 
 ---
 
@@ -70,6 +33,43 @@
 ---
 
 ## Resueltos
+
+### BUG-005 + BUG-009 — Cancelar reserva: tool sin cablear + verificación de propiedad muerta ✅
+- **Resueltos:** 2026-07-23 (juntos) · aplicado vía MCP (`n8n_update_partial_workflow`), validado
+  con `n8n_validate_workflow` (0 errores) y verificado que la versión publicada
+  (`activeVersionId`) contiene los cambios.
+- **BUG-009 (`Sub — Cancelar Reserva`):**
+  - Input del trigger renombrado `telefono ` → `telefono` (sin espacio) → `input.telefono` en
+    `Validar` ya no es `undefined` y el check "esta reserva no es tuya" funciona.
+  - El check se endureció a **fail-closed**: `!input.telefono || reserva.telefono !== input.telefono`
+    (antes `input.telefono && …`: sin teléfono, se saltaba la verificación).
+  - **Extra (hallado al cablear):** `Validar → UPDATE` iba sin compuerta — con `ok:false` el
+    UPDATE corría igual (con `reserva_id` undefined) y el agente nunca veía el error. Se añadió
+    `¿Validación OK?` (If sobre `ok`): true → UPDATE, false → NoOp `Responder error` que devuelve
+    `{ ok:false, error }` al agente.
+- **BUG-005 (main `Pizzeria Vera`):** nodo `toolWorkflow` **`cancelar_reserva`** agregado y
+  conectado (`ai_tool`) al AGENTE RESERVAS, apuntando a `Sub — Cancelar Reserva`
+  (`Jk8r0QtxYqYzK8cV`), con inputs `reserva_id` + `telefono` vía `$fromAI`. El prompt del agente
+  ya describía el flujo CANCELAR RESERVA — no requirió cambios.
+- **Pendiente cosmético:** el pinData del trigger del subworkflow conserva la key vieja
+  `telefono ` — solo afecta pruebas manuales en el editor; re-pinnear cuando se abra.
+- **Verificación pendiente:** probar una cancelación real por WhatsApp (feliz + reserva ajena).
+
+### BUG-004 + BUG-008 — `Sub — Crear Reserva`: key `cliente_id ` con espacio + check JS muerto ✅
+- **Resueltos:** 2026-07-23 (juntos) · aplicado vía MCP, validado (0 errores) y publicado.
+- **BUG-004:** key `cliente_id ` renombrada a `cliente_id` (sin espacio) en TODO el camino:
+  schema/inputs de la tool `crear_reserva` en el main, trigger del subworkflow, y el INSERT
+  ahora lee `$('Validar y verificar cupo').item.json.cliente_id` (consistente con los demás campos).
+- **BUG-008:** eliminado el check JS muerto de duplicado/cupo (filtraba `$input.all()` por
+  `reserva_id` pero nada le pasaba reservas) y el nodo `If(_valido)` siempre-true; el Code quedó
+  solo preparando la fila del INSERT, con comentario de que el **cupo** lo protege el trigger de
+  BD `trigger_validar_cupo`. **Decisión (consultada):** los duplicados (misma persona, mismo día)
+  NO se bloquean en BD — se manejan conversacionalmente; un cliente puede reservar almuerzo y
+  cena el mismo día.
+- **Pendiente cosmético:** pinData viejo en el subworkflow (keys con espacio, y el pin de
+  `Validar y verificar cupo` no trae `cliente_id`) — solo afecta pruebas manuales en el editor.
+- **Doc:** `docs/bot/subworkflows.md`, `docs/bot/ai-agents.md` y `docs/bot/n8n-workflow.md`
+  actualizados (tool nueva + flujos).
 
 ### BUG-011 — Instancia n8n desactualizada + webhook sin auth ✅
 - **Resuelto:** 2026-07-22/23 · 4 partes, todas verificadas:

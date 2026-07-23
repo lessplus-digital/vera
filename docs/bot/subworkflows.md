@@ -83,37 +83,45 @@ las 22:30 (pasa el cierre de 9 PM) — revisar si es intencional.
 ## Sub — Crear Reserva
 
 - **ID:** `xyb9zB6nz6OmmboX` · **Tool:** `crear_reserva` (Agente Reservas)
-- **Inputs:** `telefono`, `nombre`, `fecha`, `hora`, `personas`, `cliente_id ` (con espacio, BUG-004)
-- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas }` o `{ _valido:false, error }`
+- **Inputs:** `telefono`, `nombre`, `fecha`, `hora`, `personas`, `cliente_id` (sin espacio desde
+  el fix de BUG-004, 2026-07-23)
+- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas }` o `{ ok:false, error }`
 
 ```
-When Executed → Validar y verificar cupo (Code) → If(_valido) → INSERT (reservas) → Formatear respuesta
+When Executed → Validar y verificar cupo (Code, solo prepara la fila) → INSERT (reservas) → Formatear respuesta
 ```
 
-- **⚠️ BUG-008:** `Validar y verificar cupo` hace `$input.all().filter(r => r.reserva_id)`,
-  pero nada le pasa reservas (no hay query previa) → siempre vacío → los checks de **duplicado**
-  y **cupo** nunca se disparan. La única barrera real es `consultar_disponibilidad` (upstream).
-- **BUG-004 (corregido):** el INSERT lee `['cliente_id ']` (con espacio), así que el
-  `cliente_id` **sí** entra. Pero `input.cliente_id` (sin espacio) en el nodo Validar es
-  `undefined` — fragilidad latente, no rotura.
+- **BUG-004 (✅ 2026-07-23):** la key `cliente_id ` (con espacio) se renombró a `cliente_id` en
+  todo el camino (schema de la tool en el main, trigger e INSERT del subworkflow).
+- **BUG-008 (✅ 2026-07-23):** se eliminó el check JS muerto de duplicado/cupo (filtraba
+  `$input.all()` por `reserva_id` pero nada le pasaba reservas) y el `If(_valido)` siempre-true.
+  El **cupo** lo protege el trigger de BD `trigger_validar_cupo` (BEFORE INSERT, RAISE EXCEPTION
+  si 8 solapadas); el **duplicado** (misma persona, mismo día) se maneja conversacionalmente
+  (decisión consciente: un cliente puede reservar almuerzo y cena el mismo día).
 
 ---
 
 ## Sub — Cancelar Reserva
 
-- **ID:** `Jk8r0QtxYqYzK8cV` · **existe pero NO está cableado** como tool al Agente Reservas (BUG-005)
-- **Inputs:** `reserva_id`, `telefono ` (con espacio)
-- **Salida:** `{ ok, reserva_id, mensaje }` o `{ ok:false, error }`
+- **ID:** `Jk8r0QtxYqYzK8cV` · **Tool:** `cancelar_reserva` (Agente Reservas, cableada 2026-07-23 — BUG-005)
+- **Inputs:** `reserva_id`, `telefono` (sin espacio desde el fix de BUG-009)
+- **Salida:** fila actualizada de `reservas` (ok) o `{ ok:false, error }` (validación fallida)
 
 ```
 When Executed → [Supabase GET reservas WHERE reserva_id]  (nodo mal nombrado "INSERT")
   └─ Validar (Code) — ¿existe? ¿es del cliente? ¿estado confirmada?
-  └─ UPDATE reservas SET estado='cancelada'
+       └─ ¿Validación OK? (If sobre ok)
+            ├─ true  → UPDATE reservas SET estado='cancelada'
+            └─ false → Responder error (NoOp — devuelve { ok:false, error } al agente)
 ```
 
-- **⚠️ BUG-009:** la verificación de propiedad usa `input.telefono`, pero el input llega como
-  `telefono ` (con espacio) → `undefined` → el check "esta reserva no es tuya" se salta
-  **siempre**. Con un `reserva_id`, se puede cancelar la reserva de cualquiera.
+- **BUG-009 (✅ 2026-07-23):** el input `telefono ` (con espacio) se renombró a `telefono`, y el
+  check de propiedad ahora es **fail-closed**: `!input.telefono || reserva.telefono !== input.telefono`
+  → sin teléfono no se cancela nada. Además se añadió la compuerta `¿Validación OK?`: antes el
+  UPDATE corría incondicionalmente tras Validar (con `ok:false` iba con `reserva_id` undefined).
+- **BUG-005 (✅ 2026-07-23):** se agregó el nodo `toolWorkflow` `cancelar_reserva` al Agente
+  Reservas en el main (inputs `reserva_id` + `telefono` vía `$fromAI`). El prompt del agente ya
+  describía el flujo CANCELAR RESERVA — no hubo que tocarlo.
 
 ---
 
