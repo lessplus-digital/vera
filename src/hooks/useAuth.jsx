@@ -6,8 +6,8 @@ import { supabase } from '../lib/supabase'
  *
  * El cliente JS de Supabase persiste la sesión en localStorage y adjunta
  * automáticamente el JWT a cada petición REST/Realtime. Combinado con RLS
- * activado en todas las tablas (ver infra/supabase/rls_reference.sql), esto hace
- * que ninguna consulta del dashboard funcione sin un usuario autenticado.
+ * activado en todas las tablas (ver docs/database/schema.md, «Modelo de permisos»),
+ * esto hace que ninguna consulta del dashboard funcione sin un usuario autenticado.
  */
 
 const AuthContext = createContext(null)
@@ -21,11 +21,16 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoading(false)
+      // Propagar el JWT al socket de Realtime: los eventos postgres_changes de
+      // tablas con RLS solo-authenticated (p. ej. `clientes`) se filtran en
+      // silencio si el socket quedó con el token anon (BUG-023).
+      supabase.realtime.setAuth(data.session?.access_token ?? null)
     })
 
     // Cambios posteriores: login, logout, refresco de token, otra pestaña.
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)
+      supabase.realtime.setAuth(next?.access_token ?? null)
     })
 
     return () => sub.subscription.unsubscribe()

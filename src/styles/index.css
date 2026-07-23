@@ -9,45 +9,45 @@
 ═══════════════════════════════════════════════════════════ */
 
 :root {
-  /* Backgrounds — frosted glass: corner sheen + warm tint over a translucent base */
-  --bg-base:       #090a0e;
-  --bg-surface:
-    radial-gradient(135% 135% at 0% 0%, rgba(255,255,255,0.07), transparent 46%),
-    linear-gradient(140deg, rgba(36, 39, 52, 0.58), rgba(15, 17, 25, 0.42));
-  --bg-card:
-    radial-gradient(130% 130% at 0% 0%, rgba(255,255,255,0.08), transparent 46%),
-    radial-gradient(130% 130% at 100% 100%, rgba(251,140,60,0.08), transparent 52%),
-    linear-gradient(140deg, rgba(44, 47, 62, 0.50), rgba(16, 18, 26, 0.38));
-  --bg-card-hover:
-    radial-gradient(130% 130% at 0% 0%, rgba(255,255,255,0.11), transparent 46%),
-    radial-gradient(130% 130% at 100% 100%, rgba(251,140,60,0.11), transparent 52%),
-    linear-gradient(140deg, rgba(60, 64, 82, 0.66), rgba(26, 29, 40, 0.52));
+  /* Controles nativos (selects, date pickers, scrollbars) en oscuro */
+  color-scheme: dark;
 
-  /* App backdrop — warm + cool color glows the glass refracts */
+  /* Backgrounds — flat, legible surfaces. El glass vive SOLO en el shell
+     (sidebar/topbar via --bg-surface); cards y contenedores de info son planos. */
+  --bg-base:       #0b0c11;
+  --bg-surface:    rgba(20, 22, 30, 0.72);   /* shell: sidebar / topbar */
+  --bg-card:       #151721;                   /* superficies de info: planas */
+  --bg-card-hover: #1a1d29;
+
+  /* App backdrop — un único glow de marca, muy tenue */
   --app-bg:
-    radial-gradient(1100px 760px at 12% -6%, rgba(251,140,60,0.20), transparent 55%),
-    radial-gradient(1000px 720px at 106% 18%, rgba(99,102,241,0.20), transparent 55%),
-    radial-gradient(900px 700px at 50% 120%, rgba(52,211,153,0.11), transparent 55%),
-    #090a0e;
+    radial-gradient(1100px 760px at 12% -6%, rgba(251,140,60,0.10), transparent 55%),
+    #0b0c11;
 
-  /* Glass */
-  --glass-blur:    saturate(165%) blur(22px);
-  --glass-edge:    rgba(255,255,255,0.14);
+  /* Glass — solo shell (sidebar / topbar) */
+  --glass-blur:    saturate(140%) blur(18px);
+  --glass-edge:    rgba(255,255,255,0.10);
   --bg-inset:      rgba(255,255,255,0.045);
 
-  /* Modals — lighter, near-flat surface for legibility */
-  --bg-modal:
-    linear-gradient(140deg, rgba(56, 60, 78, 0.94), rgba(42, 45, 60, 0.90));
+  /* Modals — sólido para máxima legibilidad */
+  --bg-modal:      #1b1e29;
 
   /* Borders */
   --border:        rgba(255,255,255,0.10);
   --border-hover:  rgba(255,255,255,0.20);
   --overlay:       rgba(8, 10, 16, 0.50);
 
-  /* Amber → warm orange (Finexy) */
+  /* Amber → warm orange (Finexy) — color de marca y ÚNICO color de acción */
   --amber:         #fb8c3c;
   --amber-dim:     rgba(251,140,60,0.14);
   --amber-border:  rgba(251,140,60,0.32);
+
+  /* Charts — paleta categórica VALIDADA (CVD-safe, orden fijo, nunca ciclar).
+     1=ingresos/marca · 2=conteos/pedidos · 3=tercera serie · resto → muted.
+     Verde/rojo quedan reservados para estado (deltas, cancelaciones). */
+  --chart-1: #ea580c;
+  --chart-2: #3b82f6;
+  --chart-3: #059669;
 
   /* Purple */
   --purple:        #a78bfa;
@@ -74,9 +74,26 @@
   --text-secondary: #a1a1aa;
   --text-muted:     #6b6b76;
 
-  /* Typography */
+  /* Typography — UNA sola familia. La mono queda reservada para cifras
+     tabulares (precios, KPIs); todo lo demás (teléfonos, fechas, subtítulos)
+     usa la sans. Escala fija: no inventar tamaños fuera de esta. */
   --font-sans: 'Plus Jakarta Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --fs-caption: 11px;   /* labels de tabla, hints, metadatos */
+  --fs-body-sm: 12px;   /* texto secundario, botones sm */
+  --fs-body:    13px;   /* texto base, inputs, botones */
+  --fs-title:   14px;   /* títulos de card/modal */
+  --fs-heading: 16px;   /* títulos de página */
+  --fs-metric:  22px;   /* valores KPI */
+
+  /* Spacing — escala de 4px */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --page-pad: 20px 24px 40px;  /* padding estándar de página */
 
   /* Radii — softer, fintech-style rounding */
   --radius-sm: 9px;
@@ -97,37 +114,32 @@
 ═══════════════════════════════════════════════════════════ */
 
 [data-theme="light"] {
-  --bg-base:       #e6e8f2;
-  --bg-surface:
-    radial-gradient(135% 135% at 0% 0%, rgba(255,255,255,0.85), transparent 52%),
-    linear-gradient(140deg, rgba(255,255,255,0.66), rgba(255,255,255,0.44));
-  --bg-card:
-    radial-gradient(130% 130% at 0% 0%, rgba(255,255,255,0.88), transparent 50%),
-    radial-gradient(130% 130% at 100% 100%, rgba(167,139,250,0.16), transparent 52%),
-    linear-gradient(140deg, rgba(255,255,255,0.52), rgba(255,255,255,0.32));
-  --bg-card-hover:
-    radial-gradient(130% 130% at 0% 0%, rgba(255,255,255,0.95), transparent 50%),
-    radial-gradient(130% 130% at 100% 100%, rgba(167,139,250,0.20), transparent 52%),
-    linear-gradient(140deg, rgba(255,255,255,0.82), rgba(255,255,255,0.64));
-  --border:        rgba(15, 23, 42, 0.07);
-  --border-hover:  rgba(15, 23, 42, 0.15);
+  color-scheme: light;
+
+  --bg-base:       #eef0f6;
+  --bg-surface:    rgba(255, 255, 255, 0.80);  /* shell: sidebar / topbar */
+  --bg-card:       #ffffff;
+  --bg-card-hover: #f7f8fb;
+  --border:        rgba(15, 23, 42, 0.09);
+  --border-hover:  rgba(15, 23, 42, 0.18);
   --overlay:       rgba(30, 34, 52, 0.28);
   --glass-edge:    rgba(255,255,255,0.85);
-  --bg-inset:      rgba(255,255,255,0.50);
+  --bg-inset:      rgba(15, 23, 42, 0.04);
 
-  /* Modals — almost solid white with a whisper of gradient */
-  --bg-modal:
-    linear-gradient(140deg, rgba(255,255,255,0.97), rgba(255,255,255,0.92));
+  /* Modals — sólido */
+  --bg-modal:      #ffffff;
 
   --app-bg:
-    radial-gradient(1000px 720px at 8% -6%, rgba(167,139,250,0.34), transparent 55%),
-    radial-gradient(900px 720px at 106% 14%, rgba(96,165,250,0.32), transparent 55%),
-    radial-gradient(850px 660px at 50% 116%, rgba(251,140,60,0.22), transparent 55%),
-    #e6e8f2;
+    radial-gradient(1000px 720px at 10% -6%, rgba(234,88,12,0.08), transparent 55%),
+    #eef0f6;
 
   --amber:         #ea580c;
   --amber-dim:     rgba(234, 88, 12, 0.1);
   --amber-border:  rgba(234, 88, 12, 0.22);
+
+  --chart-1: #ea580c;
+  --chart-2: #2563eb;
+  --chart-3: #047857;
 
   --purple:        #7c3aed;
   --purple-dim:    rgba(124, 58, 237, 0.1);
@@ -265,8 +277,20 @@ html, body {
   text-transform: uppercase; letter-spacing: 0.06em;
 }
 
-/* Nav */
-.sb-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow-y: auto; padding-top: 4px; }
+/* Nav — overflow-y recorta los box-shadow que sobresalen a los lados (el del
+   item activo quedaba "cortado en cuadrado"). El margen negativo + padding
+   igual mete aire lateral DENTRO del scrollport: mismo sitio visual, y la
+   sombra tiene espacio para difuminar. */
+.sb-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  overflow-y: auto;
+  margin: 0 -12px;
+  padding: 4px 12px 0;
+}
+.app-sidebar.collapsed .sb-nav { margin: 0 -10px; padding: 4px 10px 0; }
 
 .sb-item {
   position: relative;
@@ -479,14 +503,12 @@ html, body {
 .ad-danger:not(:disabled):hover { background: var(--red-dim) !important; color: var(--red) !important; }
 
 /* ═══════════════════════════════════════════════════════════
-   GLASSMORPHISM — frosted surfaces
+   GLASSMORPHISM — SOLO el shell (sidebar/topbar). Las cards,
+   modales y contenedores de info son planos (design system v2).
 ═══════════════════════════════════════════════════════════ */
 
 .app-topbar,
-.order-card, .kpi-card, .stats-card,
-.modal-panel, .voucher-overlay .panel,
-.support-sidebar,
-.stats-segment, .col .empty {
+.support-sidebar {
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }
@@ -590,46 +612,192 @@ html, body {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GLOW HOVER — buttons & cards
+   HOVER — sobrio: borde + lift sutil, sin halos de neón
 ═══════════════════════════════════════════════════════════ */
 
-/* Smooth transitions for everything that glows */
-.act-btn, .oc-btn, .col-add-btn, .em-add-btn, .clients-new, .clients-sort,
+.act-btn, .oc-btn, .col-add-btn, .em-add-btn, .clients-sort,
 .resolve, .send, .save, .rm-confirm, .add-confirm, .delete, .edit-btn,
 .co-toggle .opt, .change, .back-btn {
   transition: box-shadow 0.2s ease, transform 0.2s ease,
               border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-/* Buttons — glow tinted to each button's own accent (currentColor) */
-.act-btn:not(:disabled):hover,
-.oc-btn:hover,
-.col-add-btn:hover,
-.em-add-btn:hover,
-.clients-new:hover,
-.edit-btn:hover,
-.delete:hover,
-.resolve:not(:disabled):hover,
-.send.active:hover,
-.save.ready:hover,
-.rm-confirm.active:hover,
-.add-confirm.ready:hover,
-.co-toggle .opt.active:hover {
-  box-shadow: 0 0 20px color-mix(in srgb, currentColor 28%, transparent);
-}
-
-/* Cards — lift + warm brand halo */
 .kpi-card, .stats-card, .convo {
-  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .kpi-card:hover,
 .stats-card:hover {
-  transform: translateY(-2px);
   border-color: var(--border-hover);
-  box-shadow: var(--shadow-float), 0 0 26px var(--glow-brand), inset 0 1px 0 var(--glass-edge);
 }
 
 .convo:hover {
-  box-shadow: inset 0 0 0 1px var(--border-hover), 0 4px 18px var(--glow-brand);
+  box-shadow: inset 0 0 0 1px var(--border-hover);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Botones
+   Jerarquía: 1 primary por pantalla (naranja sólido) →
+   secondary (borde) → ghost (transparente) → danger (rojo).
+═══════════════════════════════════════════════════════════ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.2s ease;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.sm { padding: 6px 11px; font-size: var(--fs-caption); border-radius: var(--radius-sm); }
+
+/* Primary — LA acción de la pantalla. Tinted amber (fondo tenue + borde +
+   texto naranja) con peso extra: mismo look en TODAS las pantallas
+   (Nuevo cliente / Crear pedido / Nueva reserva / confirmar en modales). */
+.btn.primary {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  border-color: color-mix(in srgb, var(--amber) 55%, transparent);
+  color: var(--amber);
+  font-weight: 700;
+}
+.btn.primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--amber) 26%, transparent);
+  border-color: var(--amber);
+  box-shadow: 0 2px 10px var(--glow-brand);
+}
+
+/* Secondary — acciones normales */
+.btn.secondary {
+  background: var(--bg-inset);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+.btn.secondary:not(:disabled):hover { border-color: var(--border-hover); }
+
+/* Ghost — acciones de bajo compromiso (cancelar, cerrar) */
+.btn.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.btn.ghost:not(:disabled):hover { background: var(--bg-inset); color: var(--text-primary); }
+
+/* Danger — destructivas */
+.btn.danger {
+  background: var(--red-dim);
+  border-color: var(--red-border);
+  color: var(--red);
+}
+.btn.danger:not(:disabled):hover { background: var(--red); border-color: var(--red); color: #fff; }
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Dropdowns (select nativo, look propio)
+   Sin flecha del navegador: chevron propio + superficie/borde
+   del sistema. Los overrides por página solo ajustan tamaño.
+═══════════════════════════════════════════════════════════ */
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  padding: 8px 30px 8px 12px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+select:hover { border-color: var(--border-hover); }
+select:focus {
+  outline: none;
+  border-color: var(--amber-border);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+/* El popup nativo hereda color-scheme; las options toman la superficie del modal */
+select option { background-color: var(--bg-modal); color: var(--text-primary); }
+
+[data-theme="light"] select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Formularios
+   Label arriba (sin helpers dentro) · input · helper DEBAJO
+   en --fs-caption/muted. Marcar la minoría: si hay más
+   requeridos que opcionales → tag "Opcional", y viceversa (*).
+═══════════════════════════════════════════════════════════ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-optional {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.field-help {
+  font-size: var(--fs-caption);
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.field input,
+.field select,
+.field textarea {
+  background-color: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  padding: 8px 12px;
+}
+.field input::placeholder,
+.field textarea::placeholder { color: var(--text-muted); }
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--amber-border);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+.field select { cursor: pointer; }
+
+/* Cifras tabulares con la sans (reemplaza a la mono en casi todo) */
+.tnum { font-variant-numeric: tabular-nums; }

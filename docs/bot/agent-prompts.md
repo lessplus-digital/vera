@@ -735,6 +735,6 @@ FORMATO:
 - Emojis con moderación
 ```
 
-> ⚠️ El prompt menciona una tool `cancelar_reserva` que **no está conectada** al Agente
-> Reservas en el workflow (solo tiene `consultar_disponibilidad`, `crear_reserva`,
-> `consultar_reservas_cliente`). Ver bug en [`../shared/bug-tracker.md`](../shared/bug-tracker.md).
+> ✅ Desde 2026-07-23 la tool `cancelar_reserva` **está conectada** al Agente Reservas
+> (BUG-005). El prompt ya describía el flujo, no requirió cambios. Ver
+> [`../shared/changelog.md`](../shared/changelog.md).

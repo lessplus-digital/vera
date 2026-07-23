@@ -39,7 +39,7 @@ export default function DeliveryStats({ entrega }) {
             <XAxis dataKey="rango" {...axisProps} />
             <YAxis {...axisProps} allowDecimals={false} width={28} />
             <Tooltip cursor={barCursor} content={<ChartTooltip />} />
-            <Bar dataKey="pedidos" name="Pedidos" fill="var(--green)" radius={[3, 3, 0, 0]} maxBarSize={48} />
+            <Bar dataKey="pedidos" name="Pedidos" fill="var(--chart-2)" radius={[3, 3, 0, 0]} maxBarSize={48} />
           </BarChart>
         </ResponsiveContainer>
       )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { playNotification } from '../utils/audio'
+import { colombiaDayStart } from '../utils/dateRanges'
 
 export function useOrders() {
   const [orders, setOrders] = useState([])
@@ -12,8 +13,10 @@ export function useOrders() {
   const isFirstLoad = useRef(true)
 
   const fetchOrders = useCallback(async () => {
-    const today = new Date()
-    today.setUTCHours(5, 0, 0, 0)
+    // Día de negocio Colombia (00:00 UTC-5 = 05:00 UTC). BUG-025: derivarlo con
+    // setUTCHours(5) directo produce una fecha FUTURA entre 00:00 y 05:00 UTC
+    // (19:00–24:00 en Colombia) y el kanban quedaba vacío en el rush nocturno.
+    const today = colombiaDayStart()
 
     const { data, error } = await supabase
       .from('pedidos')
@@ -42,7 +45,11 @@ export function useOrders() {
       .in('estado', ['pendiente', 'en_cocina', 'en_camino', 'recoger'])
       .order('fecha_pedido', { ascending: false })
 
-    if (error) return
+    if (error) {
+      console.error('Error cargando pedidos:', error)
+      setLoading(false)
+      return
+    }
 
     if (!isFirstLoad.current) {
       const incoming = data || []
@@ -67,12 +74,14 @@ export function useOrders() {
     setLastUpdate(new Date())
     setLoading(false)
 
-    const { data: statsData } = await supabase
+    const { data: statsData, error: statsError } = await supabase
       .from('pedidos')
       .select('total, estado')
       .gte('fecha_pedido', today.toISOString())
 
-    if (statsData) {
+    if (statsError) {
+      console.error('Error cargando estadísticas del header:', statsError)
+    } else if (statsData) {
       const total = statsData.length
       const ingresos = statsData
         .filter(o => o.estado !== 'cancelado')
@@ -85,12 +94,21 @@ export function useOrders() {
   useEffect(() => {
     fetchOrders()
 
+    let debounce
     const channel = supabase
       .channel('pedidos-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => fetchOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
+        // Debounce: una ráfaga de eventos realtime (varios INSERT/UPDATE seguidos)
+        // colapsa en un solo refetch en vez de encadenar queries en cascada.
+        clearTimeout(debounce)
+        debounce = setTimeout(() => fetchOrders(), 300)
+      })
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
+    return () => {
+      clearTimeout(debounce)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   return { orders, loading, newIds, stats, lastUpdate, fetchOrders }

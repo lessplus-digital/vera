@@ -77,7 +77,7 @@
 | `subtotal` | numeric | **columna generada** = `cantidad * precio_unitario` |
 | `notas_item` | text | nullable |
 
-### `carritos` — carrito temporal del bot (0 filas · PK `telefono` · ⚠️ RLS ❌)
+### `carritos` — carrito temporal del bot (0 filas · PK `telefono` · RLS ✅)
 `telefono` 🔑, `items` jsonb (default `[]`), `total` numeric, `updated_at` timestamptz.
 
 ### `reservas` — (6 filas · RLS ✅)
@@ -86,25 +86,25 @@
 `estado` (**check `confirmada`/`cancelada`** — no hay `pendiente`), `origen`
 (`whatsapp`/`dashboard`), `notas`, `created_at`.
 
-### `feedback` — calificaciones (1 fila · ⚠️ RLS ❌)
+### `feedback` — calificaciones (1 fila · RLS ✅)
 `feedback_id` 🔑 (`FB-`), `cliente_id` (FK), `pedido_id` (FK, **unique**), `fecha`,
 `calificacion_general` smallint (**check 1–5**), `comentario`.
 
-### `feedback_pendiente` — cola de espera de feedback (2 filas · PK `telefono` · ⚠️ RLS ❌)
+### `feedback_pendiente` — cola de espera de feedback (2 filas · PK `telefono` · RLS ✅)
 `telefono` 🔑, `pedido_id`, `cliente_id`, `estado` (check `esperando_nota`/`esperando_comentario`),
 `fecha_solicitud`.
 
-### `mensajes_soporte` — chat de soporte (29 filas · RLS ✅ + público)
+### `mensajes_soporte` — chat de soporte (29 filas · RLS ✅ solo authenticated)
 `id` uuid 🔑, `telefono`, `origen` (check `cliente`/`admin`/`sistema`), `mensaje`,
 `created_at`, `tipo_contenido` (`texto`/`imagen`), `imagen_url`.
 
-### `info_negocio` — config clave/valor (18 filas · PK `clave` · ⚠️ RLS ❌)
+### `info_negocio` — config clave/valor (18 filas · PK `clave` · RLS ✅)
 `clave` 🔑, `valor`, `categoria`. Ej.: `horario_semana`, `telefono_principal`, `datos_transferencia`.
 
-### `n8n_chat_histories` — memoria conversacional de los agentes (⚠️ RLS ❌)
+### `n8n_chat_histories` — memoria conversacional de los agentes (RLS ✅)
 `id` 🔑, `session_id` (= telefono), `message` jsonb, `created_at`.
 
-### `n8n_mensajes_pendientes` — buffer de acumulación de mensajes (⚠️ RLS ❌)
+### `n8n_mensajes_pendientes` — buffer de acumulación de mensajes (RLS ✅)
 `id` uuid 🔑, `telefono`, `mensaje`, `creado_el`.
 
 ---
@@ -137,41 +137,58 @@ WHERE pedido_id = NEW.pedido_id;
 
 | Función | Firma | Qué hace |
 |---|---|---|
-| `buscar_menu` | `(termino text, umbral float=0.2, limite int=5, solo_disponibles bool=true)` | **Búsqueda difusa** del menú: `normalizar_texto` (unaccent+lower) + diccionario de typos (`papata→patata`, `servex→cervez`, `hamurguesa→hamburguesa`, `birra→cerveza`…) + 3 capas de score (containment / `similarity` full-string / word-level trgm). **Devuelve `similitud` (0–1)**, ordenado desc. |
+| `buscar_menu` | `(termino text, umbral float=0.2, limite int=5, solo_disponibles bool=true)` | **Búsqueda difusa** del menú: `normalizar_texto` (unaccent+lower) + diccionario de typos (`papata→patata`, `servex→cervez`, `hamurguesa→hamburguesa`, `birra→cerveza`…) + 3 capas de score (containment / `similarity` full-string / word-level trgm) **sobre `nombre`, `categoria` (peso 0.8) y `descripcion` (peso 0.7)** — extendida 2026-07-22 (migración `bug006_buscar_menu_categoria_descripcion`; antes solo `nombre`). **Devuelve `descripcion` y `similitud` (0–1)**, ordenado desc. Término vacío/null → devuelve el menú (respeta `limite`). |
 | `buscar_menu_categoria` | `(cat text, solo_disponibles bool=true)` | Lista productos de una categoría. |
 | `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio**, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. |
 | `generar_reserva_id` | `() → text` | Default de `reservas.reserva_id`. |
 | `normalizar_texto` | `(text) → text` | unaccent + lower (base de `buscar_menu`). |
 | `limpiar_carritos_abandonados` / `limpiar_historial_chat` | `()` | Housekeeping. |
 
-> **`buscar_menu` existe pero `Sub — Consultar_menu` NO lo usa** (hace su propio `ilike`).
-> El `similitud` y la tolerancia a typos que el prompt del Agente Menú asume **ya existen aquí**
-> → ver [BUG-006](../shared/bug-tracker.md).
+> ✅ Desde 2026-07-22 **`Sub — Consultar_menu` llama a `buscar_menu`** (POST
+> `/rest/v1/rpc/buscar_menu` con `{termino, umbral: 0.2, limite: 30, solo_disponibles: true}`)
+> en vez del `ilike` casero — el `similitud` y la tolerancia a typos que el prompt del
+> Agente Menú asume por fin llegan de verdad (BUG-006 resuelto).
 
 ---
 
-## Modelo de permisos (RLS) — estado REAL
+## Modelo de permisos (RLS) — estado REAL (verificado 2026-07-22)
 
-> ⚠️ `CLAUDE.md`/`infra/supabase/` asumen "RLS en todas las tablas". **La realidad no coincide**
-> → ver [BUG-012](../shared/bug-tracker.md).
+**TODAS las tablas tienen RLS habilitado** con la política `auth_full_access`
+(`authenticated` puede todo). Además:
+- `menu` → + `menu_lectura_publica` (`public` SELECT): el bot puede leerlo con la key pública.
+- ~~`mensajes_soporte` → + `public` INSERT y SELECT~~ — **eliminadas 2026-07-22 (BUG-024)**:
+  exponían todo el historial de soporte a la key pública. Migración
+  `bug024_drop_public_policies_mensajes_soporte`; el realtime del dashboard ahora exige el
+  JWT en el socket (`supabase.realtime.setAuth`, BUG-023).
 
-**Con RLS** (política `auth_full_access` = `authenticated` puede todo):
-`clientes`, `pedidos`, `detalle_pedidos`, `reservas`. Además:
-- `menu` → + `menu_lectura_publica` (`public` SELECT): el bot lo lee con anon.
-- `mensajes_soporte` → + `public` INSERT y SELECT.
+Historia: hasta 2026-07-22, 6 tablas (`carritos`, `feedback`, `feedback_pendiente`,
+`info_negocio`, `n8n_chat_histories`, `n8n_mensajes_pendientes`) estaban **sin RLS** y expuestas
+a la key pública (BUG-012), y varios nodos n8n escribían con keys hardcodeadas (BUG-003), lo que
+además bloqueaba el INSERT de `detalle_pedidos` y dejó 8 pedidos sin líneas (BUG-007). Todo
+resuelto: nodos migrados a credenciales, keys legacy deshabilitadas (sistema nuevo
+`sb_publishable_`/`sb_secret_`), RLS habilitado vía migración `bug012_enable_rls_exposed_tables`.
+El Postgres Chat Memory de n8n conecta como `postgres` (dueño de las tablas) → exento de RLS.
 
-**Sin RLS (❌ expuestas a la anon key):**
-`info_negocio`, `feedback`, `n8n_chat_histories`, `n8n_mensajes_pendientes`, `carritos`,
-`feedback_pendiente`. Cualquiera con la anon key (pública, va en el frontend) puede leer/escribir.
+**Modelo de acceso vigente:**
+| Actor | Key | Acceso |
+|---|---|---|
+| Dashboard | `sb_publishable_` + sesión auth | rol `authenticated` → todo vía `auth_full_access` |
+| Bot n8n | `sb_secret_` (credencial `Supabase account`) | salta RLS |
+| Público (key sola) | `sb_publishable_` | solo `menu` (SELECT) |
 
-**Consecuencia crítica ([BUG-007](../shared/bug-tracker.md)):** el bot escribe con la anon key
-hardcodeada en varios nodos. Donde no hay RLS funciona; pero en `detalle_pedidos` (RLS
-solo-`authenticated`) el INSERT con anon **se bloquea** → hay pedidos con `total` pero **sin
-líneas** (`PED-109`, `PED-111`, `PED-113`). El bot debería escribir con `service_role`.
+**Usuarios admin del dashboard:** Supabase no trae usuarios por defecto. Se crean a mano en
+**Dashboard → Authentication → Users → Add user** (email + contraseña), con
+**Authentication → Providers → Email → "Allow new users to sign up" = OFF** (no es registro
+público; los usuarios del panel los crea el operador).
+
+> Nota: el script `infra/supabase/rls_reference.sql` que servía de referencia de este modelo se
+> eliminó del repo (2026-07-22) — el estado se verifica en vivo vía MCP de Supabase, y replicar
+> el setup a nuevos clientes se hará igualmente vía MCP.
 
 ---
 
 ## Realtime
 
-Según los hooks del dashboard, tienen Realtime activo: `pedidos` (INSERT/UPDATE/DELETE),
-`clientes` (UPDATE — cambios de modo), `mensajes_soporte` (INSERT).
+Publicación `supabase_realtime` — emite INSERT/UPDATE/DELETE de:
+**`pedidos`, `detalle_pedidos`, `mensajes_soporte`, `reservas`, `clientes`**
+(`clientes` se agregó al resolver BUG-014, verificado vía MCP 2026-07-17).

@@ -16,12 +16,15 @@ select tablename, rowsecurity from pg_tables where schemaname='public' order by 
 Y revisa `pg_policies`. Marca las tablas **sin** RLS y las que tienen políticas laxas.
 
 ## 3. Comparar y registrar
-Contrasta con `docs/shared/bug-tracker.md` (ya están BUG-003 secretos, BUG-007 anon/RLS,
-BUG-011 versión/webhook, BUG-012 RLS off). **Agrega solo lo nuevo** — no dupliques. Presenta un
-resumen priorizado (🔴🟡🟢).
+Contrasta con `docs/shared/bug-tracker.md` (abiertos) y `docs/shared/changelog.md` (resueltos:
+secretos/keys BUG-003, RLS total BUG-012, webhook/versión BUG-011 — todo cerrado 2026-07-22/23).
+**Agrega solo lo nuevo** al tracker — no dupliques. Presenta un resumen priorizado (🔴🟡🟢).
 
 ## Reglas
-- **No apliques remediaciones automáticamente**: los MCP son solo lectura y habilitar RLS sin
-  políticas rompería el bot (escribe con anon en `carritos`/`feedback_pendiente`). Presenta el
-  SQL/cambio y deja decidir al usuario.
-- La `service_role` expuesta debe rotarse; los writes del bot deben migrar a la credencial de n8n.
+- **No apliques remediaciones automáticamente**: presenta el hallazgo y el SQL/cambio propuesto,
+  y deja decidir al usuario (para aplicar un fix acordado usa `/fix-bug`).
+- Estado esperado (post 2026-07-23): RLS ON en todas las tablas, bot escribiendo con la
+  credencial `Supabase account` (`sb_secret_`), legacy keys deshabilitadas, webhook con Header
+  Auth. Cualquier desviación de eso es un hallazgo.
+- Riesgo diferido conocido (no re-reportar como nuevo): `VITE_WA_ACCESS_TOKEN` en el bundle
+  del dashboard — ver `docs/shared/backlog.md`.

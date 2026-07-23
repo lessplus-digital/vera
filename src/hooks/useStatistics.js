@@ -32,20 +32,30 @@ export function useStatistics() {
   // Clientes fieles se agrega desde pedidos (histórico) porque los
   // contadores clientes.total_pedidos/gasto_total no se mantienen en la BD.
   useEffect(() => {
+    const PEDIDOS_LIMIT = 10000
+
     supabase
       .from('menu')
       .select('producto_id, nombre, categoria, variante, disponible')
-      .then(({ data }) => setMenu(data || []))
+      .then(({ data, error }) => {
+        if (error) console.error('Error cargando menú (estadísticas):', error)
+        setMenu(data || [])
+      })
 
     Promise.all([
       supabase
         .from('pedidos')
         .select('cliente_id, telefono, total, estado, fecha_pedido')
-        .limit(10000),
+        .limit(PEDIDOS_LIMIT),
       supabase
         .from('clientes')
         .select('cliente_id, nombre'),
     ]).then(([orders, clientes]) => {
+      if (orders.error) console.error('Error cargando pedidos (clientes fieles/riesgo):', orders.error)
+      if (clientes.error) console.error('Error cargando clientes (estadísticas):', clientes.error)
+      if (orders.data && orders.data.length >= PEDIDOS_LIMIT) {
+        console.warn(`useStatistics: la query de pedidos alcanzó el límite de ${PEDIDOS_LIMIT} filas; los agregados de clientes fieles/riesgo pueden estar truncados.`)
+      }
       setClients(topClients(orders.data || [], clientes.data || []))
       setAtRisk(riskClients(orders.data || [], clientes.data || []))
     })

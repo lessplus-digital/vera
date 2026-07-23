@@ -4,8 +4,6 @@
 
 .rsv-page {
   padding: 20px 24px 32px;
-  max-width: 1280px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -125,20 +123,7 @@
     }
   }
 
-  .rsv-new {
-    background: var(--amber-dim);
-    border: 1px solid var(--amber-border);
-    border-radius: var(--radius-md);
-    color: var(--amber);
-    font-family: var(--font-sans);
-    font-size: 12px;
-    font-weight: 600;
-    padding: 8px 14px;
-    cursor: pointer;
-    transition: opacity 0.15s ease;
-
-    &:hover { opacity: 0.85; }
-  }
+  // «Nueva reserva» → .btn.primary global (index.css)
 }
 
 /* ── Calendario (overrides de react-big-calendar) ── */
@@ -377,21 +362,21 @@
     flex-direction: column;
     gap: 5px;
 
-    input, select {
-      background: var(--bg-surface);
+    input {
+      background: var(--bg-inset);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       color: var(--text-primary);
       font-family: var(--font-sans);
       font-size: 13px;
       padding: 8px 12px;
-      color-scheme: dark;
 
       &::placeholder { color: var(--text-muted); }
       &:focus { outline: none; border-color: var(--border-hover); }
     }
 
-    select { cursor: pointer; }
+    // select: diseño global (index.css); solo igualar tamaño al input
+    select { font-size: 13px; }
   }
 
   .rm-label {
@@ -739,6 +724,8 @@
   .rm-foot .cancel,
   .rm-foot .save,
   .rd-notes p {
-    background: var(--bg-inset);
+    // background-color (no shorthand): el select global lleva el chevron
+    // como background-image y un `background:` lo borraría.
+    background-color: var(--bg-inset);
   }
 }

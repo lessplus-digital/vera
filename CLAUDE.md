@@ -51,11 +51,11 @@ JWT to every REST/Realtime call. The core tables the dashboard reads (`clientes`
 anon key alone returns nothing there — a logged-in session is required. The secret
 `service_role` key is meant to be used **only in n8n**, never here.
 
-> ⚠️ **Reality check (2026-07-16, verified via Supabase MCP):** RLS is *not* enabled on 6
-> tables (`carritos`, `feedback`, `feedback_pendiente`, `info_negocio`, `n8n_chat_histories`,
-> `n8n_mensajes_pendientes`) — they're exposed to the anon key. And several n8n nodes write with
-> a hardcoded anon key instead of `service_role`. See `docs/database/schema.md` (permissions)
-> and `docs/shared/bug-tracker.md` (BUG-003/007/012).
+> ✅ **Update (2026-07-22, verified via Supabase MCP):** RLS is now enabled on **every** table
+> (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),
+> and the project migrated to Supabase's new API keys: the dashboard uses the `sb_publishable_`
+> key, n8n uses an `sb_secret_` key, and the leaked legacy JWT keys were disabled. See
+> `docs/database/schema.md` (permissions) and `docs/shared/changelog.md`.
 
 **Per-domain hooks own their data + realtime.** Each tab's data lives in one hook that
 does the fetch, subscribes to a Supabase realtime channel, and exposes mutators:
@@ -66,6 +66,14 @@ orders (diffing against a `knownIds` ref) to play a sound and flash the card.
 **Styling:** LESS files under `src/styles/`, imported in `main.jsx`. Theme is
 dark/light CSS variables toggled by `useTheme` (persisted to localStorage, applied as
 `data-theme` on the root).
+
+**Design system (mandatory):** `docs/dashboard/design-system.md` is the visual source
+of truth — tokens in `src/styles/index.css`, button hierarchy (`.btn primary|secondary|
+ghost|danger`, ONE primary per screen), form pattern (`.field` with helpers BELOW the
+input, never in the label), flat surfaces for info containers (glass only on
+sidebar/topbar), one font family (mono is deprecated; numbers use `tabular-nums`), and
+a validated chart palette (`--chart-1..3`, never cycled). Any UI change must follow it;
+new patterns get added there first.
 
 The React component/hook layout is documented in detail in
 `docs/dashboard/components.md` — consult it before adding components; don't re-derive it.
@@ -115,16 +123,17 @@ significant change — don't re-derive what's already written:
 | System-wide | `docs/architecture.md` |
 | **Bot** (n8n + WhatsApp) | `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md` |
 | **Database** (Supabase) | `docs/database/schema.md` |
-| **Dashboard** (this repo) | `docs/dashboard/components.md` |
-| Cross-layer | `docs/shared/bug-tracker.md`, `docs/shared/edge-cases.md`, `docs/shared/changelog.md` |
+| **Dashboard** (this repo) | `docs/dashboard/components.md`, `docs/dashboard/design-system.md` |
+| Cross-layer | `docs/shared/bug-tracker.md` (open bugs), `docs/shared/backlog.md` (pending features), `docs/shared/changelog.md` (done), `docs/shared/edge-cases.md` (lessons) |
 
 When you make a significant change, update the matching doc:
 
 - DB change → `docs/database/schema.md`
 - New workflow/tool → `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md`
 - New React component → `docs/dashboard/components.md`
-- Bug to fix → `docs/shared/bug-tracker.md` · lesson learned → `docs/shared/edge-cases.md`
-- Architectural decision → `docs/shared/changelog.md`
+- Bug found → `docs/shared/bug-tracker.md` · bug resolved → remove it there + condensed
+  entry in `docs/shared/changelog.md` · lesson learned → `docs/shared/edge-cases.md`
+- Architectural decision → `docs/shared/changelog.md` · deferred feature/idea → `docs/shared/backlog.md`
 
 ## Global rules enforced by the bot + shared DB
 

@@ -34,24 +34,26 @@ export function useReservations() {
   }, [fetchReservations])
 
   async function createReservation({ cliente_id, nombre_cliente, telefono, fecha, hora, personas, estado, notas }) {
-    const reservation = {
-      reserva_id:     `RSV-M${Date.now()}`,
-      cliente_id,
-      telefono,
-      nombre_cliente,
-      fecha,
-      hora,
-      personas:       Number(personas),
-      estado,
-      origen:         'dashboard',
-      notas:          notas.trim() || null,
-      created_at:     new Date().toISOString(),
-    }
-
-    const { error: insertError } = await supabase.from('reservas').insert(reservation)
+    // `reserva_id` lo genera la BD por default (`generar_reserva_id()`); no lo enviamos
+    // para evitar colisiones. Leemos la fila de vuelta para tener el id real generado.
+    const { data: reservation, error: insertError } = await supabase
+      .from('reservas')
+      .insert({
+        cliente_id,
+        telefono,
+        nombre_cliente,
+        fecha,
+        hora,
+        personas:   Number(personas),
+        estado,
+        origen:     'dashboard',
+        notas:      notas.trim() || null,
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
 
     if (insertError) {
-      if (insertError.code === '23505') return { error: 'Ya existe una reserva con ese ID. Intenta de nuevo.' }
       console.error('Error creando reserva:', insertError)
       return { error: 'Error al crear la reserva. Intenta de nuevo.' }
     }

@@ -3,8 +3,10 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 import { ChartTooltip } from './ChartTheme'
 import { formatPrice } from '../../utils/formatters'
 
-const PALETTE = ['var(--amber)', 'var(--purple)', 'var(--green)', 'var(--blue)', 'var(--red)', 'var(--text-muted)']
-const MAX_SLICES = 5
+// Paleta categórica validada (index.css) — orden fijo, sin ciclar:
+// las categorías más allá del top 3 se agrupan en "otras" (muted).
+const PALETTE = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--text-muted)']
+const MAX_SLICES = 3
 
 export default function CategoryRevenue({ data }) {
   // Top 5 categorías + "otras" agrupadas
@@ -33,7 +35,7 @@ export default function CategoryRevenue({ data }) {
                 stroke="var(--bg-card)"
               >
                 {slices.map((s, i) => (
-                  <Cell key={s.categoria} fill={PALETTE[i % PALETTE.length]} />
+                  <Cell key={s.categoria} fill={PALETTE[Math.min(i, PALETTE.length - 1)]} />
                 ))}
               </Pie>
               <Tooltip content={<ChartTooltip formatter={v => formatPrice(v)} />} />
@@ -43,7 +45,7 @@ export default function CategoryRevenue({ data }) {
           <div className="cat-legend">
             {slices.map((s, i) => (
               <div key={s.categoria} className="cat-legend-row">
-                <span className="cat-dot" style={{ background: PALETTE[i % PALETTE.length] }} />
+                <span className="cat-dot" style={{ background: PALETTE[Math.min(i, PALETTE.length - 1)] }} />
                 <span className="cat-name">{s.categoria}</span>
                 <span className="cat-pct">{((s.ingresos / total) * 100).toFixed(0)}%</span>
                 <span className="cat-amount">{formatPrice(s.ingresos)}</span>

@@ -4,12 +4,12 @@
 
 .clients-page {
   padding: 20px 24px 40px;
-  max-width: 1080px;
-  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
   animation: fadeIn 0.2s ease;
+
+  @media (max-width: 560px) { padding: 16px 14px 32px; }
 }
 
 /* ── Toolbar ── */
@@ -42,7 +42,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 600;
   padding: 8px 12px;
@@ -55,23 +56,11 @@
 .clients-count {
   font-size: 12px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
 }
 
+// Acción primaria de la pantalla → .btn.primary (index.css); aquí solo layout
 .clients-new {
   margin-left: auto;
-  background: var(--amber-dim);
-  border: 1px solid var(--amber-border);
-  border-radius: var(--radius-md);
-  color: var(--amber);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 14px;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-
-  &:hover { opacity: 0.85; }
 }
 
 /* ── Estados vacío / error ── */
@@ -133,7 +122,7 @@
   }
 
   &.head {
-    background: var(--bg-surface);
+    background: var(--bg-inset);
     font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
@@ -154,7 +143,7 @@
 
   .phone a {
     color: var(--text-secondary);
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 12px;
     text-decoration: none;
 
@@ -172,11 +161,11 @@
   .date {
     color: var(--text-muted);
     font-size: 12px;
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
   .edit-btn {
-    background: var(--bg-surface);
+    background: var(--bg-inset);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
@@ -203,6 +192,68 @@
   &.feedback { background: var(--purple-dim); color: var(--purple); border: 1px solid var(--purple-border); }
 }
 
+/* ── Paginación ── */
+
+.clients-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 2px 2px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+
+  .cp-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    // Diseño global de select (index.css); aquí solo tamaño compacto
+    select {
+      font-size: 12px;
+      padding: 5px 26px 5px 8px;
+      background-position: right 8px center;
+    }
+  }
+
+  .cp-range { font-variant-numeric: tabular-nums; }
+
+  .cp-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cp-page {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .cp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-hover); }
+    &:disabled { opacity: 0.4; cursor: not-allowed; }
+  }
+
+  @media (max-width: 560px) {
+    justify-content: center;
+    .cp-range { order: 3; width: 100%; text-align: center; }
+  }
+}
+
 /* ── Modal crear/editar ── */
 
 .client-modal {
@@ -219,50 +270,15 @@
     border-bottom: 1px solid var(--border);
 
     .title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
-    .sub   { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 3px; }
+    .sub   { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 3px; }
   }
 
+  // Campos → patrón global .field / .field-label / .field-help (index.css)
   .cm-body {
     padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 14px;
-  }
-
-  .cm-field {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-
-    input, select {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      font-family: var(--font-sans);
-      font-size: 13px;
-      padding: 8px 12px;
-
-      &::placeholder { color: var(--text-muted); }
-      &:focus { outline: none; border-color: var(--border-hover); }
-    }
-
-    select { cursor: pointer; }
-  }
-
-  .cm-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .cm-hint {
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: normal;
-    color: var(--text-muted);
   }
 
   .cm-error {
@@ -275,53 +291,12 @@
     font-weight: 500;
   }
 
+  // Botones → jerarquía global .btn (index.css): ghost (cancelar) + primary (guardar)
   .cm-foot {
     border-top: 1px solid var(--border);
     padding: 14px 20px;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-
-    .cancel {
-      padding: 9px 16px;
-      font-size: 12px;
-      font-weight: 500;
-      background: var(--bg-surface);
-      color: var(--text-secondary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-family: var(--font-sans);
-    }
-
-    .save {
-      padding: 9px 16px;
-      font-size: 12px;
-      font-weight: 600;
-      background: var(--bg-surface);
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      cursor: not-allowed;
-      font-family: var(--font-sans);
-      transition: all 0.15s ease;
-
-      &.ready {
-        background: var(--green-dim);
-        color: var(--green);
-        border-color: var(--green-border);
-        cursor: pointer;
-      }
-    }
-  }
-}
-
-// ── Calmer glass: flatten inner surfaces so the modal reads as one ─
-.client-modal {
-  .cm-field input,
-  .cm-field select,
-  .cm-foot .cancel,
-  .cm-foot .save {
-    background: var(--bg-inset);
   }
 }

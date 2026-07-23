@@ -1,3 +1,4 @@
+import { parseDb } from '../../utils/dateRanges'
 import Icon from '../../components/Icon'
 
 export default function ChatBubble({ msg, onImageClick }) {
@@ -49,7 +50,7 @@ export default function ChatBubble({ msg, onImageClick }) {
         )}
 
         <div className={`time${isImage ? ' img-pad' : ''}`}>
-          {new Date(msg.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+          {parseDb(msg.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
     </div>

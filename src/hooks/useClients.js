@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
+// Tope de clientes traídos a memoria (búsqueda/paginación son client-side). Es explícito
+// para no depender del límite por defecto de PostgREST (que puede capar en silencio); si se
+// alcanza, es la señal de migrar a búsqueda/paginación server-side.
+const CLIENTS_FETCH_CAP = 5000
+
 export function useClients() {
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -9,25 +14,32 @@ export function useClients() {
   const fetchClients = useCallback(async () => {
     const { data, error: fetchError } = await supabase
       .from('clientes')
-      .select('*')
+      .select('cliente_id, nombre, telefono, direccion_principal, modo, fecha_registro')
       .order('nombre', { ascending: true })
+      .limit(CLIENTS_FETCH_CAP)
 
     if (fetchError) {
       setError(fetchError.message)
     } else {
       setClients(data || [])
       setError(null)
+      if (data && data.length >= CLIENTS_FETCH_CAP) {
+        console.warn(`useClients: se alcanzó el tope de ${CLIENTS_FETCH_CAP} clientes en memoria; es momento de pasar a búsqueda/paginación server-side.`)
+      }
     }
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchClients() }, [fetchClients])
 
-  // Realtime: la tabla clientes solo publica UPDATE (cambios de modo/datos)
+  // Realtime: escuchamos TODOS los eventos para que también aparezcan los clientes
+  // nuevos que crea el bot (INSERT), no solo los cambios de modo/datos (UPDATE).
+  // Requiere que la tabla `clientes` esté en la publicación `supabase_realtime`
+  // (ver BUG-014 en docs/shared/bug-tracker.md).
   useEffect(() => {
     const channel = supabase
       .channel('clientes-page-rt')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'clientes' }, () => fetchClients())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => fetchClients())
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [fetchClients])

@@ -208,7 +208,7 @@ function CalToolbar({ label, onNavigate, onView, view, onNew }) {
         ))}
       </div>
 
-      <button className="rsv-new" onClick={onNew}>+ Nueva reserva</button>
+      <button className="btn primary" onClick={onNew}>+ Nueva reserva</button>
     </div>
   )
 }

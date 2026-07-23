@@ -62,6 +62,35 @@
 **Causa:** El cliente respondía con algo que no es un nombre real.
 **Solución:** Regla en prompt: si el nombre parece raro, religioso, emoji o no real → saludar sin nombre y no registrarlo.
 
+## 11. RLS bloquea writes de n8n en silencio (pedidos sin líneas)
+
+**Síntoma:** Pedidos con `total` pero 0 filas en `detalle_pedidos` (8 casos en producción, BUG-007).
+**Causa:** Un nodo HTTP de n8n escribía con la **anon key hardcodeada** contra una tabla con RLS
+(política solo `authenticated`) → el INSERT devuelve 4xx pero el flujo siguió y borró el carrito,
+perdiendo los datos. RLS no "avisa": simplemente rechaza, y si el workflow no corta, el daño pasa
+desapercibido.
+**Solución:** Todo nodo n8n que toque Supabase usa `authentication: predefinedCredentialType` con
+la credencial `Supabase account` (service_role) — nunca keys pegadas en headers. Al auditar,
+verificar el rol decodificando el JWT del header (`"role":"anon"` vs `"service_role"`), y validar
+sobre la **versión publicada** del workflow, no el borrador.
+**Fecha:** 2026-07-22
+
+## 12. Keys con espacio invisible al final en inputs de n8n
+
+**Síntoma:** Validaciones que nunca se disparan: un Code node lee `input.telefono` /
+`input.cliente_id` y recibe `undefined`, aunque el dato "sí llega" (BUG-004 y BUG-009 — mordió
+dos veces con el mismo patrón).
+**Causa:** Al escribir los inputs de un subworkflow (o el schema de una tool) en la UI de n8n se
+coló un espacio al final del nombre (`'telefono '`, `'cliente_id '`). n8n lo acepta y lo propaga
+tal cual, así que los nodos que leen la key "bien escrita" (sin espacio) ven `undefined` — y un
+`if (input.x && ...)` se salta en silencio, incluso checks de seguridad.
+**Solución:** Renombrar la key sin espacio en **todo** el camino (schema de la tool en el main +
+trigger del subworkflow + cada nodo que la lea). Al auditar, comparar las keys del trigger
+carácter a carácter contra lo que leen los Code nodes. Y escribir los checks de seguridad
+**fail-closed** (`!input.x || ...`), para que un input ausente falle ruidoso en vez de saltarse
+la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el rename.
+**Fecha:** 2026-07-23
+
 ---
 
 ## Plantilla para nuevos casos
@@ -74,3 +103,15 @@
 **Solución:** Qué se hizo para resolverlo
 **Fecha:** YYYY-MM-DD
 ```
+
+## 13. Re-derivar el "día de negocio" a mano rompe el kanban de noche (2026-07-22)
+
+**Síntoma:** Pedidos reales del bot no aparecían en el kanban entre 19:00 y 24:00 Colombia (BUG-025); parecía un problema de zona horaria al guardar (BUG-022), pero el guardado era correcto.
+**Causa:** `useOrders` calculaba el inicio del día con `new Date(); setUTCHours(5,0,0,0)`. Cuando UTC ya cruzó la medianoche (00:00–05:00 UTC), eso produce las 05:00 UTC del día SIGUIENTE → umbral en el futuro → `gte` devuelve vacío.
+**Solución:** usar SIEMPRE `colombiaDayStart()` de `src/utils/dateRanges.js` (desplaza −5h antes de anclar la fecha). Nunca re-derivar lógica de fechas/timezone a mano en un hook: si estadísticas y kanban difieren, el que no usa el helper es el que está mal.
+
+## 14. Realtime con RLS filtra eventos en silencio si el socket no lleva JWT (2026-07-22)
+
+**Síntoma:** El badge de soporte no se actualizaba en vivo (BUG-023) aunque la tabla estaba en la publicación realtime; los INSERT de `mensajes_soporte` sí llegaban.
+**Causa:** postgres_changes aplica RLS por suscriptor: `clientes` (solo `authenticated`) no emitía nada a un socket con token anon; `mensajes_soporte` llegaba solo porque tenía una política `public` (que era un hueco de seguridad, BUG-024, ya eliminada).
+**Solución:** propagar el JWT al socket (`supabase.realtime.setAuth(token)` en getSession + onAuthStateChange). Lección: si un canal realtime "no recibe nada" y la tabla está en la publicación, sospecha del par RLS/token antes que del canal — y una política `public` que "hace funcionar" algo puede estar ocultando una fuga.

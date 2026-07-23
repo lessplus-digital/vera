@@ -5,7 +5,7 @@ import React from 'react'
 
 export const axisProps = {
   stroke: 'var(--text-muted)',
-  tick: { fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-mono)' },
+  tick: { fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-sans)' },
   tickLine: false,
   axisLine: { stroke: 'var(--border)' },
 }
@@ -42,7 +42,7 @@ export function ChartTooltip({ active, payload, label, formatter }) {
             background: entry.color || entry.fill, flexShrink: 0,
           }} />
           <span style={{ color: 'var(--text-muted)' }}>{entry.name}:</span>
-          <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+          <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
             {formatter ? formatter(entry.value, entry.dataKey) : entry.value}
           </span>
         </div>

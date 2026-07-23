@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { timeAgoShort } from '../../utils/formatters'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useAuth } from '../../hooks/useAuth'

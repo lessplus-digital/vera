@@ -25,8 +25,8 @@ export default function SalesChart({ data }) {
               content={<ChartTooltip formatter={(v, key) => (key === 'ingresos' ? formatPrice(v) : v)} />}
             />
             <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-secondary)' }} iconSize={10} />
-            <Bar yAxisId="left" dataKey="pedidos" name="Pedidos" fill="var(--purple)" radius={[4, 4, 0, 0]} maxBarSize={36} />
-            <Line yAxisId="right" type="monotone" dataKey="ingresos" name="Ingresos" stroke="var(--amber)" strokeWidth={2} dot={{ r: 2, fill: 'var(--amber)' }} activeDot={{ r: 4 }} />
+            <Bar yAxisId="left" dataKey="pedidos" name="Pedidos" fill="var(--chart-2)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+            <Line yAxisId="right" type="monotone" dataKey="ingresos" name="Ingresos" stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 2, fill: 'var(--chart-1)' }} activeDot={{ r: 4 }} />
           </ComposedChart>
         </ResponsiveContainer>
       )}

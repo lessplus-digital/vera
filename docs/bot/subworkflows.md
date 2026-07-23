@@ -4,6 +4,8 @@
 > independiente con trigger `When Executed by Another Workflow`. Referenciados desde la
 > tabla de tools de cada agente en [`ai-agents.md`](ai-agents.md).
 > Fuente: instancia n8n vía MCP (`n8n-mcp`), 2026-07-16.
+> Secciones **Consultar_menu** y **Crear_orden_completa** re-verificadas 2026-07-22 (nodos ya
+> con credencial `Supabase account`; BUG-003/006/007 resueltos).
 
 ---
 
@@ -15,18 +17,16 @@
 ```
 When Executed by Another Workflow (filtro)
   └─ Construir filtros (Code)
-       · select fijo · order categoria.asc,nombre.asc · disponible=eq.true · limit 30
-       · palabras del filtro con length > 2:
-         - 1 palabra  → or=(nombre/categoria/descripcion ilike *p*)
-         - N palabras → or con la 1ª (nombre/descripcion) + `_filtrar_palabras` = resto
-  └─ HTTP Request (GET /menu con esos query params)   ⚠️ service_role hardcodeada (BUG-003)
+       · arma los args del RPC: { termino, umbral: 0.2, limite: 30, solo_disponibles: true }
+  └─ HTTP Request (POST /rest/v1/rpc/buscar_menu — credencial `Supabase account`)
   └─ Code in JavaScript1 (Code)
-       · post-filtro: cada palabra extra debe aparecer en nombre+descripcion+categoria
-       · agrupa por categoria → { encontrados, productos_por_categoria }
+       · filtra filas con producto_id, agrupa por categoria
+       · → { encontrados, productos_por_categoria } (cada item incluye `similitud`)
 ```
 
-**⚠️ BUG-006:** el prompt del Agente Menú promete "búsqueda inteligente" + campo `similitud`,
-pero esto solo hace `ilike` (substring) y no devuelve `similitud`. `papatas` ≠ `patatas`.
+**Nota (BUG-006 resuelto):** la búsqueda ya es difusa de verdad — el RPC `buscar_menu`
+(pg_trgm + unaccent + diccionario de typos) devuelve `similitud`, como promete el prompt
+del Agente Menú. `papatas` → `patatas` ✅.
 
 ---
 
@@ -41,22 +41,22 @@ When Executed (cliente_id, telefono, filtro)
   └─ Validar payload (Code) — parsea filtro; valida tipo_pedido (domicilio/recoger),
   │    metodo_pago (Transferencia/Efectivo), dirección si domicilio, items
   │    (producto_id/cantidad/precio_unitario); calcula total SERVER-SIDE; expone productoIds
-  └─ Validar productos menu (HTTP GET /menu?producto_id=in(...)&disponible=eq.true)  ⚠️ key anon
+  └─ Validar productos menu (HTTP GET /menu?producto_id=in(...)&disponible=eq.true — credencial `Supabase account`)
   └─ Construir pedido (Code) — verifica que todos los productoIds existan/disponibles
   │    (faltan → error PRODUCT_NOT_FOUND); arma pedidoObj (estado/estado_pago='pendiente')
   └─ If (¿error?) → Stop and Error  |  INSERT pedido (Supabase, credencial) → tabla pedidos
        └─ Code in JavaScript — arma `detalles` con el pedido_id devuelto
-       └─ INSERT detalle_pedidos (HTTP POST)      ⚠️ key anon (BUG-007)
-       └─ Limpiar carrito (HTTP DELETE /carritos?telefono)   ⚠️ key anon
+       └─ INSERT detalle_pedidos (HTTP POST — credencial `Supabase account`)
+       └─ Limpiar carrito (HTTP DELETE /carritos?telefono — credencial `Supabase account`)
        └─ Respuesta de salida → { ok: true }
 ```
 
 **Notas:**
 - El `total` se calcula en JS aquí y se inserta, pero el trigger de Postgres lo recalcula al
   insertar `detalle_pedidos`. Redundante pero coherente con la convención (total = trigger).
-- **⚠️ BUG-007:** `detalle_pedidos` se inserta con la **anon key** vía HTTP; si RLS está activo
-  en esa tabla (`rls_reference.sql` la incluye, política solo `authenticated`), el INSERT se
-  bloquearía. Que hoy funcione sugiere que RLS quizá no está aplicado — verificar.
+- **BUG-007 resuelto:** todos los nodos HTTP del sub usan la credencial `Supabase account`
+  (`sb_secret_`, salta RLS) — verificado vía MCP 2026-07-22. El INSERT de `detalle_pedidos`
+  ya no choca con la política `authenticated` de RLS.
 
 ---
 
@@ -83,58 +83,62 @@ las 22:30 (pasa el cierre de 9 PM) — revisar si es intencional.
 ## Sub — Crear Reserva
 
 - **ID:** `xyb9zB6nz6OmmboX` · **Tool:** `crear_reserva` (Agente Reservas)
-- **Inputs:** `telefono`, `nombre`, `fecha`, `hora`, `personas`, `cliente_id ` (con espacio, BUG-004)
-- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas }` o `{ _valido:false, error }`
+- **Inputs:** `telefono`, `nombre`, `fecha`, `hora`, `personas`, `cliente_id` (sin espacio desde
+  el fix de BUG-004, 2026-07-23)
+- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas }` o `{ ok:false, error }`
 
 ```
-When Executed → Validar y verificar cupo (Code) → If(_valido) → INSERT (reservas) → Formatear respuesta
+When Executed → Validar y verificar cupo (Code, solo prepara la fila) → INSERT (reservas) → Formatear respuesta
 ```
 
-- **⚠️ BUG-008:** `Validar y verificar cupo` hace `$input.all().filter(r => r.reserva_id)`,
-  pero nada le pasa reservas (no hay query previa) → siempre vacío → los checks de **duplicado**
-  y **cupo** nunca se disparan. La única barrera real es `consultar_disponibilidad` (upstream).
-- **BUG-004 (corregido):** el INSERT lee `['cliente_id ']` (con espacio), así que el
-  `cliente_id` **sí** entra. Pero `input.cliente_id` (sin espacio) en el nodo Validar es
-  `undefined` — fragilidad latente, no rotura.
+- **BUG-004 (✅ 2026-07-23):** la key `cliente_id ` (con espacio) se renombró a `cliente_id` en
+  todo el camino (schema de la tool en el main, trigger e INSERT del subworkflow).
+- **BUG-008 (✅ 2026-07-23):** se eliminó el check JS muerto de duplicado/cupo (filtraba
+  `$input.all()` por `reserva_id` pero nada le pasaba reservas) y el `If(_valido)` siempre-true.
+  El **cupo** lo protege el trigger de BD `trigger_validar_cupo` (BEFORE INSERT, RAISE EXCEPTION
+  si 8 solapadas); el **duplicado** (misma persona, mismo día) se maneja conversacionalmente
+  (decisión consciente: un cliente puede reservar almuerzo y cena el mismo día).
 
 ---
 
 ## Sub — Cancelar Reserva
 
-- **ID:** `Jk8r0QtxYqYzK8cV` · **existe pero NO está cableado** como tool al Agente Reservas (BUG-005)
-- **Inputs:** `reserva_id`, `telefono ` (con espacio)
-- **Salida:** `{ ok, reserva_id, mensaje }` o `{ ok:false, error }`
+- **ID:** `Jk8r0QtxYqYzK8cV` · **Tool:** `cancelar_reserva` (Agente Reservas, cableada 2026-07-23 — BUG-005)
+- **Inputs:** `reserva_id`, `telefono` (sin espacio desde el fix de BUG-009)
+- **Salida:** fila actualizada de `reservas` (ok) o `{ ok:false, error }` (validación fallida)
 
 ```
 When Executed → [Supabase GET reservas WHERE reserva_id]  (nodo mal nombrado "INSERT")
   └─ Validar (Code) — ¿existe? ¿es del cliente? ¿estado confirmada?
-  └─ UPDATE reservas SET estado='cancelada'
+       └─ ¿Validación OK? (If sobre ok)
+            ├─ true  → UPDATE reservas SET estado='cancelada'
+            └─ false → Responder error (NoOp — devuelve { ok:false, error } al agente)
 ```
 
-- **⚠️ BUG-009:** la verificación de propiedad usa `input.telefono`, pero el input llega como
-  `telefono ` (con espacio) → `undefined` → el check "esta reserva no es tuya" se salta
-  **siempre**. Con un `reserva_id`, se puede cancelar la reserva de cualquiera.
+- **BUG-009 (✅ 2026-07-23):** el input `telefono ` (con espacio) se renombró a `telefono`, y el
+  check de propiedad ahora es **fail-closed**: `!input.telefono || reserva.telefono !== input.telefono`
+  → sin teléfono no se cancela nada. Además se añadió la compuerta `¿Validación OK?`: antes el
+  UPDATE corría incondicionalmente tras Validar (con `ok:false` iba con `reserva_id` undefined).
+- **BUG-005 (✅ 2026-07-23):** se agregó el nodo `toolWorkflow` `cancelar_reserva` al Agente
+  Reservas en el main (inputs `reserva_id` + `telefono` vía `$fromAI`). El prompt del agente ya
+  describía el flujo CANCELAR RESERVA — no hubo que tocarlo.
 
 ---
 
-## Sub — Editar pedido
+## Sub — Editar pedido — 🗄️ ARCHIVADO (2026-07-22, BUG-010)
 
-- **ID:** `CPJcILNiaw20eRye` · **no aparece cableado** como tool en el workflow de agentes actual
-  (posible legacy; el dashboard edita pedidos por su cuenta vía RPC).
-- **Input:** `filtro` (JSON: `{ operacion, pedido_id, payload/campos }`)
-
-```
-When Executed → Code(parse) → Mapear datos → HTTP GET pedido (WHERE pendiente + detalle_pedidos)  ⚠️ service_role
-  └─ If (¿pedido pendiente?) → Switch(operacion)  |  Send message "ya está en cocina, no editable"
-       ├─ agregar          → Get a row (menu) → agregar (variante/precio) → Create a row (detalle)
-       ├─ eliminar         → Delete a row (detalle)
-       ├─ cambiar_cantidad → Cambiar Cantidad → Update a row (detalle.cantidad)
-       └─ campo            → Cambiar campos → Switch1 → actualizar_direccion / Actualizar notas
-```
-
-- **⚠️ BUG-010:** el `Send message` usa `phoneNumberId` **1034474539749030**, distinto al del
-  resto del sistema (**1026022853935447**) → podría enviar desde otro número o fallar. Además el
-  subworkflow no aparece conectado a los agentes (confirmar si sigue en uso).
+- **ID:** `CPJcILNiaw20eRye` · desactivado y archivado en n8n. Nunca estuvo cableado a los
+  agentes y tenía **0 ejecuciones** en toda su historia.
+- **Por qué se archivó y no se cableó** (análisis BUG-010): editaba `detalle_pedidos` fila a
+  fila directo (se saltaba el RPC `editar_pedido` → habría perdido el recargo de domicilio al
+  recalcular), no validaba `telefono` (cualquiera con un `pedido_id` editaba pedidos ajenos),
+  exigía `detalle_id` que el cliente no conoce, y usaba un `phoneNumberId` equivocado. El caso
+  de uso ya está cubierto: el admin edita desde el dashboard (RPC `editar_pedido`).
+- **Flujo conversacional que lo reemplaza:** "quiero cambiar mi pedido" (ya registrado) →
+  el Orquestador enruta a **soporte** → `solicitar_handoff` → el admin edita en el dashboard
+  (reglas añadidas a los prompts del Orquestador y Agente Soporte).
+- **Si algún día se quiere como feature:** diseñarlo de cero sobre el RPC `editar_pedido`
+  con validación de propiedad por `telefono`.
 
 ---
 

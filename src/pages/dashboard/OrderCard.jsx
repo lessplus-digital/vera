@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { supabase } from '../../lib/supabase'
+import { parseDb } from '../../utils/dateRanges'
 import { ESTADO_PAGO_LABEL, METODO_LABEL } from '../../utils/constants'
 import EditOrderModal from './EditOrderModal'
 import RejectModal from './RejectModal'
@@ -15,7 +16,7 @@ export default function OrderCard({ order, isNew, onUpdated }) {
   const [showEdit, setShowEdit] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
 
-  const timeAgo = formatDistanceToNow(new Date(order.fecha_pedido), {
+  const timeAgo = formatDistanceToNow(parseDb(order.fecha_pedido), {
     addSuffix: true,
     locale: es,
   })

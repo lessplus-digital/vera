@@ -1,6 +1,8 @@
 # Changelog — Decisiones y Cambios
 
-> Registra decisiones arquitectónicas importantes, no cada commit. Agrega al inicio (más reciente arriba).
+> Registra decisiones arquitectónicas y **bugs resueltos** (condensados por tema), no cada
+> commit. Agrega al inicio (más reciente arriba). El detalle completo de cada bug (verificación,
+> comandos, notas) vive en el git history de `bug-tracker.md` y en los docs de capa.
 
 ## Formato
 
@@ -12,6 +14,131 @@
 ```
 
 ---
+
+### 2026-07-22 — Kanban vacío de noche (BUG-025, cierra BUG-022) + drop de políticas public (BUG-024) ✅
+
+**Contexto:** Un pedido real del bot (PED-117, 20:49 Colombia) no aparecía en el kanban.
+Verificado vía MCP: el pedido estaba bien guardado en UTC y `pendiente`.
+**Causa (BUG-025):** `useOrders` derivaba el día de negocio con `setUTCHours(5,0,0,0)` sobre
+la fecha UTC actual → entre 00:00 y 05:00 UTC (19:00–24:00 Colombia) el umbral quedaba en el
+FUTURO y el filtro `gte` vaciaba kanban y stats del header, justo en el rush nocturno.
+**Fix:** usar el helper correcto que ya existía — `colombiaDayStart()` de `dateRanges.js`
+(desplaza −5h antes de anclar). Estadísticas nunca falló porque ya lo usaba.
+**BUG-022 (cerrado como no-bug):** el "desfase de 6–7 h" al crear pedido manual era ver el
+valor UTC crudo en Supabase Studio (+5 vs Colombia); `CreateOrderModal` guarda
+`new Date().toISOString()` correctamente, igual que el bot. El síntoma visible (card que no
+aparece) era BUG-025.
+**BUG-024:** migración `bug024_drop_public_policies_mensajes_soporte` aplicada — eliminadas
+las políticas `public` de lectura/inserción; queda solo `auth_full_access` (verificado vía
+pg_policies). El realtime del dashboard ahora depende del JWT en el socket (fix BUG-023).
+**Impacto:** `src/hooks/useOrders.js`; BD (policies); tracker en cero abiertos.
+
+### 2026-07-22 — DS v2.1: primary tinted amber, dropdowns propios, badge de soporte en realtime (BUG-023) ✅
+
+**Contexto:** Iteración sobre el DS v2: el primary naranja sólido no convenció — se prefirió
+el tinted amber de «Crear»/«Nueva reserva», reforzado y unificado. Los selects se veían como
+HTML nativo. Y el badge de soporte del sidebar no se actualizaba en tiempo real.
+**Decisión/Fix:**
+- `.btn.primary` = tinted amber con fuerza (color-mix 16%/55%, texto amber, 700; hover 26%).
+  Aplicado a «Nuevo cliente», «+ Crear» (kanban `sm`), «+ Nueva reserva» y confirmar de modales.
+  Se eliminan los tokens `--accent-solid*`.
+- Dropdowns: estilo global de `<select>` en `index.css` (appearance:none + chevron SVG +
+  focus ring ámbar) y `color-scheme` por tema; overrides por página solo de tamaño.
+- **BUG-023 (badge):** causa raíz — los eventos realtime de `clientes` (RLS solo
+  `authenticated`) se filtran si el socket va con token anon; `mensajes_soporte` sí llegaba
+  por su política `public` (→ eso destapó BUG-024, abierta en el tracker). Fix doble:
+  `supabase.realtime.setAuth(jwt)` en `useAuth` + `useSupportCount` también refetchea con
+  INSERTs de `mensajes_soporte`.
+**Impacto:** `index.css`, `clients/statistics/reservations/orders.less`, `Column.jsx`,
+`ReservationsPage.jsx`, `useAuth.jsx`, `useSupportCount.js`, `design-system.md`, DS en
+claude.ai/design re-publicado.
+
+### 2026-07-22 — Design system v2: superficies planas, jerarquía de botones, tipografía única
+
+**Contexto:** Feedback de experto UX/UI: exceso de degradados ("se ve muy IA"), dos
+tipografías mezcladas, CTA sin peso visual, helpers dentro de labels, huecos y exceso de
+color en estadísticas. Se decidió estandarizar con un design system documentado.
+**Decisión:** `docs/dashboard/design-system.md` es la fuente de verdad visual (regla anclada
+en `CLAUDE.md`). Cards/modales planos (glass solo en sidebar/topbar); jerarquía `.btn`
+(primary naranja sólido, 1 por pantalla); patrón `.field` con helpers debajo del input y
+tag "Opcional" en la minoría; sans única con `tabular-nums` (mono deprecada); paleta de
+charts `--chart-1..3` validada contra daltonismo (skill dataviz, 6 checks dark+light);
+layout de stats con gaps/paddings unificados (16 / 16x18) y columnas stretch.
+**Impacto:** `src/styles/index.css` (tokens v2 + `.btn` + `.field`), `clients.less`,
+`statistics.less`, `ClientsPage/ClientModal`, `KpiCards`, `CancellationStats`,
+`CategoryRevenue` (top 3 + otras), `SalesChart`, `DeliveryStats`, `ChartTheme`.
+Pendiente en backlog: aplicar `.btn`/`.field` a pedidos, reservas y soporte.
+
+### 2026-07-22 — Se elimina `infra/` (RLS como código) — el MCP es la fuente viva
+
+**Contexto:** `infra/supabase/rls_reference.sql` fue la referencia del modelo RLS antes de tener
+MCP de Supabase. Hoy RLS ya está aplicado en las 12 tablas (BUG-012) y el estado real se
+verifica en vivo vía MCP; mantener el script versionado invitaba a drift.
+**Decisión:** eliminar `infra/` del repo. El modelo de permisos vive en
+`docs/database/schema.md` («Modelo de permisos», incluye cómo crear el primer admin). Replicar
+el setup a nuevos clientes (modelo silo) se hará vía MCP `apply_migration`. También se limpió
+`dist/` local (build, gitignored) y se decidió **mantener** `.env.example` y
+`.mcp.json.example` como plantillas versionadas de la config secreta.
+**Impacto:** `infra/` (eliminada); referencias actualizadas en `README.md`, `docs/README.md`,
+`docs/database/schema.md`, `src/hooks/useAuth.jsx`; drift corregido en
+`docs/bot/subworkflows.md` (BUG-003/006/007 ya resueltos, verificado vía MCP).
+
+### 2026-07-23 — Reservas: cancelación cableada y subworkflows saneados (BUG-004/005/008/009) ✅
+
+**Contexto:** Los 4 bugs abiertos restantes eran del flujo de reservas del bot. Se aplicaron
+directamente en n8n vía MCP (updates atómicos, validados, verificados en la versión publicada).
+**Qué se hizo:**
+- **BUG-005:** tool `cancelar_reserva` cableada al AGENTE RESERVAS (el prompt ya la describía).
+- **BUG-009:** input `telefono ` (espacio invisible) renombrado → el check "esta reserva no es
+  tuya" funciona; endurecido a fail-closed; nueva compuerta If para que un fallo de validación
+  no llegue al UPDATE y el agente reciba el error.
+- **BUG-004:** key `cliente_id ` (espacio) renombrada en todo el camino (tool → trigger → INSERT).
+- **BUG-008:** checks JS muertos de duplicado/cupo eliminados; el cupo lo protege el trigger de
+  BD `trigger_validar_cupo`. **Decisión:** duplicados NO se bloquean en BD (se manejan
+  conversacionalmente; ver backlog).
+**Impacto:** n8n (`Pizzeria Vera`, `Sub — Crear Reserva`, `Sub — Cancelar Reserva`);
+`docs/bot/subworkflows.md`, `ai-agents.md`, `n8n-workflow.md`; lección #12 en `edge-cases.md`
+(keys con espacio invisible → checks fail-closed).
+
+### 2026-07-22/23 — Hardening n8n + Supabase: credenciales, RLS total, keys nuevas (BUG-001..003, 006, 007, 010..012) ✅
+
+**Contexto:** Auditoría de seguridad reveló secretos hardcodeados, tablas sin RLS, webhook sin
+auth e instancia n8n 20 versiones atrás. Se resolvió todo el lote en dos días.
+**Qué se hizo:**
+- **BUG-003/007:** 13 nodos HTTP con secretos en texto plano migrados a credenciales n8n;
+  rotación al sistema nuevo de API keys de Supabase (`sb_publishable_` en el dashboard,
+  `sb_secret_` en n8n, legacy JWT deshabilitadas). El daño histórico de BUG-007: 8 pedidos
+  sin líneas, irrecuperables.
+- **BUG-012:** RLS habilitado en las 6 tablas que faltaban → **todas** las tablas con RLS.
+- **BUG-011:** webhook Supabase→n8n autenticado con `x-webhook-token`; nodo huérfano y
+  workflows archivados con secretos eliminados; instancia n8n actualizada.
+- **BUG-006:** `consultar_menu` migrado al RPC `buscar_menu` (fuzzy), extendido primero a
+  `categoria`/`descripcion` para no perder fidelidad vs. el `ilike` viejo.
+- **BUG-001/002:** expresiones rotas en `Sub — Feedback Pendiente` (faltaba `=`; fuente
+  confiable para `cliente_id` en ambas ramas).
+- **BUG-010:** `Sub — Editar pedido` archivado como legacy (0 ejecuciones, sin caller);
+  mitigación conversacional en prompts de Orquestador/Soporte.
+**Impacto:** n8n (7 workflows de producción limpios), BD (migraciones `bug006_*`, `bug011_*`,
+`bug012_*`), `.env.local` (key nueva); `CLAUDE.md`, `schema.md`, `feedback.md`,
+`subworkflows.md`, `infra/supabase/README.md`; lección #11 en `edge-cases.md`.
+
+### 2026-07-17 — Barrido de calidad del dashboard (BUG-013..021 + deuda técnica) ✅
+
+**Contexto:** Bugs rescatados de reportes de code-review (jul-14/16), resueltos en la rama
+`fix/BUG-013-useorders-error-handling`.
+**Qué se hizo:**
+- **Timezone (BUG-015/016/020/021):** todos los timestamps de BD pasan por `parseDb()`
+  (OrderCard, SupportPanel, ConversationItem, ChatBubble, ClientsPage); la validación del
+  `ReservationModal` usa offset fijo de Colombia (`-05:00`).
+- **Robustez (BUG-013/014/017/018/019):** `useOrders` sin spinner infinito en error; realtime
+  de `clientes` con `event:'*'` + tabla añadida a la publicación; errores de notas en
+  `EditOrderModal` ya no se descartan; `alert()` reemplazado por banner inline en soporte;
+  `reserva_id` lo genera la BD (`generar_reserva_id()`), no `Date.now()`.
+- **Deuda técnica:** `<MenuPicker>` extraído (~172 líneas de duplicación menos), errores
+  logueados en `useStatistics`, columnas explícitas en `useClients`, debounce (300 ms) en el
+  realtime de `useOrders`.
+**Impacto:** `src/hooks/*`, `src/pages/dashboard|reservations|support|clients/*`,
+`MenuPicker.jsx` (nuevo). Verificado con `npm run build`.
 
 ### 2026-06-19 — Autenticación (Supabase Auth) + RLS · Paso 1 hacia SaaS multi-cliente
 

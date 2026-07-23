@@ -28,14 +28,16 @@ function KpiCard({ label, value, delta, hint, color }) {
 export default function KpiCards({ kpis, deltas, rating }) {
   return (
     <div className="kpi-grid">
+      {/* Valores en tinta neutra; el color queda para los deltas (verde/rojo)
+          y para "Cancelados" > 0 como señal de estado. */}
       <KpiCard label="Pedidos" value={kpis.pedidos} delta={deltas.pedidos} />
-      <KpiCard label="Ingresos" value={formatPrice(kpis.ingresos)} delta={deltas.ingresos} color="var(--amber)" />
+      <KpiCard label="Ingresos" value={formatPrice(kpis.ingresos)} delta={deltas.ingresos} />
       <KpiCard label="Ticket promedio" value={formatPrice(Math.round(kpis.ticketPromedio))} delta={deltas.ticketPromedio} />
       <KpiCard
         label="Cancelados"
         value={`${kpis.tasaCancelacion.toFixed(1)}%`}
         hint={`${kpis.cancelados} pedido${kpis.cancelados === 1 ? '' : 's'}`}
-        color={kpis.cancelados > 0 ? 'var(--red)' : 'var(--green)'}
+        color={kpis.cancelados > 0 ? 'var(--red)' : undefined}
       />
       <KpiCard
         label="Calificación"
@@ -43,7 +45,6 @@ export default function KpiCards({ kpis, deltas, rating }) {
           ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="star" size={16} /> {rating.promedio.toFixed(1)}</span>
           : '—'}
         hint={rating.count > 0 ? `${rating.count} reseña${rating.count === 1 ? '' : 's'}` : 'Sin reseñas'}
-        color="var(--purple)"
       />
     </div>
   )
