@@ -68,6 +68,6 @@ La documentación completa —verificada contra n8n y Supabase reales vía MCP�
 | **Base de datos** | [`docs/database/schema.md`](docs/database/schema.md) |
 | **Dashboard** | [`docs/dashboard/components.md`](docs/dashboard/components.md) |
 | Bugs por corregir · lecciones · decisiones | [`docs/shared/`](docs/shared/) |
-| Seguridad / RLS como código | [`infra/supabase/`](infra/supabase/) |
+| Seguridad / RLS | [`docs/database/schema.md`](docs/database/schema.md) — sección «Modelo de permisos» |
 
 Contexto e instrucciones para Claude Code: [`CLAUDE.md`](CLAUDE.md).

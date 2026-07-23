@@ -19,7 +19,7 @@
             "type": "command",
             "timeout": 10,
             "statusMessage": "Verificando sincronización de docs…",
-            "command": "input=$(cat); printf '%s' \"$input\" | grep -q '\"stop_hook_active\": *true' && exit 0; s=$(git status --porcelain 2>/dev/null); if printf '%s' \"$s\" | grep -qE '(src|infra)/' && ! printf '%s' \"$s\" | grep -qE 'docs/'; then printf '{\"decision\":\"block\",\"reason\":\"Cambiaste codigo en src/ o infra/ sin actualizar docs/. Revisa si el cambio requiere actualizar el doc de la capa correspondiente (docs/dashboard/components.md, docs/database/schema.md, docs/bot/*) verificando contra la fuente real (skill verify-against-live). Si no aplica, dilo en una linea y termina.\"}'; fi; exit 0"
+            "command": "input=$(cat); printf '%s' \"$input\" | grep -q '\"stop_hook_active\": *true' && exit 0; s=$(git status --porcelain 2>/dev/null); if printf '%s' \"$s\" | grep -qE 'src/' && ! printf '%s' \"$s\" | grep -qE 'docs/'; then printf '{\"decision\":\"block\",\"reason\":\"Cambiaste codigo en src/ sin actualizar docs/. Revisa si el cambio requiere actualizar el doc de la capa correspondiente (docs/dashboard/components.md, docs/database/schema.md, docs/bot/*) verificando contra la fuente real (skill verify-against-live). Si no aplica, dilo en una linea y termina.\"}'; fi; exit 0"
           }
         ]
       }

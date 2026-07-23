@@ -55,5 +55,6 @@ Cuando hagas un cambio significativo, actualiza el doc que corresponde:
 | Surgió una feature/mejora para después | `shared/backlog.md` |
 | Tomaste una decisión arquitectónica | `shared/changelog.md` |
 
-La infraestructura como código (RLS, seguridad) se documenta aparte en
-[`../infra/supabase/README.md`](../infra/supabase/README.md).
+El modelo de seguridad (RLS, políticas, keys) se documenta en
+[`database/schema.md`](database/schema.md) (sección «Modelo de permisos») y se verifica
+en vivo contra Supabase vía MCP — ya no hay scripts SQL versionados en el repo.

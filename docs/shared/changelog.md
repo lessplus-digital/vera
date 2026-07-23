@@ -15,6 +15,20 @@
 
 ---
 
+### 2026-07-22 — Se elimina `infra/` (RLS como código) — el MCP es la fuente viva
+
+**Contexto:** `infra/supabase/rls_reference.sql` fue la referencia del modelo RLS antes de tener
+MCP de Supabase. Hoy RLS ya está aplicado en las 12 tablas (BUG-012) y el estado real se
+verifica en vivo vía MCP; mantener el script versionado invitaba a drift.
+**Decisión:** eliminar `infra/` del repo. El modelo de permisos vive en
+`docs/database/schema.md` («Modelo de permisos», incluye cómo crear el primer admin). Replicar
+el setup a nuevos clientes (modelo silo) se hará vía MCP `apply_migration`. También se limpió
+`dist/` local (build, gitignored) y se decidió **mantener** `.env.example` y
+`.mcp.json.example` como plantillas versionadas de la config secreta.
+**Impacto:** `infra/` (eliminada); referencias actualizadas en `README.md`, `docs/README.md`,
+`docs/database/schema.md`, `src/hooks/useAuth.jsx`; drift corregido en
+`docs/bot/subworkflows.md` (BUG-003/006/007 ya resueltos, verificado vía MCP).
+
 ### 2026-07-23 — Reservas: cancelación cableada y subworkflows saneados (BUG-004/005/008/009) ✅
 
 **Contexto:** Los 4 bugs abiertos restantes eran del flujo de reservas del bot. Se aplicaron

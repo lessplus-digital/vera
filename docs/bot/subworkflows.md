@@ -4,6 +4,8 @@
 > independiente con trigger `When Executed by Another Workflow`. Referenciados desde la
 > tabla de tools de cada agente en [`ai-agents.md`](ai-agents.md).
 > Fuente: instancia n8n vía MCP (`n8n-mcp`), 2026-07-16.
+> Secciones **Consultar_menu** y **Crear_orden_completa** re-verificadas 2026-07-22 (nodos ya
+> con credencial `Supabase account`; BUG-003/006/007 resueltos).
 
 ---
 
@@ -15,18 +17,16 @@
 ```
 When Executed by Another Workflow (filtro)
   └─ Construir filtros (Code)
-       · select fijo · order categoria.asc,nombre.asc · disponible=eq.true · limit 30
-       · palabras del filtro con length > 2:
-         - 1 palabra  → or=(nombre/categoria/descripcion ilike *p*)
-         - N palabras → or con la 1ª (nombre/descripcion) + `_filtrar_palabras` = resto
-  └─ HTTP Request (GET /menu con esos query params)   ⚠️ service_role hardcodeada (BUG-003)
+       · arma los args del RPC: { termino, umbral: 0.2, limite: 30, solo_disponibles: true }
+  └─ HTTP Request (POST /rest/v1/rpc/buscar_menu — credencial `Supabase account`)
   └─ Code in JavaScript1 (Code)
-       · post-filtro: cada palabra extra debe aparecer en nombre+descripcion+categoria
-       · agrupa por categoria → { encontrados, productos_por_categoria }
+       · filtra filas con producto_id, agrupa por categoria
+       · → { encontrados, productos_por_categoria } (cada item incluye `similitud`)
 ```
 
-**⚠️ BUG-006:** el prompt del Agente Menú promete "búsqueda inteligente" + campo `similitud`,
-pero esto solo hace `ilike` (substring) y no devuelve `similitud`. `papatas` ≠ `patatas`.
+**Nota (BUG-006 resuelto):** la búsqueda ya es difusa de verdad — el RPC `buscar_menu`
+(pg_trgm + unaccent + diccionario de typos) devuelve `similitud`, como promete el prompt
+del Agente Menú. `papatas` → `patatas` ✅.
 
 ---
 
@@ -41,22 +41,22 @@ When Executed (cliente_id, telefono, filtro)
   └─ Validar payload (Code) — parsea filtro; valida tipo_pedido (domicilio/recoger),
   │    metodo_pago (Transferencia/Efectivo), dirección si domicilio, items
   │    (producto_id/cantidad/precio_unitario); calcula total SERVER-SIDE; expone productoIds
-  └─ Validar productos menu (HTTP GET /menu?producto_id=in(...)&disponible=eq.true)  ⚠️ key anon
+  └─ Validar productos menu (HTTP GET /menu?producto_id=in(...)&disponible=eq.true — credencial `Supabase account`)
   └─ Construir pedido (Code) — verifica que todos los productoIds existan/disponibles
   │    (faltan → error PRODUCT_NOT_FOUND); arma pedidoObj (estado/estado_pago='pendiente')
   └─ If (¿error?) → Stop and Error  |  INSERT pedido (Supabase, credencial) → tabla pedidos
        └─ Code in JavaScript — arma `detalles` con el pedido_id devuelto
-       └─ INSERT detalle_pedidos (HTTP POST)      ⚠️ key anon (BUG-007)
-       └─ Limpiar carrito (HTTP DELETE /carritos?telefono)   ⚠️ key anon
+       └─ INSERT detalle_pedidos (HTTP POST — credencial `Supabase account`)
+       └─ Limpiar carrito (HTTP DELETE /carritos?telefono — credencial `Supabase account`)
        └─ Respuesta de salida → { ok: true }
 ```
 
 **Notas:**
 - El `total` se calcula en JS aquí y se inserta, pero el trigger de Postgres lo recalcula al
   insertar `detalle_pedidos`. Redundante pero coherente con la convención (total = trigger).
-- **⚠️ BUG-007:** `detalle_pedidos` se inserta con la **anon key** vía HTTP; si RLS está activo
-  en esa tabla (`rls_reference.sql` la incluye, política solo `authenticated`), el INSERT se
-  bloquearía. Que hoy funcione sugiere que RLS quizá no está aplicado — verificar.
+- **BUG-007 resuelto:** todos los nodos HTTP del sub usan la credencial `Supabase account`
+  (`sb_secret_`, salta RLS) — verificado vía MCP 2026-07-22. El INSERT de `detalle_pedidos`
+  ya no choca con la política `authenticated` de RLS.
 
 ---
 
