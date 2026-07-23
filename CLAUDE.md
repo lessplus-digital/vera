@@ -55,7 +55,7 @@ anon key alone returns nothing there — a logged-in session is required. The se
 > (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),
 > and the project migrated to Supabase's new API keys: the dashboard uses the `sb_publishable_`
 > key, n8n uses an `sb_secret_` key, and the leaked legacy JWT keys were disabled. See
-> `docs/database/schema.md` (permissions) and `docs/shared/bug-tracker.md`.
+> `docs/database/schema.md` (permissions) and `docs/shared/changelog.md`.
 
 **Per-domain hooks own their data + realtime.** Each tab's data lives in one hook that
 does the fetch, subscribes to a Supabase realtime channel, and exposes mutators:
@@ -116,15 +116,16 @@ significant change — don't re-derive what's already written:
 | **Bot** (n8n + WhatsApp) | `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md` |
 | **Database** (Supabase) | `docs/database/schema.md` |
 | **Dashboard** (this repo) | `docs/dashboard/components.md` |
-| Cross-layer | `docs/shared/bug-tracker.md`, `docs/shared/edge-cases.md`, `docs/shared/changelog.md` |
+| Cross-layer | `docs/shared/bug-tracker.md` (open bugs), `docs/shared/backlog.md` (pending features), `docs/shared/changelog.md` (done), `docs/shared/edge-cases.md` (lessons) |
 
 When you make a significant change, update the matching doc:
 
 - DB change → `docs/database/schema.md`
 - New workflow/tool → `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md`
 - New React component → `docs/dashboard/components.md`
-- Bug to fix → `docs/shared/bug-tracker.md` · lesson learned → `docs/shared/edge-cases.md`
-- Architectural decision → `docs/shared/changelog.md`
+- Bug found → `docs/shared/bug-tracker.md` · bug resolved → remove it there + condensed
+  entry in `docs/shared/changelog.md` · lesson learned → `docs/shared/edge-cases.md`
+- Architectural decision → `docs/shared/changelog.md` · deferred feature/idea → `docs/shared/backlog.md`
 
 ## Global rules enforced by the bot + shared DB
 

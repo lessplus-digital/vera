@@ -23,9 +23,10 @@ docs/
 │   └── components.md      ← componentes, hooks, estructura del frontend
 │
 └── shared/               ← Transversal a las tres capas
-    ├── bug-tracker.md     ← lista ACTIVA de bugs/mejoras por corregir (incl. dashboard)
-    ├── edge-cases.md      ← casos límite y lecciones aprendidas (gotchas del bot)
-    └── changelog.md       ← decisiones arquitectónicas (con el porqué)
+    ├── bug-tracker.md     ← bugs ABIERTOS + verificaciones en observación (nada más)
+    ├── backlog.md         ← features y mejoras pendientes (no-bugs, riesgos diferidos)
+    ├── changelog.md       ← lo HECHO: decisiones arquitectónicas + bugs resueltos (condensados)
+    └── edge-cases.md      ← lecciones reutilizables (se consultan ANTES de trabajar)
 ```
 
 ## Las tres capas
@@ -48,8 +49,10 @@ Cuando hagas un cambio significativo, actualiza el doc que corresponde:
 | Esquema de BD (tabla, trigger, RPC) | `database/schema.md` |
 | Workflow o tool del agente | `bot/n8n-workflow.md` + `bot/ai-agents.md` |
 | Componente o hook de React | `dashboard/components.md` |
-| Encontraste un bug por corregir | `shared/bug-tracker.md` |
-| Resolviste un bug / lección reutilizable | `shared/edge-cases.md` |
+| Encontraste un bug por corregir | `shared/bug-tracker.md` (Abiertos) |
+| Resolviste un bug | quítalo del tracker → entrada condensada en `shared/changelog.md` |
+| La solución dejó una lección reutilizable | `shared/edge-cases.md` |
+| Surgió una feature/mejora para después | `shared/backlog.md` |
 | Tomaste una decisión arquitectónica | `shared/changelog.md` |
 
 La infraestructura como código (RLS, seguridad) se documenta aparte en

@@ -24,11 +24,12 @@ select tablename, rowsecurity from pg_tables where schemaname = 'public';
 Prueba real: abre el dashboard **sin iniciar sesión** → no debe cargar datos de las tablas con
 RLS. Inicia sesión y reaparecen.
 
-> ⚠️ **Estado real (2026-07-16):** el script cubre 6 tablas core (`menu`, `clientes`, `pedidos`,
-> `detalle_pedidos`, `reservas`, `mensajes_soporte`). Otras **6 tablas siguen SIN RLS**
-> (`carritos`, `feedback`, `feedback_pendiente`, `info_negocio`, `n8n_chat_histories`,
-> `n8n_mensajes_pendientes`). Ver `docs/database/schema.md` (permisos) y `docs/shared/bug-tracker.md`
-> (**BUG-012**).
+> ✅ **Estado real (2026-07-22, BUG-012):** RLS está habilitado en **todas** las tablas
+> públicas. Este script cubre las 6 core (`menu`, `clientes`, `pedidos`, `detalle_pedidos`,
+> `reservas`, `mensajes_soporte`); las otras 6 (`carritos`, `feedback`, `feedback_pendiente`,
+> `info_negocio`, `n8n_chat_histories`, `n8n_mensajes_pendientes`) se cubrieron con la
+> migración `bug012_enable_rls_exposed_tables`. Ver `docs/database/schema.md` (permisos) y
+> `docs/shared/changelog.md`.
 
 ## Crear el primer usuario admin
 

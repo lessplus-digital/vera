@@ -66,8 +66,8 @@ Nunca crea carrito vacío ni antes de `consultar_menu`; nunca pide confirmación
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `leer_carrito` | Supabase (get) | `carritos` WHERE `telefono` |
-| `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; `ilike` substring (⚠️ sin `similitud` real → [BUG-006](../shared/bug-tracker.md)). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
-| `crear_carrito` | HTTP POST | `/carritos` body `{telefono, items, total}` · ⚠️ key hardcodeada → [BUG-003](../shared/bug-tracker.md) |
+| `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; RPC `buscar_menu` (fuzzy por nombre/categoría/descripción, devuelve `similitud` — BUG-006, 2026-07-22). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
+| `crear_carrito` | HTTP POST | `/carritos` body `{telefono, items, total}` (credencial n8n desde BUG-003) |
 | `actualizar_carrito` | HTTP PATCH | `/carritos?telefono=eq.{fromAI}` body `{items, total}` (credencial n8n) |
 
 Prompt completo: [`agent-prompts.md#agente-menú`](agent-prompts.md#agente-menú).
@@ -86,7 +86,7 @@ Invariantes que comparte con la BB.DD.: `tipo_pedido` en minúscula (`domicilio`
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `leer_carrito1` | Supabase (get) | `carritos` WHERE `telefono` |
-| `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (⚠️ [BUG-007](../shared/bug-tracker.md)). Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
+| `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
 | `actualizar_cliente1` | Supabase (update) | `clientes` SET `direccion_principal` WHERE `cliente_id` |
 
 Prompt completo: [`agent-prompts.md#agente-pedidos`](agent-prompts.md#agente-pedidos).

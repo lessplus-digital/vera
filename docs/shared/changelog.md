@@ -1,6 +1,8 @@
 # Changelog — Decisiones y Cambios
 
-> Registra decisiones arquitectónicas importantes, no cada commit. Agrega al inicio (más reciente arriba).
+> Registra decisiones arquitectónicas y **bugs resueltos** (condensados por tema), no cada
+> commit. Agrega al inicio (más reciente arriba). El detalle completo de cada bug (verificación,
+> comandos, notas) vive en el git history de `bug-tracker.md` y en los docs de capa.
 
 ## Formato
 
@@ -12,6 +14,63 @@
 ```
 
 ---
+
+### 2026-07-23 — Reservas: cancelación cableada y subworkflows saneados (BUG-004/005/008/009) ✅
+
+**Contexto:** Los 4 bugs abiertos restantes eran del flujo de reservas del bot. Se aplicaron
+directamente en n8n vía MCP (updates atómicos, validados, verificados en la versión publicada).
+**Qué se hizo:**
+- **BUG-005:** tool `cancelar_reserva` cableada al AGENTE RESERVAS (el prompt ya la describía).
+- **BUG-009:** input `telefono ` (espacio invisible) renombrado → el check "esta reserva no es
+  tuya" funciona; endurecido a fail-closed; nueva compuerta If para que un fallo de validación
+  no llegue al UPDATE y el agente reciba el error.
+- **BUG-004:** key `cliente_id ` (espacio) renombrada en todo el camino (tool → trigger → INSERT).
+- **BUG-008:** checks JS muertos de duplicado/cupo eliminados; el cupo lo protege el trigger de
+  BD `trigger_validar_cupo`. **Decisión:** duplicados NO se bloquean en BD (se manejan
+  conversacionalmente; ver backlog).
+**Impacto:** n8n (`Pizzeria Vera`, `Sub — Crear Reserva`, `Sub — Cancelar Reserva`);
+`docs/bot/subworkflows.md`, `ai-agents.md`, `n8n-workflow.md`; lección #12 en `edge-cases.md`
+(keys con espacio invisible → checks fail-closed).
+
+### 2026-07-22/23 — Hardening n8n + Supabase: credenciales, RLS total, keys nuevas (BUG-001..003, 006, 007, 010..012) ✅
+
+**Contexto:** Auditoría de seguridad reveló secretos hardcodeados, tablas sin RLS, webhook sin
+auth e instancia n8n 20 versiones atrás. Se resolvió todo el lote en dos días.
+**Qué se hizo:**
+- **BUG-003/007:** 13 nodos HTTP con secretos en texto plano migrados a credenciales n8n;
+  rotación al sistema nuevo de API keys de Supabase (`sb_publishable_` en el dashboard,
+  `sb_secret_` en n8n, legacy JWT deshabilitadas). El daño histórico de BUG-007: 8 pedidos
+  sin líneas, irrecuperables.
+- **BUG-012:** RLS habilitado en las 6 tablas que faltaban → **todas** las tablas con RLS.
+- **BUG-011:** webhook Supabase→n8n autenticado con `x-webhook-token`; nodo huérfano y
+  workflows archivados con secretos eliminados; instancia n8n actualizada.
+- **BUG-006:** `consultar_menu` migrado al RPC `buscar_menu` (fuzzy), extendido primero a
+  `categoria`/`descripcion` para no perder fidelidad vs. el `ilike` viejo.
+- **BUG-001/002:** expresiones rotas en `Sub — Feedback Pendiente` (faltaba `=`; fuente
+  confiable para `cliente_id` en ambas ramas).
+- **BUG-010:** `Sub — Editar pedido` archivado como legacy (0 ejecuciones, sin caller);
+  mitigación conversacional en prompts de Orquestador/Soporte.
+**Impacto:** n8n (7 workflows de producción limpios), BD (migraciones `bug006_*`, `bug011_*`,
+`bug012_*`), `.env.local` (key nueva); `CLAUDE.md`, `schema.md`, `feedback.md`,
+`subworkflows.md`, `infra/supabase/README.md`; lección #11 en `edge-cases.md`.
+
+### 2026-07-17 — Barrido de calidad del dashboard (BUG-013..021 + deuda técnica) ✅
+
+**Contexto:** Bugs rescatados de reportes de code-review (jul-14/16), resueltos en la rama
+`fix/BUG-013-useorders-error-handling`.
+**Qué se hizo:**
+- **Timezone (BUG-015/016/020/021):** todos los timestamps de BD pasan por `parseDb()`
+  (OrderCard, SupportPanel, ConversationItem, ChatBubble, ClientsPage); la validación del
+  `ReservationModal` usa offset fijo de Colombia (`-05:00`).
+- **Robustez (BUG-013/014/017/018/019):** `useOrders` sin spinner infinito en error; realtime
+  de `clientes` con `event:'*'` + tabla añadida a la publicación; errores de notas en
+  `EditOrderModal` ya no se descartan; `alert()` reemplazado por banner inline en soporte;
+  `reserva_id` lo genera la BD (`generar_reserva_id()`), no `Date.now()`.
+- **Deuda técnica:** `<MenuPicker>` extraído (~172 líneas de duplicación menos), errores
+  logueados en `useStatistics`, columnas explícitas en `useClients`, debounce (300 ms) en el
+  realtime de `useOrders`.
+**Impacto:** `src/hooks/*`, `src/pages/dashboard|reservations|support|clients/*`,
+`MenuPicker.jsx` (nuevo). Verificado con `npm run build`.
 
 ### 2026-06-19 — Autenticación (Supabase Auth) + RLS · Paso 1 hacia SaaS multi-cliente
 
