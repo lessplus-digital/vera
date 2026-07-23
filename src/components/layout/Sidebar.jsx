@@ -5,8 +5,12 @@ const NAV_ITEMS = [
   { id: 'dashboard',    label: 'Pedidos',      icon: 'clipboard' },
   { id: 'soporte',      label: 'Soporte',      icon: 'message', badgeKey: 'support' },
   { id: 'estadisticas', label: 'Estadísticas', icon: 'chart' },
+  { id: 'historial',    label: 'Historial',    icon: 'history' },
   { id: 'clientes',     label: 'Clientes',     icon: 'users' },
   { id: 'reservas',     label: 'Reservas',     icon: 'calendar' },
+  { id: 'menu',         label: 'Menú',         icon: 'book' },
+  { id: 'resenas',      label: 'Reseñas',      icon: 'star' },
+  { id: 'configuracion', label: 'Configuración', icon: 'settings' },
 ]
 
 export default function Sidebar({

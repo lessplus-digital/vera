@@ -803,6 +803,160 @@ select option { background-color: var(--bg-modal); color: var(--text-primary); }
 .tnum { font-variant-numeric: tabular-nums; }
 
 /* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Spinner (carga)
+   Promovido desde auth.less (splash) al hacer server-side el
+   historial. `.spinner` solo (30px) para cargas de página;
+   `.sm` (16px) para overlays/inline. `.loading-state` es el
+   estado de carga centrado estándar (spinner + texto muted).
+═══════════════════════════════════════════════════════════ */
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 3px solid var(--border);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.spinner.sm { width: 16px; height: 16px; border-width: 2px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Switch (toggle binario)
+   Botón con role="switch" + aria-checked. ON = verde (estado),
+   OFF = neutro. Único uso actual: disponibilidad del menú.
+═══════════════════════════════════════════════════════════ */
+
+.switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+.switch[aria-checked="true"] {
+  background: var(--green-dim);
+  border-color: var(--green-border);
+}
+.switch[aria-checked="true"]::after {
+  transform: translateX(14px);
+  background: var(--green);
+}
+.switch:hover { border-color: var(--border-hover); }
+.switch[aria-checked="true"]:hover { border-color: var(--green); }
+.switch:focus-visible {
+  outline: none;
+  border-color: var(--amber-border);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+.switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Tablas: encabezado ordenable + paginación
+   <SortHeader> (src/components/SortHeader.jsx) y el pie de
+   paginación. Promovidos desde clients.less al crear la tab
+   Menú (2026-07-22).
+═══════════════════════════════════════════════════════════ */
+
+/* Encabezado ordenable: el icono ⇅ atenuado siempre visible es la
+   señal de que la columna se puede ordenar. */
+.sortable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+.sortable .sort-hint { opacity: 0.4; }
+.sortable:hover { color: var(--text-primary); }
+.sortable:hover .sort-hint { opacity: 0.8; }
+.sortable.active { color: var(--text-primary); }
+.sortable:focus-visible { outline: 1px solid var(--border); outline-offset: 2px; }
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 2px 2px 0;
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+}
+.table-pagination .cp-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Diseño global de select (arriba); aquí solo tamaño compacto */
+.table-pagination .cp-size select {
+  font-size: var(--fs-body-sm);
+  padding: 5px 26px 5px 8px;
+  background-position: right 8px center;
+}
+.table-pagination .cp-range { font-variant-numeric: tabular-nums; }
+.table-pagination .cp-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.table-pagination .cp-page {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  min-width: 120px;
+  text-align: center;
+}
+.table-pagination .cp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.table-pagination .cp-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-hover); }
+.table-pagination .cp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 560px) {
+  .table-pagination { justify-content: center; }
+  .table-pagination .cp-range { order: 3; width: 100%; text-align: center; }
+}
+
+/* ═══════════════════════════════════════════════════════════
    DESIGN SYSTEM — Toast (feedback de acciones)
    Fijo abajo-derecha, auto-dismiss 4.5s. Render vía
    <Toast> + useToast() (src/components/Toast.jsx).

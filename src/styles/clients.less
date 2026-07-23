@@ -130,21 +130,8 @@
     letter-spacing: 0.04em;
     padding: 9px 16px;
 
-    // Encabezados ordenables (Nombre / Modo / Registrado). El icono ⇅ atenuado
-    // siempre visible es la señal de que la columna se puede ordenar.
-    .sortable {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      cursor: pointer;
-      user-select: none;
-      border-radius: 4px;
-
-      .sort-hint { opacity: 0.4; }
-      &:hover { color: var(--text); .sort-hint { opacity: 0.8; } }
-      &.active { color: var(--text); }
-      &:focus-visible { outline: 1px solid var(--border); outline-offset: 2px; }
-    }
+    // Encabezados ordenables (Nombre / Modo / Registrado) → <SortHeader> +
+    // patrón global .sortable (index.css)
   }
 
   &:not(.head):hover { background: var(--bg-card-hover); }
@@ -208,67 +195,7 @@
   &.feedback { background: var(--purple-dim); color: var(--purple); border: 1px solid var(--purple-border); }
 }
 
-/* ── Paginación ── */
-
-.clients-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 2px 2px 0;
-  font-size: 12px;
-  color: var(--text-muted);
-
-  .cp-size {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-
-    // Diseño global de select (index.css); aquí solo tamaño compacto
-    select {
-      font-size: 12px;
-      padding: 5px 26px 5px 8px;
-      background-position: right 8px center;
-    }
-  }
-
-  .cp-range { font-variant-numeric: tabular-nums; }
-
-  .cp-nav {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .cp-page {
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-    min-width: 120px;
-    text-align: center;
-  }
-
-  .cp-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    padding: 6px 10px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-
-    &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-hover); }
-    &:disabled { opacity: 0.4; cursor: not-allowed; }
-  }
-
-  @media (max-width: 560px) {
-    justify-content: center;
-    .cp-range { order: 3; width: 100%; text-align: center; }
-  }
-}
+/* ── Paginación → patrón global .table-pagination (index.css) ── */
 
 /* ── Modal crear/editar ── */
 

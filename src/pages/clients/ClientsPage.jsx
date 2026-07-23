@@ -4,6 +4,7 @@ import { CLIENT_MODES } from '../../utils/constants'
 import { parseDb } from '../../utils/dateRanges'
 import ClientModal from './ClientModal'
 import Icon from '../../components/Icon'
+import SortHeader from '../../components/SortHeader'
 import Toast from '../../components/Toast'
 import { useToast } from '../../hooks/useToast'
 import { playDeleted } from '../../utils/audio'
@@ -18,29 +19,6 @@ const modeIdx = modo => {
 }
 
 const byName = (a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' })
-
-// Encabezado de columna ordenable: siempre muestra un indicador (⇅ atenuado si está
-// inactiva, flecha ↑/↓ si es la columna activa) para que se note que es clickeable.
-function SortHeader({ label, colKey, sortKey, sortAsc, onSort, defaultAsc = true }) {
-  const active = sortKey === colKey
-  return (
-    <span
-      className={`sortable ${active ? 'active' : ''}`}
-      role="button"
-      tabIndex={0}
-      title={`Ordenar por ${label.toLowerCase()}`}
-      onClick={() => onSort(colKey, defaultAsc)}
-      onKeyDown={e => e.key === 'Enter' && onSort(colKey, defaultAsc)}
-    >
-      {label}
-      <Icon
-        name={active ? (sortAsc ? 'arrow-up' : 'arrow-down') : 'sort'}
-        size={11}
-        className={active ? undefined : 'sort-hint'}
-      />
-    </span>
-  )
-}
 
 export default function ClientsPage() {
   const { clients, loading, error, saveClient, deleteClient } = useClients()
@@ -143,7 +121,7 @@ export default function ClientsPage() {
       {error && <div className="clients-error">Error cargando clientes: {error}</div>}
 
       {loading ? (
-        <div className="clients-empty">Cargando clientes…</div>
+        <div className="loading-state"><div className="spinner" />Cargando clientes…</div>
       ) : filtered.length === 0 ? (
         <div className="clients-empty">
           {search ? 'No se encontraron clientes con esa búsqueda' : 'Aún no hay clientes registrados'}
@@ -189,7 +167,7 @@ export default function ClientsPage() {
           ))}
         </div>
 
-        <div className="clients-pagination">
+        <div className="table-pagination">
           <label className="cp-size">
             Filas por página
             <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}>

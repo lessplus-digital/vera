@@ -10,6 +10,10 @@ import './styles/statistics.less'
 import './styles/clients.less'
 import 'react-big-calendar/lib/css/react-big-calendar.css'
 import './styles/reservations.less'
+import './styles/menu.less'
+import './styles/settings.less'
+import './styles/history.less'
+import './styles/reviews.less'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

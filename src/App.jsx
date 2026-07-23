@@ -12,6 +12,10 @@ import SupportPanel from './pages/support/SupportPanel'
 import StatisticsPage from './pages/statistics/StatisticsPage'
 import ClientsPage from './pages/clients/ClientsPage'
 import ReservationsPage from './pages/reservations/ReservationsPage'
+import MenuPage from './pages/menu/MenuPage'
+import SettingsPage from './pages/settings/SettingsPage'
+import HistoryPage from './pages/history/HistoryPage'
+import ReviewsPage from './pages/reviews/ReviewsPage'
 
 export default function App() {
   // El tema vive aquí para que también aplique en la pantalla de login.
@@ -73,8 +77,12 @@ function DashboardShell({ theme, onToggleTheme }) {
         )}
         {activeTab === 'soporte' && <SupportPanel />}
         {activeTab === 'estadisticas' && <StatisticsPage />}
+        {activeTab === 'historial' && <HistoryPage />}
         {activeTab === 'clientes' && <ClientsPage />}
         {activeTab === 'reservas' && <ReservationsPage />}
+        {activeTab === 'menu' && <MenuPage />}
+        {activeTab === 'resenas' && <ReviewsPage />}
+        {activeTab === 'configuracion' && <SettingsPage />}
       </div>
     </div>
   )

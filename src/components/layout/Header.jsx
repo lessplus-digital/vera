@@ -95,8 +95,12 @@ const SECTION_LABELS = {
   dashboard:    'Gestión de pedidos',
   soporte:      'Soporte en vivo',
   estadisticas: 'Estadísticas y reportes',
+  historial:    'Historial de pedidos',
   clientes:     'Base de clientes',
   reservas:     'Reservas',
+  menu:         'Disponibilidad del menú',
+  resenas:      'Reseñas y satisfacción',
+  configuracion: 'Configuración del negocio',
 }
 
 /* ─── Menú de administrador (sesión real de Supabase Auth) ─── */

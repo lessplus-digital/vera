@@ -1,16 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import Icon from '../../components/Icon'
-
-const CATEGORY_LABELS = {
-  entrada: '🥗 Entradas', pizza_tradicional: '🍕 Pizza Tradicional',
-  pizza_especial: '🍕 Pizza Especial', pizza_premium: '🍕 Pizza Premium',
-  pizza_premium_especial: '🍕 Pizza Premium Especial', pizza_dulce: '🍕 Pizza Dulce',
-  canelones: '🍝 Canelones', lasana: '🍝 Lasaña', pasta: '🍝 Pasta',
-  calzone: '🥟 Calzone', maicito: '🌽 Maicito', arepa: '🫓 Arepa',
-  patata: '🥔 Patata', hamburguesa: '🍔 Hamburguesa', bebida: '🥤 Bebida',
-  cerveza: '🍺 Cerveza', vino: '🍷 Vino', adicion: '➕ Adición',
-}
+import { categoryLabel } from '../../utils/constants'
 
 // Deriva las variantes/precios de un producto del menú. Si `tamaño` trae un JSON
 // de tallas ({ mediana: 20000, ... }) devuelve una opción por talla; si no, usa `precio`.
@@ -181,7 +172,7 @@ export default function MenuPicker({ onAddItem }) {
             ) : (
               Object.entries(groupedMenu).map(([cat, products]) => (
                 <div key={cat}>
-                  <div className="cat-label">{CATEGORY_LABELS[cat] || cat}</div>
+                  <div className="cat-label">{categoryLabel(cat)}</div>
                   {products.map(product => {
                     const opts = getProductOptions(product)
                     const priceDisplay = opts.length === 1
