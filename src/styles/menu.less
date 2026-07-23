@@ -1,0 +1,286 @@
+/* ═══════════════════════════════════════════════════════════
+   MENU — Tab Menú (disponibilidad del catálogo)
+   El switch (.switch), los encabezados ordenables (.sortable) y
+   la paginación (.table-pagination) son patrones globales de
+   index.css; aquí vive solo lo propio de la tabla y su modal.
+═══════════════════════════════════════════════════════════ */
+
+.menu-page {
+  padding: 20px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: fadeIn 0.2s ease;
+
+  @media (max-width: 560px) { padding: 16px 14px 32px; }
+}
+
+/* ── Toolbar ── */
+
+.menu-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.menu-search {
+  flex: 1;
+  min-width: 220px;
+  max-width: 380px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 8px 12px;
+
+  &::placeholder { color: var(--text-muted); }
+  &:focus { outline: none; border-color: var(--border-hover); }
+}
+
+.menu-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+
+  .menu-count-off { color: var(--red); font-weight: 600; }
+}
+
+/* ── Estados vacío / error ── */
+
+.menu-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.menu-error {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── Tabla ── */
+
+.menu-table {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.menu-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1.1fr 0.9fr 2fr 1.05fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+
+  &:last-child { border-bottom: none; }
+
+  // Responsive: ocultar columnas menos críticas (orden de celdas:
+  // 1 producto · 2 categoría · 3 precio · 4 descripción · 5 estado · 6 ver)
+  @media (max-width: 980px) {
+    grid-template-columns: 1.6fr 1.1fr 0.9fr 1.05fr auto;
+    & > :nth-child(4) { display: none; } // descripción
+  }
+
+  @media (max-width: 680px) {
+    grid-template-columns: 1.6fr 1.1fr 1.05fr auto;
+    & > :nth-child(3) { display: none; } // precio
+  }
+
+  @media (max-width: 500px) {
+    grid-template-columns: 1.4fr 1fr auto;
+    gap: 8px;
+    padding: 10px 12px;
+    & > :nth-child(2) { display: none; } // categoría
+  }
+
+  &.head {
+    background: var(--bg-inset);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 9px 16px;
+  }
+
+  &:not(.head):hover { background: var(--bg-card-hover); }
+
+  .name {
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    .variant { color: var(--text-muted); font-weight: 500; }
+  }
+
+  .cat {
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .price {
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .desc {
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .edit-btn {
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover { color: var(--text-primary); border-color: var(--border-hover); }
+  }
+}
+
+/* Badge de disponibilidad (verde = disponible, rojo = agotado) */
+.stock-label {
+  display: inline-block;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+
+  &.on  { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border); }
+  &.off { background: var(--red-dim);   color: var(--red);   border: 1px solid var(--red-border); }
+}
+
+/* ── Modal de detalle ── */
+
+.product-modal {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+
+  .pm-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-primary);
+
+      .variant { color: var(--text-muted); font-weight: 500; }
+    }
+    .sub { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 3px; }
+  }
+
+  .pm-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  // Bloque de disponibilidad: estado + hint a la izquierda, switch a la derecha
+  .pm-stock {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+
+    &.on  { background: var(--green-dim); border-color: var(--green-border); .pm-stock-state { color: var(--green); } }
+    &.off { background: var(--red-dim);   border-color: var(--red-border);   .pm-stock-state { color: var(--red); } }
+
+    .pm-stock-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pm-stock-state { font-size: 13px; font-weight: 700; }
+    .pm-stock-hint  { font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+  }
+
+  .pm-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pm-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .pm-price-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--bg-inset);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    font-size: 13px;
+
+    span:first-child { color: var(--text-secondary); }
+    span:last-child  { color: var(--text-primary); font-weight: 600; }
+  }
+
+  .pm-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  .pm-foot {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}
