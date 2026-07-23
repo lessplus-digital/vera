@@ -12,7 +12,7 @@ export default function Column({ title, icon, cls, orders, newIds, onUpdated, on
         </span>
         <span className={`badge mono ${cls}`}>{orders.length}</span>
         {onCreate && (
-          <button className="col-add-btn" onClick={onCreate} title="Crear pedido manual" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button className="btn primary sm col-add-btn" onClick={onCreate} title="Crear pedido manual">
             <Icon name="plus" size={13} /> Crear
           </button>
         )}

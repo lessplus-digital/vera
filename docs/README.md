@@ -20,7 +20,8 @@ docs/
 │   └── schema.md          ← tablas, columnas, triggers, RPCs
 │
 ├── dashboard/            ← Capa 3 · Frontend React + Vite (ESTE repositorio)
-│   └── components.md      ← componentes, hooks, estructura del frontend
+│   ├── components.md      ← componentes, hooks, estructura del frontend
+│   └── design-system.md   ← tokens, jerarquía de botones, forms, charts (fuente de verdad visual)
 │
 └── shared/               ← Transversal a las tres capas
     ├── bug-tracker.md     ← bugs ABIERTOS + verificaciones en observación (nada más)
@@ -49,6 +50,7 @@ Cuando hagas un cambio significativo, actualiza el doc que corresponde:
 | Esquema de BD (tabla, trigger, RPC) | `database/schema.md` |
 | Workflow o tool del agente | `bot/n8n-workflow.md` + `bot/ai-agents.md` |
 | Componente o hook de React | `dashboard/components.md` |
+| Estilos, tokens o patrones visuales | `dashboard/design-system.md` |
 | Encontraste un bug por corregir | `shared/bug-tracker.md` (Abiertos) |
 | Resolviste un bug | quítalo del tracker → entrada condensada en `shared/changelog.md` |
 | La solución dejó una lección reutilizable | `shared/edge-cases.md` |

@@ -16,6 +16,13 @@
 - **`useOrders`: exponer estado `error` en el UI** — hoy un fallo de fetch solo hace
   `console.error` (el spinner infinito ya se arregló en BUG-013); falta un banner/toast para
   que el admin se entere sin abrir la consola.
+- **Design system: migrar pedidos, reservas y soporte** — clientes y estadísticas ya usan el
+  sistema (ver `docs/dashboard/design-system.md`); faltan los modales/botones de
+  `orders.less`, `reservations.less` y `support.less`: llevar CTAs a `.btn primary` (1 por
+  pantalla), formularios al patrón `.field` (helpers debajo), y purgar `--font-mono` restante.
+- **`SalesChart`: eliminar el eje dual** — pedidos (barras) + ingresos (línea) comparten
+  gráfica con dos escalas Y; la buena práctica de dataviz es separarlos en dos charts o
+  indexarlos a una base común.
 
 ## Bot
 

@@ -18,7 +18,7 @@ export default function CancellationStats({ kpis, motivos, rating }) {
           <div className="cancel-stat-label">Pedidos cancelados</div>
         </div>
         <div className="cancel-stat">
-          <div className="cancel-stat-value purple">
+          <div className="cancel-stat-value">
             {rating.promedio != null
               ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="star" size={17} /> {rating.promedio.toFixed(1)}</span>
               : '—'}

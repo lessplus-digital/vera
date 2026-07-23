@@ -62,7 +62,7 @@ export default function ClientsPage() {
           {search && ` de ${clients.length}`}
         </span>
 
-        <button className="clients-new" onClick={() => setModal('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <button className="btn primary clients-new" onClick={() => setModal('new')}>
           <Icon name="plus" size={14} /> Nuevo cliente
         </button>
       </div>

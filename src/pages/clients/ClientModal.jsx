@@ -56,8 +56,8 @@ export default function ClientModal({ client, onSave, onClose }) {
         </div>
 
         <div className="cm-body">
-          <label className="cm-field">
-            <span className="cm-label">Nombre *</span>
+          <label className="field">
+            <span className="field-label">Nombre</span>
             <input
               type="text"
               value={nombre}
@@ -67,18 +67,19 @@ export default function ClientModal({ client, onSave, onClose }) {
             />
           </label>
 
-          <label className="cm-field">
-            <span className="cm-label">Teléfono * <span className="cm-hint">(con código de país, sin + ni espacios)</span></span>
+          <label className="field">
+            <span className="field-label">Teléfono</span>
             <input
               type="tel"
               value={telefono}
               onChange={e => setTelefono(e.target.value.replace(/[^\d]/g, ''))}
               placeholder="573001234567"
             />
+            <span className="field-help">Con código de país, sin + ni espacios.</span>
           </label>
 
-          <label className="cm-field">
-            <span className="cm-label">Dirección</span>
+          <label className="field">
+            <span className="field-label">Dirección <span className="field-optional">Opcional</span></span>
             <input
               type="text"
               value={direccion}
@@ -87,21 +88,22 @@ export default function ClientModal({ client, onSave, onClose }) {
             />
           </label>
 
-          <label className="cm-field">
-            <span className="cm-label">Modo <span className="cm-hint">(quién atiende los mensajes del cliente)</span></span>
+          <label className="field">
+            <span className="field-label">Modo <span className="field-optional">Opcional</span></span>
             <select value={modo} onChange={e => setModo(e.target.value)}>
               {CLIENT_MODES.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
+            <span className="field-help">Quién atiende los mensajes del cliente.</span>
           </label>
 
           {error && <div className="cm-error">{error}</div>}
         </div>
 
         <div className="cm-foot">
-          <button className="cancel" onClick={onClose}>Cancelar</button>
-          <button className={`save${canSave ? ' ready' : ''}`} onClick={handleSave} disabled={!canSave} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+          <button className="btn ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn primary" onClick={handleSave} disabled={!canSave}>
             {saving ? 'Guardando...' : <><Icon name="check" size={14} /> {isNew ? 'Crear cliente' : 'Guardar cambios'}</>}
           </button>
         </div>

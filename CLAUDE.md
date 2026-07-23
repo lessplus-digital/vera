@@ -67,6 +67,14 @@ orders (diffing against a `knownIds` ref) to play a sound and flash the card.
 dark/light CSS variables toggled by `useTheme` (persisted to localStorage, applied as
 `data-theme` on the root).
 
+**Design system (mandatory):** `docs/dashboard/design-system.md` is the visual source
+of truth — tokens in `src/styles/index.css`, button hierarchy (`.btn primary|secondary|
+ghost|danger`, ONE primary per screen), form pattern (`.field` with helpers BELOW the
+input, never in the label), flat surfaces for info containers (glass only on
+sidebar/topbar), one font family (mono is deprecated; numbers use `tabular-nums`), and
+a validated chart palette (`--chart-1..3`, never cycled). Any UI change must follow it;
+new patterns get added there first.
+
 The React component/hook layout is documented in detail in
 `docs/dashboard/components.md` — consult it before adding components; don't re-derive it.
 
@@ -115,7 +123,7 @@ significant change — don't re-derive what's already written:
 | System-wide | `docs/architecture.md` |
 | **Bot** (n8n + WhatsApp) | `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md` |
 | **Database** (Supabase) | `docs/database/schema.md` |
-| **Dashboard** (this repo) | `docs/dashboard/components.md` |
+| **Dashboard** (this repo) | `docs/dashboard/components.md`, `docs/dashboard/design-system.md` |
 | Cross-layer | `docs/shared/bug-tracker.md` (open bugs), `docs/shared/backlog.md` (pending features), `docs/shared/changelog.md` (done), `docs/shared/edge-cases.md` (lessons) |
 
 When you make a significant change, update the matching doc:
