@@ -103,3 +103,15 @@ la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el 
 **Solución:** Qué se hizo para resolverlo
 **Fecha:** YYYY-MM-DD
 ```
+
+## 13. Re-derivar el "día de negocio" a mano rompe el kanban de noche (2026-07-22)
+
+**Síntoma:** Pedidos reales del bot no aparecían en el kanban entre 19:00 y 24:00 Colombia (BUG-025); parecía un problema de zona horaria al guardar (BUG-022), pero el guardado era correcto.
+**Causa:** `useOrders` calculaba el inicio del día con `new Date(); setUTCHours(5,0,0,0)`. Cuando UTC ya cruzó la medianoche (00:00–05:00 UTC), eso produce las 05:00 UTC del día SIGUIENTE → umbral en el futuro → `gte` devuelve vacío.
+**Solución:** usar SIEMPRE `colombiaDayStart()` de `src/utils/dateRanges.js` (desplaza −5h antes de anclar la fecha). Nunca re-derivar lógica de fechas/timezone a mano en un hook: si estadísticas y kanban difieren, el que no usa el helper es el que está mal.
+
+## 14. Realtime con RLS filtra eventos en silencio si el socket no lleva JWT (2026-07-22)
+
+**Síntoma:** El badge de soporte no se actualizaba en vivo (BUG-023) aunque la tabla estaba en la publicación realtime; los INSERT de `mensajes_soporte` sí llegaban.
+**Causa:** postgres_changes aplica RLS por suscriptor: `clientes` (solo `authenticated`) no emitía nada a un socket con token anon; `mensajes_soporte` llegaba solo porque tenía una política `public` (que era un hueco de seguridad, BUG-024, ya eliminada).
+**Solución:** propagar el JWT al socket (`supabase.realtime.setAuth(token)` en getSession + onAuthStateChange). Lección: si un canal realtime "no recibe nada" y la tabla está en la publicación, sospecha del par RLS/token antes que del canal — y una política `public` que "hace funcionar" algo puede estar ocultando una fuga.

@@ -21,11 +21,16 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoading(false)
+      // Propagar el JWT al socket de Realtime: los eventos postgres_changes de
+      // tablas con RLS solo-authenticated (p. ej. `clientes`) se filtran en
+      // silencio si el socket quedó con el token anon (BUG-023).
+      supabase.realtime.setAuth(data.session?.access_token ?? null)
     })
 
     // Cambios posteriores: login, logout, refresco de token, otra pestaña.
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)
+      supabase.realtime.setAuth(next?.access_token ?? null)
     })
 
     return () => sub.subscription.unsubscribe()

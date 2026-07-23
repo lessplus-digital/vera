@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { playNotification } from '../utils/audio'
+import { colombiaDayStart } from '../utils/dateRanges'
 
 export function useOrders() {
   const [orders, setOrders] = useState([])
@@ -12,8 +13,10 @@ export function useOrders() {
   const isFirstLoad = useRef(true)
 
   const fetchOrders = useCallback(async () => {
-    const today = new Date()
-    today.setUTCHours(5, 0, 0, 0)
+    // Día de negocio Colombia (00:00 UTC-5 = 05:00 UTC). BUG-025: derivarlo con
+    // setUTCHours(5) directo produce una fecha FUTURA entre 00:00 y 05:00 UTC
+    // (19:00–24:00 en Colombia) y el kanban quedaba vacío en el rush nocturno.
+    const today = colombiaDayStart()
 
     const { data, error } = await supabase
       .from('pedidos')

@@ -15,6 +15,60 @@
 
 ---
 
+### 2026-07-22 — Kanban vacío de noche (BUG-025, cierra BUG-022) + drop de políticas public (BUG-024) ✅
+
+**Contexto:** Un pedido real del bot (PED-117, 20:49 Colombia) no aparecía en el kanban.
+Verificado vía MCP: el pedido estaba bien guardado en UTC y `pendiente`.
+**Causa (BUG-025):** `useOrders` derivaba el día de negocio con `setUTCHours(5,0,0,0)` sobre
+la fecha UTC actual → entre 00:00 y 05:00 UTC (19:00–24:00 Colombia) el umbral quedaba en el
+FUTURO y el filtro `gte` vaciaba kanban y stats del header, justo en el rush nocturno.
+**Fix:** usar el helper correcto que ya existía — `colombiaDayStart()` de `dateRanges.js`
+(desplaza −5h antes de anclar). Estadísticas nunca falló porque ya lo usaba.
+**BUG-022 (cerrado como no-bug):** el "desfase de 6–7 h" al crear pedido manual era ver el
+valor UTC crudo en Supabase Studio (+5 vs Colombia); `CreateOrderModal` guarda
+`new Date().toISOString()` correctamente, igual que el bot. El síntoma visible (card que no
+aparece) era BUG-025.
+**BUG-024:** migración `bug024_drop_public_policies_mensajes_soporte` aplicada — eliminadas
+las políticas `public` de lectura/inserción; queda solo `auth_full_access` (verificado vía
+pg_policies). El realtime del dashboard ahora depende del JWT en el socket (fix BUG-023).
+**Impacto:** `src/hooks/useOrders.js`; BD (policies); tracker en cero abiertos.
+
+### 2026-07-22 — DS v2.1: primary tinted amber, dropdowns propios, badge de soporte en realtime (BUG-023) ✅
+
+**Contexto:** Iteración sobre el DS v2: el primary naranja sólido no convenció — se prefirió
+el tinted amber de «Crear»/«Nueva reserva», reforzado y unificado. Los selects se veían como
+HTML nativo. Y el badge de soporte del sidebar no se actualizaba en tiempo real.
+**Decisión/Fix:**
+- `.btn.primary` = tinted amber con fuerza (color-mix 16%/55%, texto amber, 700; hover 26%).
+  Aplicado a «Nuevo cliente», «+ Crear» (kanban `sm`), «+ Nueva reserva» y confirmar de modales.
+  Se eliminan los tokens `--accent-solid*`.
+- Dropdowns: estilo global de `<select>` en `index.css` (appearance:none + chevron SVG +
+  focus ring ámbar) y `color-scheme` por tema; overrides por página solo de tamaño.
+- **BUG-023 (badge):** causa raíz — los eventos realtime de `clientes` (RLS solo
+  `authenticated`) se filtran si el socket va con token anon; `mensajes_soporte` sí llegaba
+  por su política `public` (→ eso destapó BUG-024, abierta en el tracker). Fix doble:
+  `supabase.realtime.setAuth(jwt)` en `useAuth` + `useSupportCount` también refetchea con
+  INSERTs de `mensajes_soporte`.
+**Impacto:** `index.css`, `clients/statistics/reservations/orders.less`, `Column.jsx`,
+`ReservationsPage.jsx`, `useAuth.jsx`, `useSupportCount.js`, `design-system.md`, DS en
+claude.ai/design re-publicado.
+
+### 2026-07-22 — Design system v2: superficies planas, jerarquía de botones, tipografía única
+
+**Contexto:** Feedback de experto UX/UI: exceso de degradados ("se ve muy IA"), dos
+tipografías mezcladas, CTA sin peso visual, helpers dentro de labels, huecos y exceso de
+color en estadísticas. Se decidió estandarizar con un design system documentado.
+**Decisión:** `docs/dashboard/design-system.md` es la fuente de verdad visual (regla anclada
+en `CLAUDE.md`). Cards/modales planos (glass solo en sidebar/topbar); jerarquía `.btn`
+(primary naranja sólido, 1 por pantalla); patrón `.field` con helpers debajo del input y
+tag "Opcional" en la minoría; sans única con `tabular-nums` (mono deprecada); paleta de
+charts `--chart-1..3` validada contra daltonismo (skill dataviz, 6 checks dark+light);
+layout de stats con gaps/paddings unificados (16 / 16x18) y columnas stretch.
+**Impacto:** `src/styles/index.css` (tokens v2 + `.btn` + `.field`), `clients.less`,
+`statistics.less`, `ClientsPage/ClientModal`, `KpiCards`, `CancellationStats`,
+`CategoryRevenue` (top 3 + otras), `SalesChart`, `DeliveryStats`, `ChartTheme`.
+Pendiente en backlog: aplicar `.btn`/`.field` a pedidos, reservas y soporte.
+
 ### 2026-07-22 — Se elimina `infra/` (RLS como código) — el MCP es la fuente viva
 
 **Contexto:** `infra/supabase/rls_reference.sql` fue la referencia del modelo RLS antes de tener

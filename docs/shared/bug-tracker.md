@@ -12,7 +12,7 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-022**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-026**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
@@ -20,13 +20,19 @@
 
 ## Abiertos
 
-*(ninguno — 2026-07-23)*
+*(ninguno — resueltos BUG-022/024/025 el 2026-07-22, ver changelog)*
 
 ---
 
 ## En observación
 
 Fixes ya aplicados cuya verificación final depende de tráfico real:
+
+- **BUG-025** — tras desplegar, confirmar en una noche real (19:00–24:00 Colombia) que el
+  kanban muestra los pedidos que entran (antes se vaciaba en esa franja).
+- **BUG-023/024** — tras desplegar el build con `realtime.setAuth`, confirmar que el badge
+  de soporte y el panel siguen actualizándose en vivo (las políticas `public` de
+  `mensajes_soporte` ya no existen; todo el realtime va autenticado).
 
 - **BUG-007** — confirmar que el próximo pedido real del bot trae líneas:
   `pedidos` recientes con `count(detalle_pedidos) = 0` debería dar vacío.
