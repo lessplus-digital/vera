@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react'
+import React, { useState, useMemo } from 'react'
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay, addMinutes } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -7,6 +7,8 @@ import { sendWhatsAppMessage } from '../../lib/whatsapp'
 import { RESERVATION_STATES, RESERVATION_DURATION_MIN } from '../../utils/constants'
 import ReservationModal from './ReservationModal'
 import ReservationDetail from './ReservationDetail'
+import Toast from '../../components/Toast'
+import { useToast } from '../../hooks/useToast'
 
 const localizer = dateFnsLocalizer({
   format,
@@ -66,16 +68,9 @@ export default function ReservationsPage() {
   const [date, setDate] = useState(new Date())
   const [modal, setModal] = useState(null)   // null | { fecha?, hora? } prefill
   const [detail, setDetail] = useState(null) // null | reserva
-  const [toast, setToast] = useState(null)   // null | { type, text }
-  const toastTimer = useRef(null)
+  const { toast, showToast } = useToast()
 
   const events = useMemo(() => reservations.map(toEvent), [reservations])
-
-  function showToast(type, text) {
-    clearTimeout(toastTimer.current)
-    setToast({ type, text })
-    toastTimer.current = setTimeout(() => setToast(null), 4500)
-  }
 
   async function notifyClient(kind, r) {
     const { fecha, hora } = reservaFechaLegible(r)
@@ -176,9 +171,7 @@ export default function ReservationsPage() {
         />
       )}
 
-      {toast && (
-        <div className={`rsv-toast ${toast.type}`}>{toast.text}</div>
-      )}
+      <Toast toast={toast} />
     </div>
   )
 }

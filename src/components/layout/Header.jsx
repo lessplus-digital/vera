@@ -148,19 +148,21 @@ function AdminMenu({ compact }) {
 
       {open && (
         <div className="admin-dropdown" role="menu">
-          <div className="ad-header">
+          {/* Prefijo am- (admin menu), NUNCA ad-: los adblockers (EasyList) ocultan
+              clases que empiezan por ad- y el dropdown se veía vacío en producción. */}
+          <div className="am-header">
             <span className="admin-avatar lg">{initial}</span>
             <div style={{ minWidth: 0 }}>
-              <div className="ad-greet">Hola, {name}</div>
-              <div className="ad-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div className="am-greet">Hola, {name}</div>
+              <div className="am-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {email}
               </div>
             </div>
           </div>
 
-          <div className="ad-divider" />
+          <div className="am-divider" />
 
-          <button className="ad-item ad-danger" onClick={handleSignOut} disabled={signingOut}>
+          <button className="am-item am-danger" onClick={handleSignOut} disabled={signingOut}>
             <Icon name="logout" size={15} />
             <span>{signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}</span>
           </button>

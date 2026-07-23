@@ -44,12 +44,6 @@ export default function ClientModal({ client, onSave, onDelete, onClose }) {
   }
 
   async function handleDelete() {
-    // Primer click solo arma la confirmación; el segundo ejecuta.
-    if (!confirmDelete) {
-      setConfirmDelete(true)
-      return
-    }
-
     setDeleting(true)
     setError(null)
 
@@ -126,25 +120,39 @@ export default function ClientModal({ client, onSave, onDelete, onClose }) {
         </div>
 
         <div className="cm-foot">
-          {!isNew && (
-            <button
-              className="btn danger"
-              style={{ marginRight: 'auto' }}
-              onClick={handleDelete}
-              onBlur={() => setConfirmDelete(false)}
-              disabled={saving || deleting}
-            >
-              {deleting
-                ? 'Eliminando...'
-                : confirmDelete
-                  ? '¿Seguro? Click para confirmar'
-                  : <><Icon name="trash" size={14} /> Eliminar</>}
-            </button>
+          {confirmDelete ? (
+            <div className="cm-confirm-delete">
+              <div className="cm-confirm-text">
+                Se eliminará el cliente y <strong>todos sus pedidos, reservas y feedback</strong>.
+                Afecta las estadísticas históricas y no se puede deshacer.
+              </div>
+              <div className="cm-confirm-actions">
+                <button className="btn ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+                  Cancelar
+                </button>
+                <button className="btn danger" onClick={handleDelete} disabled={deleting}>
+                  {deleting ? 'Eliminando...' : 'Sí, eliminar todo'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {!isNew && (
+                <button
+                  className="btn danger"
+                  style={{ marginRight: 'auto' }}
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={saving}
+                >
+                  <Icon name="trash" size={14} /> Eliminar
+                </button>
+              )}
+              <button className="btn ghost" onClick={onClose}>Cancelar</button>
+              <button className="btn primary" onClick={handleSave} disabled={!canSave}>
+                {saving ? 'Guardando...' : <><Icon name="check" size={14} /> {isNew ? 'Crear cliente' : 'Guardar cambios'}</>}
+              </button>
+            </>
           )}
-          <button className="btn ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn primary" onClick={handleSave} disabled={!canSave}>
-            {saving ? 'Guardando...' : <><Icon name="check" size={14} /> {isNew ? 'Crear cliente' : 'Guardar cambios'}</>}
-          </button>
         </div>
       </div>
     </div>

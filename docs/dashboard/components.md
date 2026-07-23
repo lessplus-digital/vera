@@ -23,6 +23,7 @@ src/
 │
 ├── components/
 │   ├── Icon.jsx                  ← Set de iconos SVG (name → path)
+│   ├── Toast.jsx                 ← Toast global del DS (con useToast; patrón .toast en index.css)
 │   └── layout/
 │       ├── Sidebar.jsx           ← Navegación principal: colapsable + drawer móvil + badge soporte + toggle tema
 │       └── Header.jsx            ← Barra superior: stats del día + hamburguesa (móvil)
@@ -47,6 +48,7 @@ src/
 │   ├── useClients.js             ← Clientes + realtime UPDATE + saveClient
 │   ├── useReservations.js        ← Reservas + realtime * + create/deleteReservation
 │   ├── useTheme.js               ← Toggle dark/light (localStorage)
+│   ├── useToast.js               ← Estado + timer del toast global (con components/Toast.jsx)
 │   └── useMediaQuery.js          ← Media queries (sidebar colapsado / móvil)
 │
 ├── utils/
@@ -54,7 +56,7 @@ src/
 │   ├── formatters.js             ← timeAgoShort, formatPrice, formatPriceShort
 │   ├── dateRanges.js             ← parseDb + rangos con día de negocio Colombia (UTC-5)
 │   ├── statsAggregations.js      ← Agregaciones puras de Estadísticas
-│   └── audio.js                  ← playNotification (Web Audio)
+│   └── audio.js                  ← playNotification + playDeleted (Web Audio)
 │
 ├── lib/
 │   ├── supabase.js               ← Cliente Supabase (throws si faltan las VITE_SUPABASE_*)
@@ -159,7 +161,8 @@ src/
 - Buscar por nombre o teléfono (un solo input; el teléfono matchea solo dígitos)
 - Ordenar por columna clickeando el encabezado: Nombre (A→Z default), Modo (orden de `CLIENT_MODES`) y Registrado (más reciente primero al primer click); misma columna re-clickeada invierte el orden, desempate estable por nombre. El botón A→Z de la toolbar equivale a clickear Nombre
 - Crear cliente nuevo y editar existentes (`ClientModal`: nombre, teléfono, dirección, modo)
-- Eliminar cliente desde `ClientModal` (`.btn danger` con confirmación en dos clicks). Sin cascade: si el cliente tiene `pedidos`/`reservas`/`feedback` (FK 23503), se muestra mensaje amigable y no se borra — el historial de ventas se preserva a propósito
+- Eliminar cliente desde `ClientModal`: el click en `.btn danger` muestra una franja de confirmación dentro del footer (tokens red) que advierte que el borrado es **en cascada** — se eliminan también sus `pedidos` (→ `detalle_pedidos`), `reservas` y `feedback` (FKs `ON DELETE CASCADE` desde 2026-07-22, ver `docs/database/schema.md`) y que altera las estadísticas históricas. Al confirmar: toast success + sonido `playDeleted`. `mensajes_soporte` no se borra (sin FK)
+- Crear/guardar también confirman con toast success (el modal cierra en silencio si no)
 - Teléfono se sanitiza a solo dígitos en el input; valida mínimo 7 dígitos
 - Duplicado de teléfono (constraint UNIQUE, error 23505) se muestra como mensaje amigable
 - Modo editable con select (`CLIENT_MODES` en constants.js): 🤖 bot / 💬 humano / ⏳ esperando_feedback — default `bot` al crear
@@ -177,7 +180,7 @@ src/
 - Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
 - Click en una reserva abre `ReservationDetail` (datos completos + link wa.me) con eliminación en dos pasos (confirmación inline)
 - **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte)
-- Toast propio (success/warn/error) abajo a la derecha, auto-dismiss 4.5s
+- Feedback con el toast global del DS (`useToast` + `<Toast>`; antes era un toast propio de esta página)
 - Eventos coloreados por `estado` (`RESERVATION_STATES`): pendiente=amber, confirmada=green, cancelada=red tachada
 - Duración visual del evento: `RESERVATION_DURATION_MIN` (90 min) — la BD solo guarda `hora` de inicio
 - `reserva_id` manual: `RSV-M<timestamp>` (M = manual, mismo patrón que `DET-M`); `origen: 'dashboard'`

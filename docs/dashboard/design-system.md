@@ -128,7 +128,22 @@ Si se cambia la paleta, re-validar:
 - Estados vacíos: mensaje centrado en muted, mínimo `24px` de padding vertical —
   nunca una card colapsada.
 
-## 8. Qué NO hacer (resumen del feedback origen)
+## 8. Toasts — feedback de acciones (`.toast` en `index.css`)
+
+Toda acción que muta datos y no deja rastro visible inmediato (crear/editar/eliminar
+que cierra un modal) confirma con un toast. Patrón global desde 2026-07-22
+(promovido del toast local de Reservas):
+
+- **Uso:** `useToast()` (`src/hooks/useToast.js`) en la página + `<Toast toast={toast} />`
+  (`src/components/Toast.jsx`) al final del JSX. No reimplementar estado/timers locales.
+- **Variantes:** `success` (green) · `warn` (amber, operación OK pero algo falló — ej. WhatsApp)
+  · `error` (red). Fijo abajo-derecha, auto-dismiss 4.5s, un solo toast a la vez (el nuevo
+  reemplaza al anterior).
+- **Sonido:** solo en eventos que ocurren sin interacción (pedido nuevo → `playNotification`)
+  o destructivos irreversibles (cliente eliminado → `playDeleted`, en `src/utils/audio.js`).
+  No sonar en saves rutinarios.
+
+## 9. Qué NO hacer (resumen del feedback origen)
 
 - ❌ Degradados en cards/contenedores de info · ❌ dos fuentes mezcladas en una vista
 - ❌ Helpers dentro del label · ❌ asterisco en todos los campos

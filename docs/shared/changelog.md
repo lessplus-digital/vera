@@ -15,6 +15,27 @@
 
 ---
 
+### 2026-07-22 — Borrado de cliente en cascada + confirmación dentro del modal
+
+**Contexto:** Eliminar un cliente desde `ClientModal` fallaba con 23503 (FKs `NO ACTION` desde
+`pedidos`/`reservas`/`feedback`, decisión previa de preservar historial), y la confirmación de
+dos clicks alargaba el botón y desbordaba el footer del modal.
+**Decisión:** Migración `cascade_delete_cliente`: las 5 FKs (`pedidos`/`reservas`/`feedback` →
+`clientes`; `detalle_pedidos`/`feedback` → `pedidos`) pasan a **ON DELETE CASCADE**. Borrar un
+cliente arrastra todo su historial — **altera estadísticas históricas**, por eso el modal ahora
+muestra una franja de confirmación plana (tokens red) dentro del footer que lo advierte
+explícitamente antes de ejecutar. `mensajes_soporte` no se borra (no tiene FK, referencia por
+`telefono`).
+**Además (misma sesión):** el toast local de Reservas se promovió a patrón global del DS —
+`.toast` en `index.css` + `useToast` + `<Toast>` (DS §8). Clientes ahora confirma con toast
+al crear/guardar/eliminar; el borrado suena con `playDeleted` (nuevo en `utils/audio.js`,
+descendente, distinto al de pedido nuevo).
+**Impacto:** BD (5 FKs), `src/pages/clients/{ClientModal,ClientsPage}.jsx`,
+`src/hooks/{useClients,useToast}.js`, `src/components/Toast.jsx`,
+`src/pages/reservations/ReservationsPage.jsx` (migrada al toast global), `src/utils/audio.js`,
+`src/styles/{index.css,clients.less,reservations.less}`, `docs/database/schema.md`,
+`docs/dashboard/{components,design-system}.md`.
+
 ### 2026-07-22 — Kanban vacío de noche (BUG-025, cierra BUG-022) + drop de políticas public (BUG-024) ✅
 
 **Contexto:** Un pedido real del bot (PED-117, 20:49 Colombia) no aparecía en el kanban.

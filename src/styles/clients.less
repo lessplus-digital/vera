@@ -315,4 +315,31 @@
     justify-content: flex-end;
     gap: 8px;
   }
+
+  // Confirmación de borrado en cascada: reemplaza el contenido del footer,
+  // nunca desborda el modal (superficie plana con tokens de peligro).
+  .cm-confirm-delete {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: var(--red-dim);
+    border: 1px solid var(--red-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+
+    .cm-confirm-text {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--red);
+
+      strong { font-weight: 600; }
+    }
+
+    .cm-confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+  }
 }

@@ -464,11 +464,11 @@ html, body {
   z-index: 300;
   animation: fadeIn 0.15s ease;
 }
-.ad-header { display: flex; align-items: center; gap: 11px; padding: 8px 8px 10px; }
-.ad-greet { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
-.ad-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-.ad-divider { height: 1px; background: var(--border); margin: 4px 0; }
-.ad-item {
+.am-header { display: flex; align-items: center; gap: 11px; padding: 8px 8px 10px; }
+.am-greet { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.am-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.am-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.am-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -484,9 +484,9 @@ html, body {
   text-align: left;
   cursor: not-allowed;
 }
-.ad-item:not(:disabled) { cursor: pointer; }
-.ad-item:not(:disabled):hover { background: var(--bg-inset); color: var(--text-primary); }
-.ad-soon {
+.am-item:not(:disabled) { cursor: pointer; }
+.am-item:not(:disabled):hover { background: var(--bg-inset); color: var(--text-primary); }
+.am-soon {
   margin-left: auto;
   font-size: 9.5px;
   font-weight: 600;
@@ -498,9 +498,9 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.ad-note { font-size: 10.5px; color: var(--text-muted); padding: 4px 10px 6px; line-height: 1.5; }
-.ad-danger { color: var(--red); }
-.ad-danger:not(:disabled):hover { background: var(--red-dim) !important; color: var(--red) !important; }
+.am-note { font-size: 10.5px; color: var(--text-muted); padding: 4px 10px 6px; line-height: 1.5; }
+.am-danger { color: var(--red); }
+.am-danger:not(:disabled):hover { background: var(--red-dim) !important; color: var(--red) !important; }
 
 /* ═══════════════════════════════════════════════════════════
    GLASSMORPHISM — SOLO el shell (sidebar/topbar). Las cards,
@@ -801,3 +801,33 @@ select option { background-color: var(--bg-modal); color: var(--text-primary); }
 
 /* Cifras tabulares con la sans (reemplaza a la mono en casi todo) */
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Toast (feedback de acciones)
+   Fijo abajo-derecha, auto-dismiss 4.5s. Render vía
+   <Toast> + useToast() (src/components/Toast.jsx).
+   Promovido desde .rsv-toast (Reservas) el 2026-07-22.
+═══════════════════════════════════════════════════════════ */
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 300;
+  border-radius: var(--radius-md);
+  padding: 11px 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  box-shadow: var(--shadow-card);
+  animation: toastIn 0.25s ease;
+  backdrop-filter: blur(8px);
+}
+.toast.success { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border); }
+.toast.warn    { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber-border); }
+.toast.error   { background: var(--red-dim);   color: var(--red);   border: 1px solid var(--red-border); }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

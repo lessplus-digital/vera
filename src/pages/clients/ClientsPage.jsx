@@ -4,6 +4,9 @@ import { CLIENT_MODES } from '../../utils/constants'
 import { parseDb } from '../../utils/dateRanges'
 import ClientModal from './ClientModal'
 import Icon from '../../components/Icon'
+import Toast from '../../components/Toast'
+import { useToast } from '../../hooks/useToast'
+import { playDeleted } from '../../utils/audio'
 
 const PAGE_SIZES = [25, 50, 100]
 
@@ -47,6 +50,24 @@ export default function ClientsPage() {
   const [modal, setModal] = useState(null) // null | 'new' | objeto cliente
   const [pageSize, setPageSize] = useState(25)
   const [page, setPage] = useState(1)
+  const { toast, showToast } = useToast()
+
+  // Wrappers sobre el hook: la mutación es del hook, el feedback (toast/sonido) es de la página.
+  async function handleSave(form) {
+    const isNew = !form.cliente_id
+    const result = await saveClient(form)
+    if (!result.error) showToast('success', isNew ? '✓ Cliente creado' : '✓ Cambios guardados')
+    return result
+  }
+
+  async function handleDelete(cliente_id) {
+    const result = await deleteClient(cliente_id)
+    if (!result.error) {
+      showToast('success', '✓ Cliente eliminado junto con sus pedidos, reservas y feedback')
+      playDeleted()
+    }
+    return result
+  }
 
   // Click en un encabezado: misma columna invierte el orden, columna nueva arranca en su default.
   function sortBy(key, defaultAsc = true) {
@@ -202,11 +223,13 @@ export default function ClientsPage() {
       {modal && (
         <ClientModal
           client={modal === 'new' ? null : modal}
-          onSave={saveClient}
-          onDelete={deleteClient}
+          onSave={handleSave}
+          onDelete={handleDelete}
           onClose={() => setModal(null)}
         />
       )}
+
+      <Toast toast={toast} />
     </div>
   )
 }

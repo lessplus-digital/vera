@@ -50,7 +50,7 @@
 | Columna | Tipo | Notas |
 |---|---|---|
 | `pedido_id` 🔑 | text | `PED-` + secuencia |
-| `cliente_id` | text | FK → clientes |
+| `cliente_id` | text | FK → clientes · **ON DELETE CASCADE** |
 | `telefono` | text | |
 | `tipo_pedido` | text | check: `domicilio` / `recoger` |
 | `direccion_entrega` | text | nullable |
@@ -68,7 +68,7 @@
 | Columna | Tipo | Notas |
 |---|---|---|
 | `detalle_id` 🔑 | text | `DET-` + secuencia |
-| `pedido_id` | text | FK → pedidos |
+| `pedido_id` | text | FK → pedidos · **ON DELETE CASCADE** |
 | `producto_id` | text | FK → menu (**debe existir**) |
 | `nombre_producto` | text | copiado del menú |
 | `variante` | text | default `'Estándar'` |
@@ -81,14 +81,20 @@
 `telefono` 🔑, `items` jsonb (default `[]`), `total` numeric, `updated_at` timestamptz.
 
 ### `reservas` — (6 filas · RLS ✅)
-`reserva_id` 🔑 (`generar_reserva_id()`), `cliente_id` (FK, nullable), `telefono`,
+`reserva_id` 🔑 (`generar_reserva_id()`), `cliente_id` (FK, nullable, **ON DELETE CASCADE**), `telefono`,
 `nombre_cliente`, `fecha` date, `hora` time, `personas` int (**check 1–12**),
 `estado` (**check `confirmada`/`cancelada`** — no hay `pendiente`), `origen`
 (`whatsapp`/`dashboard`), `notas`, `created_at`.
 
 ### `feedback` — calificaciones (1 fila · RLS ✅)
-`feedback_id` 🔑 (`FB-`), `cliente_id` (FK), `pedido_id` (FK, **unique**), `fecha`,
-`calificacion_general` smallint (**check 1–5**), `comentario`.
+`feedback_id` 🔑 (`FB-`), `cliente_id` (FK, **ON DELETE CASCADE**), `pedido_id` (FK, **unique**,
+**ON DELETE CASCADE**), `fecha`, `calificacion_general` smallint (**check 1–5**), `comentario`.
+
+> **Borrado en cascada (migración `cascade_delete_cliente`, 2026-07-22):** eliminar un cliente
+> borra sus `pedidos` (→ `detalle_pedidos`), `reservas` y `feedback`. Es una acción destructiva
+> que altera las estadísticas históricas; el dashboard lo advierte en la confirmación del modal.
+> `mensajes_soporte` no tiene FK a `clientes` (referencia por `telefono`), así que el historial
+> de soporte NO se borra.
 
 ### `feedback_pendiente` — cola de espera de feedback (2 filas · PK `telefono` · RLS ✅)
 `telefono` 🔑, `pedido_id`, `cliente_id`, `estado` (check `esperando_nota`/`esperando_comentario`),

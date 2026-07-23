@@ -115,3 +115,9 @@ la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el 
 **Síntoma:** El badge de soporte no se actualizaba en vivo (BUG-023) aunque la tabla estaba en la publicación realtime; los INSERT de `mensajes_soporte` sí llegaban.
 **Causa:** postgres_changes aplica RLS por suscriptor: `clientes` (solo `authenticated`) no emitía nada a un socket con token anon; `mensajes_soporte` llegaba solo porque tenía una política `public` (que era un hueco de seguridad, BUG-024, ya eliminada).
 **Solución:** propagar el JWT al socket (`supabase.realtime.setAuth(token)` en getSession + onAuthStateChange). Lección: si un canal realtime "no recibe nada" y la tabla está en la publicación, sospecha del par RLS/token antes que del canal — y una política `public` que "hace funcionar" algo puede estar ocultando una fuga.
+
+## 15. Los adblockers ocultan clases CSS con prefijo `ad-` (2026-07-22)
+
+**Síntoma:** El dropdown del admin en el Header se veía como un recuadro en blanco en la app desplegada; en local funcionaba perfecto.
+**Causa:** Las clases internas del dropdown se llamaban `ad-header`, `ad-item`, `ad-divider`, etc. Las listas de filtros cosméticos de los adblockers (EasyList: uBlock, ABP, Brave) aplican `display:none !important` a clases que empiezan por `ad-` porque parecen anuncios. En `localhost` los bloqueadores no suelen aplicar filtros, por eso el bug solo aparecía en producción.
+**Solución:** renombrar el prefijo a `am-` (admin menu) en `index.css` + `Header.jsx`. Lección: nunca nombrar clases/ids con `ad`, `ads`, `advert`, `sponsor`, `banner` ni prefijos parecidos; si algo "se ve vacío solo en producción", probar con el adblocker desactivado antes de tocar código.

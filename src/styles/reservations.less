@@ -670,47 +670,7 @@
   input, select { color-scheme: light; }
 }
 
-/* ── Toast de notificación ── */
-
-.rsv-toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 300;
-  border-radius: var(--radius-md);
-  padding: 11px 18px;
-  font-size: 12.5px;
-  font-weight: 600;
-  font-family: var(--font-sans);
-  box-shadow: var(--shadow-card);
-  animation: rsvToastIn 0.25s ease;
-
-  &.success {
-    background: var(--green-dim);
-    color: var(--green);
-    border: 1px solid var(--green-border);
-    backdrop-filter: blur(8px);
-  }
-
-  &.warn {
-    background: var(--amber-dim);
-    color: var(--amber);
-    border: 1px solid var(--amber-border);
-    backdrop-filter: blur(8px);
-  }
-
-  &.error {
-    background: var(--red-dim);
-    color: var(--red);
-    border: 1px solid var(--red-border);
-    backdrop-filter: blur(8px);
-  }
-}
-
-@keyframes rsvToastIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+// El toast ahora es patrón global del DS: .toast en index.css + <Toast>/useToast.
 
 // ── Calmer glass: flatten inner surfaces so the modal reads as one ─
 .rsv-modal {

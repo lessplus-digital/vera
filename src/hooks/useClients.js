@@ -73,11 +73,9 @@ export function useClients() {
       .eq('cliente_id', cliente_id)
 
     if (deleteError) {
-      // 23503 = viola FK: pedidos/reservas/feedback apuntan a este cliente (sin cascade, a propósito:
-      // el historial de ventas no se borra junto con el cliente).
-      if (deleteError.code === '23503') {
-        return { error: 'No se puede eliminar: el cliente tiene pedidos, reservas o feedback asociados.' }
-      }
+      // Las FKs de pedidos/reservas/feedback → clientes son ON DELETE CASCADE (migración
+      // cascade_delete_cliente, 2026-07-22): borrar un cliente arrastra todo su historial.
+      // El modal advierte antes de confirmar porque afecta estadísticas históricas.
       console.error('Error eliminando cliente:', deleteError)
       return { error: 'Error al eliminar el cliente. Intenta de nuevo.' }
     }
