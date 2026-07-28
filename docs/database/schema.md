@@ -112,7 +112,7 @@ filtros por clave) y el dashboard la edita en la **tab Configuración**. Reestru
 migración `info_negocio_single_sede_y_claves_dashboard` (2026-07-23): al haber **una sola
 sede**, `sede_1_direccion` → `direccion` (categoria `contacto`) y `sede_1_nombre` se eliminó;
 se agregaron `link_menu` (contacto) y `costo_delivery` (operacion), creadas vacías.
-`link_menu` se llenó el **2026-07-28** con `https://vera.lessplus.net/menu_vera.pdf` (el PDF
+`link_menu` se llenó el **2026-07-28** con `https://vera.plateo.cloud/menu_vera.pdf` (el PDF
 oficial que se sirve desde `public/` del dashboard); el mismo valor está hardcodeado en el prompt
 del Agente Menú en n8n — si el dominio cambia hay que actualizar **ambos**.
 

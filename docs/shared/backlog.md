@@ -113,5 +113,8 @@
 
 - **Multi-cliente por silo:** un proyecto Supabase + una instancia n8n por cliente
   (aislamiento físico, migraciones-como-código), una sola app React desplegada una vez que
-  resuelve el tenant por subdominio (`vera.lessplus.net`).
+  resuelve el tenant por subdominio. **El dominio real es `plateo.cloud`** (sitio público
+  `www.plateo.cloud`; cada cliente en su subdominio con deploy aparte vía DNS — Vera está en
+  `vera.plateo.cloud`). El `vera.lessplus.net` que figuraba aquí y en el changelog del 2026-06-19
+  era un nombre tentativo que **nunca existió en DNS** — no usarlo como referencia.
 - **Control plane** con cobro tipo SaaS (Stripe) — futuro.

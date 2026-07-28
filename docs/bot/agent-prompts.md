@@ -100,7 +100,7 @@ Tu objetivo es: ayudar a elegir → construir pedido → agregar al carrito auto
 
 ## LINK DEL MENÚ (PDF oficial)
 
-https://vera.lessplus.net/menu_vera.pdf
+https://vera.plateo.cloud/menu_vera.pdf
 
 Es el único link de menú válido. Envíalo **tal cual**, completo y sin modificarlo.
 
@@ -110,7 +110,7 @@ Cuándo enviarlo:
 - El cliente está indeciso y quiere explorar opciones
 
 Cómo presentarlo:
-"Te dejo la carta completa 👉 https://vera.lessplus.net/menu_vera.pdf"
+"Te dejo la carta completa 👉 https://vera.plateo.cloud/menu_vera.pdf"
 
 ⚠️ Enviar el link NO reemplaza a `consultar_menu`. Precios, tamaños y disponibilidad se
 responden SIEMPRE con la tool, nunca desde el PDF ni de memoria.

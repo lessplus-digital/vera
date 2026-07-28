@@ -24,7 +24,7 @@ el bot invitaba al cliente a "ver el menú" en **google.com**. En paralelo, `inf
 verdad tampoco servía. No había ningún menú publicado en ninguna parte.
 **Decisión:** El PDF oficial (`menu_vera.pdf`, 52 páginas) se versiona en **`public/`** del
 dashboard, así que Vite lo copia tal cual a `dist/` y queda servido como estático en
-`https://vera.lessplus.net/menu_vera.pdf`. Esa URL es ahora el **único** link de menú, y se escribió
+`https://vera.plateo.cloud/menu_vera.pdf`. Esa URL es ahora el **único** link de menú, y se escribió
 en los **dos** sitios que la consumen: el prompt del Agente Menú (sección reescrita: cuándo enviarlo,
 cómo presentarlo, y que **no** reemplaza a `consultar_menu` para precios/disponibilidad) y la fila
 `link_menu` de `info_negocio`. Servirlo desde `public/` en vez de Drive evita depender de permisos de
@@ -35,9 +35,15 @@ sobre `info_negocio` devuelve el valor. Se revisaron además los prompts de Orqu
 Soporte y Reservas: **no contienen otros links**. El link de reseña de Google en
 `Sub — Feedback Pendiente` **es correcto** (Google Maps real), pero se abrió **BUG-027** por los
 `\n` escapados de ese subworkflow.
+**Nota de dominio:** el sistema vive en **`plateo.cloud`** — sitio público `www.plateo.cloud` y un
+subdominio por cliente con deploy aparte vía DNS; Vera es **`vera.plateo.cloud`**. El
+`vera.lessplus.net` que aparecía en el backlog y en el changelog del 2026-06-19 era un nombre
+tentativo que **nunca existió en DNS** (`nslookup` → NXDOMAIN); se apuntó ahí por error y se corrigió
+en el mismo día. Comprobado que el PDF ya se sirve: `GET https://vera.plateo.cloud/menu_vera.pdf` →
+**200 · `application/pdf` · 5.262.411 bytes** (idéntico al archivo del repo).
 **Impacto:** `public/menu_vera.pdf` (nuevo), n8n `Pizzeria Vera` (nodo `AGENTE MENÚ`), BD
 `info_negocio.link_menu`, `docs/bot/agent-prompts.md`, `docs/bot/ai-agents.md`,
-`docs/database/schema.md`, `docs/shared/bug-tracker.md`.
+`docs/database/schema.md`, `docs/shared/bug-tracker.md`, `docs/shared/backlog.md`.
 
 ---
 

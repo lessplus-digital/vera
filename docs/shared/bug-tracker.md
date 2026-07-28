@@ -56,7 +56,7 @@
   `datos_transferencia`, `zona_delivery`, `horario_*` y `costo_delivery`. Cerrar este bug
   cuando la tabla tenga la data real.
 - **Avance (2026-07-28):** `link_menu` ya quedó con su valor real
-  (`https://vera.lessplus.net/menu_vera.pdf`). Sigue pendiente el resto.
+  (`https://vera.plateo.cloud/menu_vera.pdf`). Sigue pendiente el resto.
 
 ---
 
