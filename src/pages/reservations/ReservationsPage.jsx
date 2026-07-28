@@ -3,8 +3,8 @@ import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay, addMinutes } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useReservations } from '../../hooks/useReservations'
-import { sendWhatsAppMessage } from '../../lib/whatsapp'
-import { RESERVATION_STATES, RESERVATION_DURATION_MIN } from '../../utils/constants'
+import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../../lib/whatsapp'
+import { RESERVATION_STATES, RESERVATION_DURATION_MIN, WA_TEMPLATES } from '../../utils/constants'
 import ReservationModal from './ReservationModal'
 import ReservationDetail from './ReservationDetail'
 import Toast from '../../components/Toast'
@@ -72,30 +72,48 @@ export default function ReservationsPage() {
 
   const events = useMemo(() => reservations.map(toEvent), [reservations])
 
-  async function notifyClient(kind, r) {
+  // Confirmación de reserva: va por la plantilla aprobada `recordatorio_reserva`,
+  // NO por texto libre. El cliente pudo haber sido creado a mano desde el dashboard
+  // y no haberle escrito nunca al bot → estaría fuera de la ventana de 24h, donde
+  // el texto libre se "acepta" (200) pero no se entrega (ver edge-cases #16).
+  async function notifyCreated(r) {
+    const { fecha, hora } = reservaFechaLegible(r)
+    const { name, lang } = WA_TEMPLATES.recordatorioReserva
+    try {
+      await sendWhatsAppTemplate(String(r.telefono || '').replace(/\D/g, ''), name, lang, [
+        (r.nombre_cliente || 'Cliente').trim().split(/\s+/)[0],
+        fecha,
+        hora,
+        String(r.personas),
+      ])
+      showToast('success', '✓ Reserva creada — cliente notificado por WhatsApp')
+    } catch (waError) {
+      console.error('Error notificando por WhatsApp:', waError)
+      showToast('warn', 'Reserva creada, pero falló la notificación por WhatsApp')
+    }
+  }
+
+  // Cancelación: NO hay plantilla aprobada para este caso, así que sigue siendo
+  // texto libre y solo se entrega si el cliente escribió en las últimas 24h. Meta
+  // responde 200 igual, así que no podemos afirmar que llegó — el toast lo dice.
+  async function notifyDeleted(r) {
     const { fecha, hora } = reservaFechaLegible(r)
     const nombre = r.nombre_cliente || ''
-    const text = kind === 'create'
-      ? `¡Hola ${nombre}! Tu reserva en Vera Pizzería quedó registrada 🍕\n\n📅 ${fecha}\n🕗 ${hora}\n👥 ${r.personas} ${r.personas === 1 ? 'persona' : 'personas'}\n\n¡Te esperamos!`
-      : `Hola ${nombre}, tu reserva del ${fecha} a las ${hora} fue cancelada. Si deseas reprogramarla, escríbenos por aquí y con gusto te ayudamos 🍕`
+    const text = `Hola ${nombre}, tu reserva del ${fecha} a las ${hora} fue cancelada. Si deseas reprogramarla, escríbenos por aquí y con gusto te ayudamos 🍕`
 
     try {
       await sendWhatsAppMessage(r.telefono, text)
-      showToast('success', kind === 'create'
-        ? '✓ Reserva creada — cliente notificado por WhatsApp'
-        : '✓ Reserva eliminada — cliente notificado por WhatsApp')
+      showToast('success', '✓ Reserva eliminada — aviso enviado (solo llega si el cliente escribió en las últimas 24h)')
     } catch (waError) {
       console.error('Error notificando por WhatsApp:', waError)
-      showToast('warn', kind === 'create'
-        ? 'Reserva creada, pero falló la notificación por WhatsApp'
-        : 'Reserva eliminada, pero falló la notificación por WhatsApp')
+      showToast('warn', 'Reserva eliminada, pero falló el aviso por WhatsApp')
     }
   }
 
   async function handleCreate(form) {
     const { error: createError, reservation } = await createReservation(form)
     if (createError) return { error: createError }
-    notifyClient('create', reservation)
+    notifyCreated(reservation)
     return { error: null }
   }
 
@@ -106,7 +124,7 @@ export default function ReservationsPage() {
       return { error: deleteError }
     }
     setDetail(null)
-    notifyClient('delete', r)
+    notifyDeleted(r)
     return { error: null }
   }
 

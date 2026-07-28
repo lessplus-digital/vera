@@ -189,7 +189,9 @@ src/
 - Toolbar custom (`CalToolbar`): Hoy / ‹ › / label del periodo / leyenda de estados / switch de vista / botón "+ Nueva reserva"
 - Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
 - Click en una reserva abre `ReservationDetail` (datos completos + link wa.me) con eliminación en dos pasos (confirmación inline)
-- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte)
+- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte). Las dos vías son **distintas a propósito**:
+  - **Crear** (`notifyCreated`) → **plantilla** `recordatorio_reserva` (params: nombre, fecha legible, hora, personas). Es la única forma de que llegue a un cliente creado a mano que nunca le escribió al bot (fuera de la ventana de 24h el texto libre se acepta con 200 y **no** se entrega — edge-case #16)
+  - **Eliminar** (`notifyDeleted`) → **texto libre**, porque **no hay plantilla aprobada para cancelación**. Solo se entrega si el cliente escribió en las últimas 24h, así que el toast dice "aviso enviado (solo llega si el cliente escribió en las últimas 24h)" en vez de afirmar que se notificó
 - Feedback con el toast global del DS (`useToast` + `<Toast>`; antes era un toast propio de esta página)
 - Eventos coloreados por `estado` (`RESERVATION_STATES`): pendiente=amber, confirmada=green, cancelada=red tachada
 - Duración visual del evento: `RESERVATION_DURATION_MIN` (90 min) — la BD solo guarda `hora` de inicio
@@ -343,7 +345,7 @@ según el tono).
   filtro también arrancan con **Negativas** primero, "Todas" al final. Objetivo: que el operador vea
   y resuelva primero los casos negativos
 - **`ReplyModal`** — contactar por una reseña negativa/neutra, con un flujo **a la fija**: envía
-  **siempre la plantilla aprobada `seguimiento_resena`** (`sendWhatsAppTemplate`, params nombre +
+  **siempre la plantilla aprobada `seguimiento_review`** (`sendWhatsAppTemplate`, params nombre +
   pedido_id) — **no texto libre**. Razón: fuera de la ventana de 24h la Cloud API **acepta** el texto
   libre (responde 200) pero **no lo entrega** (el fallo llega async por webhook) → daba "enviado" en
   falso; la plantilla es la única vía confiable (y falla sincrónicamente si algo está mal). Muestra
@@ -393,6 +395,25 @@ VITE_WA_API_VERSION=v25.0         # opcional (default v25.0)
 vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage` texto + `sendWhatsAppTemplate` plantillas
 aprobadas para escribir fuera de la ventana de 24h; nombres/idiomas en `WA_TEMPLATES` de
 constants.js) — ya **no** hardcodeado en
+
+> **Plantillas aprobadas en Meta (verificado 2026-07-28 contra WhatsApp Manager).** `name` y `lang`
+> deben calcar los de Meta o la Cloud API responde **132001**; el conteo de params, o responde
+> **132000**. Idioma de las tres: **`es`** (en Meta figuran como "Spanish"; `es_CO` aparecería como
+> "Spanish (COL)").
+>
+> | Plantilla | Categoría | Params | Consumida por |
+> |---|---|---|---|
+> | `seguimiento_review` | Utility | nombre, pedido_id | `ReplyModal` (Reseñas) |
+> | `reactivacion_cliente` | Marketing | nombre, cupón | `PromoModal` (Estadísticas) |
+> | `recordatorio_reserva` | Marketing | nombre, fecha, hora, personas | `ReservationsPage` (confirmación al crear) |
+> | `hello_world` | Utility | — | — (default de Meta, en inglés; sin uso) |
+>
+> **No existe plantilla** para cancelación de reserva ni para primer contacto con un cliente creado
+> desde el dashboard: esos envíos siguen siendo texto libre y **no se entregan** fuera de 24h.
+>
+> Las **vistas previa** de `ReplyModal` y `PromoModal` son copia **verbatim** del cuerpo aprobado; si
+> se edita la plantilla en Meta hay que editarlas aquí también, o el operador promete algo distinto
+> de lo que recibe el cliente (ya pasó: la preview decía 20% de descuento y la plantilla da **10%**).
 `SupportPanel`. Gotcha: `VITE_WA_ACCESS_TOKEN` se empaqueta en el cliente (ver `CLAUDE.md`).
 
 ## Realtime subscriptions

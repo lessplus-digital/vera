@@ -15,6 +15,75 @@
 
 ---
 
+### 2026-07-28 — El menú oficial se sirve desde el dashboard; el bot deja de mandar a Google
+
+**Contexto:** El prompt del **Agente Menú** en n8n tenía `## Link Menu: www.google.com` — un
+placeholder de plantilla que nunca se reemplazó. Cuando `consultar_menu` no encontraba un producto,
+el bot invitaba al cliente a "ver el menú" en **google.com**. En paralelo, `info_negocio.link_menu`
+(que el Agente Soporte lee vía `info_local`) estaba **vacía**, así que la única otra fuente de
+verdad tampoco servía. No había ningún menú publicado en ninguna parte.
+**Decisión:** El PDF oficial (`menu_vera.pdf`, 52 páginas) se versiona en **`public/`** del
+dashboard, así que Vite lo copia tal cual a `dist/` y queda servido como estático en
+`https://vera.lessplus.net/menu_vera.pdf`. Esa URL es ahora el **único** link de menú, y se escribió
+en los **dos** sitios que la consumen: el prompt del Agente Menú (sección reescrita: cuándo enviarlo,
+cómo presentarlo, y que **no** reemplaza a `consultar_menu` para precios/disponibilidad) y la fila
+`link_menu` de `info_negocio`. Servirlo desde `public/` en vez de Drive evita depender de permisos de
+terceros y hace que el link viaje con el deploy.
+**Verificación:** vía MCP — `n8n_get_workflow` en modo `active` confirma que la **versión publicada**
+del workflow `Pizzeria Vera` ya trae la URL nueva (no quedó en draft), y el `UPDATE ... RETURNING`
+sobre `info_negocio` devuelve el valor. Se revisaron además los prompts de Orquestador, Pedidos,
+Soporte y Reservas: **no contienen otros links**. El link de reseña de Google en
+`Sub — Feedback Pendiente` **es correcto** (Google Maps real), pero se abrió **BUG-027** por los
+`\n` escapados de ese subworkflow.
+**Impacto:** `public/menu_vera.pdf` (nuevo), n8n `Pizzeria Vera` (nodo `AGENTE MENÚ`), BD
+`info_negocio.link_menu`, `docs/bot/agent-prompts.md`, `docs/bot/ai-agents.md`,
+`docs/database/schema.md`, `docs/shared/bug-tracker.md`.
+
+---
+
+### 2026-07-28 — Fix: ninguna plantilla de WhatsApp podía enviarse (nombre + idioma erróneos)
+
+**Contexto:** Al verificar `WA_TEMPLATES` contra WhatsApp Manager (screenshot del operador) salieron
+dos desalineaciones que hacían fallar **todos** los envíos de plantilla con **132001** (template does
+not exist): el nombre real es **`seguimiento_review`**, no `seguimiento_resena`, y el idioma de las
+tres es **`es`** ("Spanish" en Meta), no `es_CO` (que figuraría como "Spanish (COL)"). Nunca se había
+detectado porque los contadores de Meta muestran **0 mensajes enviados** en las 4 plantillas — el
+camino jamás se ejerció en real.
+**Decisión:** `WA_TEMPLATES` es la única fuente de verdad y debe calcar Meta carácter por carácter;
+se documentó la tabla verificada (nombre, categoría, params, consumidor) en `components.md` junto a
+los códigos de error que produce cada tipo de desalineación (132001 nombre/idioma, 132000 params).
+También se corrigió la categoría de `recordatorio_reserva`: es **Marketing**, no Utility.
+**Verificación:** el token del dashboard **no** permite leer las plantillas por Graph API (es de
+`whatsapp_business_messaging`; `me/assigned_whatsapp_business_accounts` devuelve vacío), así que la
+fuente fue la UI de WhatsApp Manager. Para automatizar esto haría falta un token con
+`whatsapp_business_management` + el WABA ID.
+**Impacto:** `utils/constants.js` (`WA_TEMPLATES`), `pages/reviews/ReplyModal.jsx` (comentarios),
+`docs/dashboard/components.md`.
+
+---
+
+### 2026-07-28 — Reservas: la confirmación pasa a plantilla; previews verbatim
+
+**Contexto:** Con los cuerpos reales a la vista (pegados por el operador desde WhatsApp Manager)
+salieron dos desalineaciones más. (1) La confirmación de reserva se mandaba por **texto libre**, que
+no se entrega si el cliente nunca le escribió al bot — justo el caso de un cliente creado a mano en
+el dashboard. (2) La preview de `PromoModal` prometía **20%** de descuento y el cupón por defecto era
+`VUELVE20`, pero la plantilla aprobada da **10%**: el operador prometía el doble de lo que recibía el
+cliente.
+**Decisión:** `ReservationsPage` separa las dos notificaciones según haya plantilla o no —
+`notifyCreated` usa la plantilla `recordatorio_reserva` (nombre, fecha legible, hora, personas) y
+`notifyDeleted` sigue en texto libre porque **no hay plantilla de cancelación**, con un toast que ya
+no afirma que el cliente fue notificado. Las previews de los modales se fijan como copia **verbatim**
+del cuerpo aprobado (`PromoModal` a 10% + cupón `VUELVE10`); `ReplyModal` ya coincidía.
+**Nota (decisión 2026-07-28):** el cuerpo de `recordatorio_reserva` dice "para {{4}} personas", así
+que una reserva de 1 persona lee "para 1 personas". Se **deja así a propósito**: arreglarlo exige
+editar la plantilla en Meta y pasar por re-aprobación, y el operador no lo considera prioritario. No
+volver a proponerlo como pendiente.
+**Impacto:** `pages/reservations/ReservationsPage.jsx`, `pages/statistics/PromoModal.jsx`,
+`docs/dashboard/components.md`, `docs/shared/backlog.md`.
+
+---
+
 ### 2026-07-23 — Reseñas: estado "resuelta" + orden por prioridad (negativas primero)
 
 **Contexto:** Tras contactar a un cliente por una reseña, no había forma de saber que ya se atendió —

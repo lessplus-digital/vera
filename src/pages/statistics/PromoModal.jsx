@@ -12,7 +12,7 @@ function firstName(nombre) {
 // clientes están por definición fuera de la ventana de 24h, así que la plantilla
 // es la única vía. Si el cliente responde ("Quiero pedir"), lo atiende el bot.
 export default function PromoModal({ client, onClose, onResult }) {
-  const [cupon, setCupon] = useState('VUELVE20')
+  const [cupon, setCupon] = useState('VUELVE10')
   const [sending, setSending] = useState(false)
   const digits = String(client.telefono || '').replace(/\D/g, '')
 
@@ -58,9 +58,13 @@ export default function PromoModal({ client, onClose, onResult }) {
             />
           </label>
 
+          {/* Verbatim del cuerpo aprobado en Meta (10%, no 20%): si esto y la
+              plantilla se desincronizan, el operador promete algo distinto de
+              lo que recibe el cliente. */}
           <div className="pr-preview">
-            Hola {firstName(client.nombre) || '…'} 🍕 ¡Hace rato no te vemos y te extrañamos! Vuelve
-            hoy y usa <b>{cupon || '—'}</b> para un 20% de descuento en tu próximo pedido 😋
+            Hola {firstName(client.nombre) || '…'} 🍕 ¡Hace rato no te vemos por Vera Pizzería y te
+            extrañamos! Vuelve hoy y usa el código <b>{cupon || '—'}</b> para un 10% de descuento en
+            tu próximo pedido 😋
           </div>
 
           <div className="pr-warn">

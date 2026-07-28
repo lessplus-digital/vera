@@ -12,13 +12,33 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-027**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-028**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-027 · 🟢 Baja · 🔴 Abierto — mensajes de feedback muestran `\n` literal al cliente
+
+- **Componente:** bot → n8n `Sub — Feedback Pendiente`, nodos WhatsApp `Invitar reseña Google`,
+  `Pedir comentario`, `Agradecer feedback`, `Pedir nota de nuevo`
+- **Síntoma (esperado, sin confirmar con tráfico real):** los cuatro `textBody` guardan los
+  saltos de línea **escapados** (`\n` como backslash + n) dentro de un campo de expresión `=`.
+  n8n solo evalúa `{{ }}`; el resto es texto literal, así que el cliente vería
+  `¡Qué bueno que te gustó! 🍕🔥\n\nNos ayudarías...` en una sola línea con los `\n` a la vista.
+  Afecta al mensaje que lleva el **link de reseña de Google**, que queda embebido en ese texto.
+- **Contraste:** los nodos WhatsApp del workflow principal (`Comprobante recibido`,
+  `Pedido no encontrado`, `en_cocina`…) sí usan saltos de línea reales. Es una desviación
+  aislada de este subworkflow, probablemente por pegar el texto desde código.
+- **Verificación pendiente:** `n8n_executions` de `Sub — Feedback Pendiente` devuelve **0
+  ejecuciones**, así que el camino nunca se ejerció. Confirmar con un feedback real (o una
+  ejecución manual) antes de dar por bueno el diagnóstico.
+- **Fix propuesto:** reemplazar los `\n` escapados por saltos de línea reales en los cuatro
+  nodos. El link de Google en sí **es correcto** (Google Maps real de La Vera Pizzería).
+
+---
 
 ### BUG-026 · 🟡 Media · 🔴 Abierto — `info_negocio` contiene datos de plantilla de otro negocio
 
@@ -33,8 +53,10 @@
 - **Fix aplicado parcialmente:** la tab **Configuración** del dashboard (2026-07-23) ya
   permite editarla. **Pendiente (requiere al operador):** llenar los valores reales de Vera
   Pizzería en la tab — en especial `direccion`, `telefono_principal`, `whatsapp`, `instagram`,
-  `datos_transferencia`, `zona_delivery`, `horario_*`, `link_menu` y `costo_delivery` (los
-  dos últimos se crearon vacíos). Cerrar este bug cuando la tabla tenga la data real.
+  `datos_transferencia`, `zona_delivery`, `horario_*` y `costo_delivery`. Cerrar este bug
+  cuando la tabla tenga la data real.
+- **Avance (2026-07-28):** `link_menu` ya quedó con su valor real
+  (`https://vera.lessplus.net/menu_vera.pdf`). Sigue pendiente el resto.
 
 ---
 

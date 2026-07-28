@@ -116,13 +116,16 @@ export const SUPPORT_CHANNELS = {
 // verdad de nombre + idioma; se envían con sendWhatsAppTemplate (type: template)
 // para escribir FUERA de la ventana de servicio de 24h. El orden de variables
 // del body está documentado en cada línea (debe coincidir con la plantilla).
+// OJO: `name` y `lang` deben ser IDÉNTICOS a los de WhatsApp Manager o Meta
+// responde 132001 (template does not exist). El idioma de las 3 es "Spanish"
+// (`es`), NO `es_CO` — un es_CO aparecería en Meta como "Spanish (COL)".
 export const WA_TEMPLATES = {
   // Utility · {{1}} nombre · {{2}} pedido_id
-  seguimientoResena:   { name: 'seguimiento_resena',   lang: 'es_CO' },
+  seguimientoResena:   { name: 'seguimiento_review',   lang: 'es' },
   // Marketing · {{1}} nombre · {{2}} cupón
-  reactivacionCliente: { name: 'reactivacion_cliente', lang: 'es_CO' },
-  // Utility · {{1}} nombre · {{2}} fecha · {{3}} hora · {{4}} personas
-  recordatorioReserva: { name: 'recordatorio_reserva', lang: 'es_CO' },
+  reactivacionCliente: { name: 'reactivacion_cliente', lang: 'es' },
+  // Marketing · {{1}} nombre · {{2}} fecha · {{3}} hora · {{4}} personas
+  recordatorioReserva: { name: 'recordatorio_reserva', lang: 'es' },
 }
 
 export const RESOLVE_MESSAGE = 'Conversación resuelta. El cliente vuelve al bot.'

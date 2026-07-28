@@ -59,6 +59,12 @@ Prompt completo: [`agent-prompts.md#orquestador`](agent-prompts.md#orquestador).
 
 **Rol:** consultar menú y gestionar el **carrito** (tabla `carritos`, PK = telefono).
 
+**Link del menú (PDF):** el prompt lleva hardcodeado `https://vera.lessplus.net/menu_vera.pdf`
+— el PDF oficial vive en `public/menu_vera.pdf` de este repo y se sirve desde el dominio del
+dashboard. Hasta el 2026-07-28 el prompt decía `www.google.com` (placeholder nunca reemplazado).
+El mismo valor está en `info_negocio.link_menu`, que el Agente Soporte lee vía `info_local`.
+**Si el dominio cambia hay que actualizar los dos sitios** (prompt en n8n + fila en la BD).
+
 **Secuencia obligatoria** al pedir algo: `leer_carrito` → `consultar_menu` → construir items
 (existentes + nuevos) → `crear_carrito` (nuevo) o `actualizar_carrito` (existente) → responder.
 Nunca crea carrito vacío ni antes de `consultar_menu`; nunca pide confirmación para agregar.

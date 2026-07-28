@@ -8,7 +8,7 @@ function firstName(nombre) {
   return (nombre || '').trim().split(/\s+/)[0] || ''
 }
 
-// Vista previa del cuerpo de la plantilla `seguimiento_resena` con las variables
+// Vista previa del cuerpo de la plantilla `seguimiento_review` con las variables
 // resueltas. Debe reflejar el texto aprobado en Meta ({{1}} nombre, {{2}} pedido).
 function previewText(review) {
   const nom = firstName(review.nombre) || 'Cliente'
@@ -16,7 +16,7 @@ function previewText(review) {
 }
 
 // Contactar a un cliente por una reseña negativa/neutra. Va SIEMPRE por la
-// plantilla aprobada `seguimiento_resena` (no texto libre): fuera de la ventana
+// plantilla aprobada `seguimiento_review` (no texto libre): fuera de la ventana
 // de 24h de Meta el texto libre se "acepta" pero no se entrega — la plantilla es
 // la única vía confiable. Al enviarla se hace handoff (modo=humano) para que la
 // respuesta del cliente caiga en la tab Soporte, donde ya se responde libre.
