@@ -12,21 +12,33 @@
 ## Sub — Consultar_menu
 
 - **ID:** `r9BbkGSCNJcJ2P6t` · **Tool:** `consultar_menu` (Agente Menú)
-- **Input:** `filtro` (string) · **Salida:** `{ encontrados, productos_por_categoria }`
+- **Input:** `filtro` (string) · **Salida:** `{ encontrados, productos_por_categoria, agotados, mensaje? }`
 
 ```
 When Executed by Another Workflow (filtro)
   └─ Construir filtros (Code)
-       · arma los args del RPC: { termino, umbral: 0.2, limite: 30, solo_disponibles: true }
+       · arma los args del RPC: { termino, umbral: 0.2, limite: 30, solo_disponibles: false }
   └─ HTTP Request (POST /rest/v1/rpc/buscar_menu — credencial `Supabase account`)
   └─ Code in JavaScript1 (Code)
-       · filtra filas con producto_id, agrupa por categoria
-       · → { encontrados, productos_por_categoria } (cada item incluye `similitud`)
+       · filtra filas con producto_id y PARTE el resultado en dos:
+         - disponibles → agrupados en productos_por_categoria (lo único ofrecible)
+         - agotados    → array aparte (existen en la carta, hoy no hay)
+       · encontrados = nº de DISPONIBLES (no del total)
+       · mensaje = instrucción para el LLM cuando hay agotados o cuando no hubo ningún match
 ```
 
 **Nota (BUG-006 resuelto):** la búsqueda ya es difusa de verdad — el RPC `buscar_menu`
 (pg_trgm + unaccent + diccionario de typos) devuelve `similitud`, como promete el prompt
 del Agente Menú. `papatas` → `patatas` ✅.
+
+**Nota (2026-07-28, `solo_disponibles: false` a propósito):** el sub pasaba
+`solo_disponibles: true`, así que un producto marcado **agotado** desde la pestaña Menú del
+dashboard desaparecía por completo del resultado y el bot respondía *"no lo manejamos"* — que
+es falso: sí está en la carta, hoy no hay. Ahora el RPC devuelve **todo** y es el Code node
+quien separa: el agente sigue sin poder ofrecer ni agregar al carrito un agotado (no está en
+`productos_por_categoria`), pero **sabe que existe** y puede decir "hoy se agotó" + ofrecer
+alternativas de la misma categoría. `encontrados = 0` **y** `agotados: []` es el único caso
+en que el producto realmente no está en la carta.
 
 ---
 

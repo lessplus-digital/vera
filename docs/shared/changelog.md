@@ -15,6 +15,36 @@
 
 ---
 
+### 2026-07-28 — Producto agotado: el bot decía "no lo manejamos" en vez de "hoy se agotó"
+
+**Contexto:** La pestaña **Menú** del dashboard permite marcar un producto como agotado
+(`menu.disponible = false`). Probando contra el bot real, al preguntar por un producto agotado
+respondía que **no lo manejan** — falso y dañino comercialmente: sí está en la carta, solo que
+hoy no hay. Causa raíz en `Sub — Consultar_menu`: el nodo *Construir filtros* llamaba al RPC
+`buscar_menu` con `solo_disponibles: true`, así que el agotado **desaparecía** del resultado y
+para el LLM era indistinguible de un producto inexistente. Verificado vía MCP: `buscar_menu('pizza m&m', 0.2, 30, true)`
+devuelve 30 pizzas pero **nunca** la M&M (agotada); con `false` aparece con `similitud 1.00`.
+**Decisión:** El RPC ahora se llama con `solo_disponibles: false` y es el Code node del sub quien
+**parte el resultado en dos**: `productos_por_categoria` (solo disponibles — lo único ofrecible y
+agregable al carrito) y `agotados` (existen en la carta, hoy no hay), más un `mensaje` que instruye
+al LLM. Se prefirió partir en el sub y no en el prompt para que el agente **no pueda** meter un
+agotado al carrito por accidente: simplemente no está en la lista de la que construye items. En el
+prompt del Agente Menú se añadió la sección *"AGOTADO no es lo mismo que NO LO MANEJAMOS"* (decir
+"sí lo tenemos, hoy se agotó" + ofrecer alternativa de la misma categoría; nunca listarlo ni
+agregarlo; no prometer cuándo vuelve) y se actualizó la descripción de la tool `consultar_menu`.
+Ahora `encontrados = 0` **con** `agotados` vacío es el único caso de "no está en la carta".
+**Impacto:** n8n `Sub — Consultar_menu` (`r9BbkGSCNJcJ2P6t`, nodos *Construir filtros* y *Code in
+JavaScript1*), n8n `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`, nodos *consultar_menu* y *AGENTE MENÚ*),
+`docs/bot/subworkflows.md`, `docs/bot/ai-agents.md`, `docs/bot/agent-prompts.md`,
+`docs/shared/edge-cases.md`. Sin cambios en el dashboard ni en la BD.
+**Verificación:** `n8n_get_workflow` en modo `active` sobre el sub confirma que la **versión
+publicada** (no el draft) ya trae el `solo_disponibles: false` y el split. Agotados en el catálogo
+al momento del fix: Arepa Rellena Carne (PROD-087), Pizza M&M (PROD-062), Jarra de Sangría (PROD-129).
+**Pendiente relacionado:** un producto puede agotarse **mientras** está en el carrito;
+`crear_orden_completa` no revalida `disponible` al cerrar el pedido → ver backlog.
+
+---
+
 ### 2026-07-28 — El menú oficial se sirve desde el dashboard; el bot deja de mandar a Google
 
 **Contexto:** El prompt del **Agente Menú** en n8n tenía `## Link Menu: www.google.com` — un

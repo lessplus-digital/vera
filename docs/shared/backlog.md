@@ -11,6 +11,16 @@
   dashboard por n8n o una edge function, y **rotar el token** (actualizar credencial n8n +
   `.env.local`). Mientras tanto es el único secreto expuesto conocido del sistema.
 
+## Bot
+
+- **Revalidar `disponible` al cerrar el pedido** — desde el fix del 2026-07-28 el bot ya no
+  ofrece ni agrega productos agotados, pero un item puede agotarse **mientras** ya está en el
+  carrito (el admin lo marca desde la pestaña Menú entre que el cliente arma el pedido y lo
+  confirma). `crear_orden_completa` no revisa `menu.disponible` al insertar, así que ese pedido
+  entra igual y el problema aparece en cocina. Fix: validar disponibilidad en el sub
+  `Crear_orden_completa` y devolver `{ ok: false, error: 'agotado', items: [...] }` para que el
+  Agente Pedidos avise y devuelva al cliente al Agente Menú a sustituir el item.
+
 ## Dashboard
 
 - **`useOrders`: exponer estado `error` en el UI** — hoy un fallo de fetch solo hace

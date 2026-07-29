@@ -69,10 +69,16 @@ El mismo valor está en `info_negocio.link_menu`, que el Agente Soporte lee vía
 (existentes + nuevos) → `crear_carrito` (nuevo) o `actualizar_carrito` (existente) → responder.
 Nunca crea carrito vacío ni antes de `consultar_menu`; nunca pide confirmación para agregar.
 
+**Agotado ≠ inexistente (2026-07-28):** `consultar_menu` devuelve `productos_por_categoria`
+(disponibles, lo único ofrecible/agregable) y `agotados` (existen en la carta, hoy no hay). El
+prompt prohíbe listar u agregar un agotado, y prohíbe igual de fuerte decir "no lo manejamos"
+sobre él: la respuesta correcta es "sí lo tenemos, hoy se agotó" + alternativa de la misma
+categoría. Solo `encontrados = 0` **con** `agotados` vacío significa que no está en la carta.
+
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `leer_carrito` | Supabase (get) | `carritos` WHERE `telefono` |
-| `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; RPC `buscar_menu` (fuzzy por nombre/categoría/descripción, devuelve `similitud` — BUG-006, 2026-07-22). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
+| `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; RPC `buscar_menu` (fuzzy por nombre/categoría/descripción, devuelve `similitud` — BUG-006, 2026-07-22). Devuelve `productos_por_categoria` (**solo disponibles**) + `agotados` aparte (2026-07-28). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
 | `crear_carrito` | HTTP POST | `/carritos` body `{telefono, items, total}` (credencial n8n desde BUG-003) |
 | `actualizar_carrito` | HTTP PATCH | `/carritos?telefono=eq.{fromAI}` body `{items, total}` (credencial n8n) |
 
