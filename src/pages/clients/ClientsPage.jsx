@@ -3,6 +3,7 @@ import { useClients } from '../../hooks/useClients'
 import { CLIENT_MODES } from '../../utils/constants'
 import { parseDb } from '../../utils/dateRanges'
 import ClientModal from './ClientModal'
+import WelcomeModal from './WelcomeModal'
 import Icon from '../../components/Icon'
 import SortHeader from '../../components/SortHeader'
 import Toast from '../../components/Toast'
@@ -26,6 +27,7 @@ export default function ClientsPage() {
   const [sortKey, setSortKey] = useState('nombre') // 'nombre' | 'modo' | 'fecha_registro'
   const [sortAsc, setSortAsc] = useState(true)
   const [modal, setModal] = useState(null) // null | 'new' | objeto cliente
+  const [welcomeTarget, setWelcomeTarget] = useState(null)
   const [pageSize, setPageSize] = useState(25)
   const [page, setPage] = useState(1)
   const { toast, showToast } = useToast()
@@ -161,6 +163,12 @@ export default function ClientsPage() {
                   : '—'}
               </span>
               <span className="actions">
+                <button
+                  className="edit-btn"
+                  onClick={() => setWelcomeTarget(client)}
+                  title="Enviar plantilla de bienvenida — abre la conversación con un cliente que nunca nos ha escrito"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                ><Icon name="message" size={13} /> Saludar</button>
                 <button className="edit-btn" onClick={() => setModal(client)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="edit" size={13} /> Editar</button>
               </span>
             </div>
@@ -204,6 +212,14 @@ export default function ClientsPage() {
           onSave={handleSave}
           onDelete={handleDelete}
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {welcomeTarget && (
+        <WelcomeModal
+          client={welcomeTarget}
+          onClose={() => setWelcomeTarget(null)}
+          onResult={({ ok, message }) => showToast(ok ? 'success' : 'error', message)}
         />
       )}
 

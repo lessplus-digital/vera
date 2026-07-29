@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { sendWhatsAppMessage } from '../../lib/whatsapp'
+import { sendWhatsAppTemplate } from '../../lib/whatsapp'
+import { WA_TEMPLATES } from '../../utils/constants'
 import Icon from '../../components/Icon'
 import MenuPicker from './MenuPicker'
 
@@ -68,37 +69,37 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
     setItems(prev => [...prev, { key, ...item }])
   }, [])
 
-  function buildResumenWhatsApp(totalFinal, feeFinal) {
+  // Params de la plantilla `resumen_pedido`, EN ORDEN:
+  //   {{1}} nombre · {{2}} pedido_id · {{3}} items · {{4}} total · {{5}} entrega
+  // Meta rechaza params con saltos de línea, tabs o 4+ espacios seguidos, así que la
+  // lista de items va en UNA sola línea separada por comas (no como las viñetas del
+  // texto libre que esto reemplazó).
+  function buildResumenParams(pedidoId, totalFinal, feeFinal) {
     const nombre = selectedClient.nombre && selectedClient.nombre !== 'Pendiente'
-      ? ` ${selectedClient.nombre.split(' ')[0]}`
-      : ''
+      ? selectedClient.nombre.split(' ')[0]
+      : 'Cliente'
 
-    const lineas = items.map(item => {
+    const partes = items.map(item => {
       const variante = item.variante && item.variante !== 'Estándar' ? ` (${item.variante})` : ''
-      return `• ${item.cantidad}x ${item.nombre_producto}${variante} — $${(item.cantidad * item.precio_unitario).toLocaleString('es-CO')}`
+      return `${item.cantidad}x ${item.nombre_producto}${variante}`
     })
-    if (feeFinal > 0) lineas.push(`• Domicilio — $${feeFinal.toLocaleString('es-CO')}`)
+    if (feeFinal > 0) partes.push(`domicilio $${feeFinal.toLocaleString('es-CO')}`)
 
     const entrega = tipoPedido === 'domicilio'
-      ? `📍 Entrega en: ${direccion.trim()}`
-      : '🏃 Para recoger en el local'
+      ? `Entrega en ${direccion.trim()}`
+      : 'Para recoger en el local'
 
     const pago = metodoPago === 'Transferencia'
-      ? '💳 Pago: Transferencia — recuerda enviarnos el comprobante por este chat'
-      : '💵 Pago: Efectivo'
+      ? ' (pago por transferencia — envíanos el comprobante por este chat)'
+      : ' (pago en efectivo)'
 
     return [
-      `¡Hola${nombre}! 🍕 Tu pedido en Vera Pizzería fue registrado con éxito.`,
-      '',
-      '*Resumen del pedido:*',
-      ...lineas,
-      '',
-      `*Total: $${totalFinal.toLocaleString('es-CO')}*`,
-      entrega,
-      pago,
-      '',
-      '¡Gracias por tu pedido! Te avisaremos cuando esté listo. 🍕',
-    ].join('\n')
+      nombre,
+      `#${pedidoId}`,
+      partes.join(', '),
+      `$${totalFinal.toLocaleString('es-CO')}`,
+      entrega + pago,
+    ]
   }
 
   async function handleSave() {
@@ -167,7 +168,13 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
     onUpdated()
 
     try {
-      await sendWhatsAppMessage(selectedClient.telefono, buildResumenWhatsApp(totalFinal, feeFinal))
+      const { name, lang } = WA_TEMPLATES.resumenPedido
+      await sendWhatsAppTemplate(
+        String(selectedClient.telefono || '').replace(/\D/g, ''),
+        name,
+        lang,
+        buildResumenParams(pedido.pedido_id, totalFinal, feeFinal),
+      )
     } catch (waError) {
       console.error('Error enviando WhatsApp:', waError)
       setSaving(false)

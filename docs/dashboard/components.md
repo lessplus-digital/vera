@@ -38,7 +38,7 @@ src/
 │   │   └── SupportPanel · ConversationItem · ChatBubble · ImageLightbox
 │   ├── statistics/               ← StatisticsPage + KPIs + ~10 componentes Recharts
 │   ├── history/                  ← HistoryPage + OrderDetailModal (pedidos por rango)
-│   ├── clients/                  ← ClientsPage + ClientModal
+│   ├── clients/                  ← ClientsPage + ClientModal + WelcomeModal
 │   ├── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
 │   ├── menu/                     ← MenuPage + ProductModal (disponibilidad del catálogo)
 │   ├── reviews/                  ← ReviewsPage + SatisfactionSummary + ReviewCard + ReplyModal + Stars + sentiment.js
@@ -171,6 +171,7 @@ src/
 - Buscar por nombre o teléfono (un solo input; el teléfono matchea solo dígitos)
 - Ordenar por columna clickeando el encabezado: Nombre (A→Z default), Modo (orden de `CLIENT_MODES`) y Registrado (más reciente primero al primer click); misma columna re-clickeada invierte el orden, desempate estable por nombre. El botón A→Z de la toolbar equivale a clickear Nombre
 - Crear cliente nuevo y editar existentes (`ClientModal`: nombre, teléfono, dirección, modo)
+- Botón **Saludar** por fila → `WelcomeModal` envía la plantilla `bienvenida_cliente` (Marketing, un solo param: el primer nombre). Es la única forma de abrir conversación con un cliente creado a mano que nunca le escribió al bot — sin ventana de 24h abierta, el texto libre no se entrega. Comparte estilos con `PromoModal` (`.promo-modal, .welcome-modal` en `statistics.less`)
 - Eliminar cliente desde `ClientModal`: el click en `.btn danger` muestra una franja de confirmación dentro del footer (tokens red) que advierte que el borrado es **en cascada** — se eliminan también sus `pedidos` (→ `detalle_pedidos`), `reservas` y `feedback` (FKs `ON DELETE CASCADE` desde 2026-07-22, ver `docs/database/schema.md`) y que altera las estadísticas históricas. Al confirmar: toast success + sonido `playDeleted`. `mensajes_soporte` no se borra (sin FK)
 - Crear/guardar también confirman con toast success (el modal cierra en silencio si no)
 - Teléfono se sanitiza a solo dígitos en el input; valida mínimo 7 dígitos
@@ -396,24 +397,38 @@ vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage` texto + `sendWhatsAppTempla
 aprobadas para escribir fuera de la ventana de 24h; nombres/idiomas en `WA_TEMPLATES` de
 constants.js) — ya **no** hardcodeado en
 
-> **Plantillas aprobadas en Meta (verificado 2026-07-28 contra WhatsApp Manager).** `name` y `lang`
-> deben calcar los de Meta o la Cloud API responde **132001**; el conteo de params, o responde
-> **132000**. Idioma de las tres: **`es`** (en Meta figuran como "Spanish"; `es_CO` aparecería como
+> **Plantillas aprobadas en Meta (verificado 2026-07-29 leyendo el WABA por Graph API).** `name` y
+> `lang` deben calcar los de Meta o la Cloud API responde **132001**; el conteo de params, o responde
+> **132000**. Idioma de las seis: **`es`** (en Meta figuran como "Spanish"; `es_CO` aparecería como
 > "Spanish (COL)").
 >
 > | Plantilla | Categoría | Params | Consumida por |
 > |---|---|---|---|
 > | `seguimiento_review` | Utility | nombre, pedido_id | `ReplyModal` (Reseñas) |
 > | `reactivacion_cliente` | Marketing | nombre, cupón | `PromoModal` (Estadísticas) |
-> | `recordatorio_reserva` | Marketing | nombre, fecha, hora, personas | `ReservationsPage` (confirmación al crear) |
+> | `recordatorio_reserva` | Marketing | nombre, fecha, hora, personas | `ReservationsPage.notifyCreated` |
+> | `cancelacion_reserva` | Utility | nombre, fecha, hora | `ReservationsPage.notifyDeleted` |
+> | `bienvenida_cliente` | Marketing | nombre | `WelcomeModal` (Clientes) |
+> | `resumen_pedido` | Utility | nombre, pedido_id, items, total, entrega | `CreateOrderModal` |
 > | `hello_world` | Utility | — | — (default de Meta, en inglés; sin uso) |
 >
-> **No existe plantilla** para cancelación de reserva ni para primer contacto con un cliente creado
-> desde el dashboard: esos envíos siguen siendo texto libre y **no se entregan** fuera de 24h.
+> Desde 2026-07-29 **ningún envío del dashboard usa texto libre**: los tres huecos (cancelación de
+> reserva, primer contacto, resumen de pedido manual) ya tienen plantilla. `sendWhatsAppMessage`
+> sigue existiendo y lo usa **solo** `SupportPanel`, donde la ventana de 24h está abierta por
+> definición (el cliente acaba de escribir).
 >
-> Las **vistas previa** de `ReplyModal` y `PromoModal` son copia **verbatim** del cuerpo aprobado; si
-> se edita la plantilla en Meta hay que editarlas aquí también, o el operador promete algo distinto
-> de lo que recibe el cliente (ya pasó: la preview decía 20% de descuento y la plantilla da **10%**).
+> **Los params no admiten saltos de línea, tabs ni 4+ espacios seguidos** — Meta rechaza el envío.
+> Por eso el resumen de `CreateOrderModal` manda los items en UNA línea separados por comas, en vez
+> de las viñetas que tenía el texto libre.
+>
+> El WABA ID es **`1476425047271965`** (`GET /{waba_id}/message_templates` lista nombre, idioma,
+> estado y cuerpo). Ojo: **no** es el `phone_number_id` (`1026022853935447`), ni el App ID, ni el ID
+> del portafolio de negocio — se confunden fácil. Sale en la URL de WhatsApp Manager (`?waba_id=`).
+>
+> Las **vistas previa** de `ReplyModal`, `PromoModal` y `WelcomeModal` son copia **verbatim** del
+> cuerpo aprobado; si se edita la plantilla en Meta hay que editarlas aquí también, o el operador
+> promete algo distinto de lo que recibe el cliente (ya pasó: la preview decía 20% de descuento y la
+> plantilla da **10%**).
 `SupportPanel`. Gotcha: `VITE_WA_ACCESS_TOKEN` se empaqueta en el cliente (ver `CLAUDE.md`).
 
 ## Realtime subscriptions

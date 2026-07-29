@@ -15,6 +15,40 @@
 
 ---
 
+### 2026-07-29 — Se cierran los 3 huecos de texto libre: el dashboard ya solo manda plantillas
+
+**Contexto:** Meta aprobó las plantillas que faltaban. Hasta hoy tres envíos del dashboard iban por
+**texto libre**, que la Cloud API acepta con 200 pero **no entrega** si el cliente no escribió en las
+últimas 24h (lección de `edge-cases.md#16`): cancelación de reserva, resumen de pedido manual y —el
+peor— el primer contacto con un cliente creado a mano, que simplemente no existía como función.
+**Decisión:** Se cablearon las tres nuevas plantillas, todas `es` y APPROVED:
+`cancelacion_reserva` (Utility, 3 params) en `ReservationsPage.notifyDeleted`; `resumen_pedido`
+(Utility, 5 params) en `CreateOrderModal`; y `bienvenida_cliente` (Marketing, 1 param) en un
+**`WelcomeModal` nuevo**, que se abre desde el botón *Saludar* de cada fila de la tab Clientes.
+`sendWhatsAppMessage` (texto libre) queda usado **solo** por `SupportPanel`, donde la ventana de 24h
+está abierta por definición. Al pasar el resumen de pedido a plantilla hubo que aplanar la lista de
+items a **una sola línea separada por comas**: Meta rechaza params con saltos de línea, tabs o 4+
+espacios seguidos, así que las viñetas del texto libre no eran portables.
+**Verificación (sin enviar nada):** el token del dashboard **sí** tiene hoy scope
+`whatsapp_business_management` (`debug_token`), así que esta vez la fuente de verdad fue Graph API y
+no un screenshot: `GET /{waba_id}/message_templates` sobre el WABA **`1476425047271965`** devuelve las
+7 plantillas con nombre, idioma, estado y cuerpo. Se cruzó el nº de `{{n}}` de cada cuerpo contra los
+params que manda cada call site: **los 6 alineados** (nombre, idioma, APPROVED y conteo) → sin 132001
+ni 132000 por desalineación. `npm run build` limpio.
+**Nota sobre el WABA ID:** cuesta encontrarlo y se confunde con otros tres IDs de Meta — el del
+número (`1026022853935447`), el de la app (`1309095691054858`) y el del portafolio de negocio
+(`196002027842701`), ninguno de los cuales tiene edge `message_templates`. Sale literal en la URL de
+WhatsApp Manager (`?waba_id=`). Queda anotado en `components.md`.
+**Impacto:** `utils/constants.js` (`WA_TEMPLATES`: 3 entradas nuevas), `pages/clients/WelcomeModal.jsx`
+(nuevo), `pages/clients/ClientsPage.jsx`, `pages/reservations/ReservationsPage.jsx`,
+`pages/dashboard/CreateOrderModal.jsx`, `styles/statistics.less` (el bloque `.promo-modal` pasa a
+compartirse con `.welcome-modal`), `docs/dashboard/components.md`, `docs/shared/backlog.md`.
+**Pendiente:** falta el **envío real de prueba** end-to-end; la verificación anterior demuestra que
+los metadatos calzan, no que Meta entregue. Y sigue abierto el cron de `recordatorio_reserva` en n8n
+y el enrutado de los taps de Quick Reply (ver backlog).
+
+---
+
 ### 2026-07-28 — Producto agotado: el bot decía "no lo manejamos" en vez de "hoy se agotó"
 
 **Contexto:** La pestaña **Menú** del dashboard permite marcar un producto como agotado

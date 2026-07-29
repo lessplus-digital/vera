@@ -479,7 +479,10 @@
 
 /* ── Modal de promo (reactivación) ── */
 
-.promo-modal {
+// Patrón compartido "enviar plantilla aprobada": cabecera + preview verbatim del cuerpo
+// de Meta + aviso + acciones. Lo usan PromoModal (Estadísticas) y WelcomeModal (Clientes).
+.promo-modal,
+.welcome-modal {
   width: 100%;
   max-width: 440px;
   display: flex;

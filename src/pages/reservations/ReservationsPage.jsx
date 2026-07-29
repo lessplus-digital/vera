@@ -3,7 +3,7 @@ import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar'
 import { format, parse, startOfWeek, getDay, addMinutes } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useReservations } from '../../hooks/useReservations'
-import { sendWhatsAppMessage, sendWhatsAppTemplate } from '../../lib/whatsapp'
+import { sendWhatsAppTemplate } from '../../lib/whatsapp'
 import { RESERVATION_STATES, RESERVATION_DURATION_MIN, WA_TEMPLATES } from '../../utils/constants'
 import ReservationModal from './ReservationModal'
 import ReservationDetail from './ReservationDetail'
@@ -93,17 +93,19 @@ export default function ReservationsPage() {
     }
   }
 
-  // Cancelación: NO hay plantilla aprobada para este caso, así que sigue siendo
-  // texto libre y solo se entrega si el cliente escribió en las últimas 24h. Meta
-  // responde 200 igual, así que no podemos afirmar que llegó — el toast lo dice.
+  // Cancelación: va por plantilla (`cancelacion_reserva`, Utility) desde 2026-07-29.
+  // Antes era texto libre, que Meta acepta con 200 pero NO entrega si el cliente no
+  // escribió en las últimas 24h — justo el caso de una reserva creada desde el dashboard.
   async function notifyDeleted(r) {
     const { fecha, hora } = reservaFechaLegible(r)
-    const nombre = r.nombre_cliente || ''
-    const text = `Hola ${nombre}, tu reserva del ${fecha} a las ${hora} fue cancelada. Si deseas reprogramarla, escríbenos por aquí y con gusto te ayudamos 🍕`
-
+    const { name, lang } = WA_TEMPLATES.cancelacionReserva
     try {
-      await sendWhatsAppMessage(r.telefono, text)
-      showToast('success', '✓ Reserva eliminada — aviso enviado (solo llega si el cliente escribió en las últimas 24h)')
+      await sendWhatsAppTemplate(String(r.telefono || '').replace(/\D/g, ''), name, lang, [
+        (r.nombre_cliente || 'Cliente').trim().split(/\s+/)[0],
+        fecha,
+        hora,
+      ])
+      showToast('success', '✓ Reserva eliminada — cliente notificado por WhatsApp')
     } catch (waError) {
       console.error('Error notificando por WhatsApp:', waError)
       showToast('warn', 'Reserva eliminada, pero falló el aviso por WhatsApp')

@@ -119,6 +119,13 @@ export const SUPPORT_CHANNELS = {
 // OJO: `name` y `lang` deben ser IDÉNTICOS a los de WhatsApp Manager o Meta
 // responde 132001 (template does not exist). El idioma de las 3 es "Spanish"
 // (`es`), NO `es_CO` — un es_CO aparecería en Meta como "Spanish (COL)".
+// Plantillas aprobadas en Meta. `name` y `lang` deben calcar los de WhatsApp Manager
+// carácter por carácter: si no, la Cloud API responde 132001 (template does not exist)
+// y si no calza el nº de params, 132000. Verificado 2026-07-29 leyendo el WABA por Graph
+// API (`GET /{waba_id}/message_templates`) — las 7 plantillas están APPROVED.
+//
+// Los valores de params NO pueden llevar saltos de línea, tabs ni 4+ espacios seguidos:
+// Meta rechaza el envío. Las listas van en una sola línea separadas por comas.
 export const WA_TEMPLATES = {
   // Utility · {{1}} nombre · {{2}} pedido_id
   seguimientoResena:   { name: 'seguimiento_review',   lang: 'es' },
@@ -126,6 +133,12 @@ export const WA_TEMPLATES = {
   reactivacionCliente: { name: 'reactivacion_cliente', lang: 'es' },
   // Marketing · {{1}} nombre · {{2}} fecha · {{3}} hora · {{4}} personas
   recordatorioReserva: { name: 'recordatorio_reserva', lang: 'es' },
+  // Utility · {{1}} nombre · {{2}} fecha · {{3}} hora
+  cancelacionReserva:  { name: 'cancelacion_reserva',  lang: 'es' },
+  // Marketing · {{1}} nombre
+  bienvenidaCliente:   { name: 'bienvenida_cliente',   lang: 'es' },
+  // Utility · {{1}} nombre · {{2}} pedido_id · {{3}} items · {{4}} total · {{5}} entrega
+  resumenPedido:       { name: 'resumen_pedido',       lang: 'es' },
 }
 
 export const RESOLVE_MESSAGE = 'Conversación resuelta. El cliente vuelve al bot.'

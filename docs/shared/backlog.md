@@ -66,14 +66,6 @@
   el **masivo/bulk**: seleccionar un segmento (inactivos 30+ días) y enviar en lote — debe ir por
   **n8n** (límites de tier de Meta + no exponer el token en el navegador). Requiere opt-in y cuidar
   la calidad del número.
-- **Plantillas que faltan crear en Meta** `[S — trabajo del operador]` — hoy solo hay 3 en español
-  (`seguimiento_review`, `reactivacion_cliente`, `recordatorio_reserva`) + `hello_world` en inglés.
-  Quedan dos huecos donde el dashboard sigue mandando texto libre que **no se entrega** fuera de la
-  ventana de 24h: (a) **cancelación de reserva** (`ReservationsPage.notifyDeleted`) y (b) **primer
-  contacto** con un cliente creado a mano en la tab Clientes, que nunca le escribió al bot — hoy
-  simplemente no hay forma de iniciarle conversación. Un tercer hueco menor: el **resumen de pedido
-  manual** (`CreateOrderModal`). Al crearlas, registrarlas en `WA_TEMPLATES` y copiar el cuerpo
-  verbatim en la preview del modal correspondiente.
 - **Recordatorio de reserva por WhatsApp (n8n)** `[M]` — la plantilla `recordatorio_reserva` ya se usa
   en el dashboard como **confirmación al crear** (2026-07-28); falta el **cron en n8n** para el
   recordatorio del **día previo**: diario busca reservas de mañana (estado pendiente/confirmada) → envía la
