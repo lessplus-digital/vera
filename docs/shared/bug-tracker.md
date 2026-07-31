@@ -12,13 +12,35 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-028**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-029**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-028 · 🟡 Media · 🔴 Abierto — 11 pedidos llevan semanas en `pendiente` y envenenan las búsquedas del bot
+
+- **Componente:** datos (`pedidos`) → bot (ruta de comprobante), dashboard (kanban)
+- **Síntoma:** hay **11 pedidos en `estado = 'pendiente'`**, varios de mayo/junio, que nunca se
+  cerraron ni cancelaron. Cinco son del mismo cliente (CLI-038: `PED-113`, `PED-103`, `PED-104`,
+  `PED-222`, `PED-107`).
+- **Por qué importa:** son la munición que activó el fix de hoy (ver changelog 2026-07-29 y
+  `edge-cases.md#18`). Cualquier flujo que busque "el pedido pendiente del cliente" recibe **N filas**
+  en vez de 1. El fix de `Preparar Upload` ya desempata por fecha, pero el dato sucio sigue ahí y
+  seguirá rompiendo cualquier consulta futura que asuma unicidad.
+- **Causa:** no existe proceso (ni manual ni automático) que cierre o cancele pedidos abandonados.
+  Un pedido queda `pendiente` para siempre si el cliente nunca paga y nadie lo toca en el kanban.
+- **Fix propuesto:** (a) decidir con el operador qué hacer con esos 11 (cancelar con
+  `motivo_rechazo` = abandonado, o cerrarlos); (b) evaluar una regla de expiración —
+  p. ej. cancelar automáticamente los `pendiente` con más de X horas sin comprobante.
+- **Pendiente menor (mismo tema):** quedó un objeto huérfano `comprobantes/PED-109.jpg` en Storage
+  (copia con nombre engañoso del comprobante de `PED-223`). No se pudo borrar por MCP: las políticas
+  de `storage.objects` solo tienen `SELECT` público e `INSERT` para `anon`, **no hay `DELETE`**.
+  Borrarlo desde el dashboard de Supabase o con la `service_role`.
+
+---
 
 ### BUG-027 · 🟢 Baja · 🔴 Abierto — mensajes de feedback muestran `\n` literal al cliente
 

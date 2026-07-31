@@ -95,6 +95,16 @@ Invariantes que comparte con la BB.DD.: `tipo_pedido` en minúscula (`domicilio`
 `metodo_pago` capitalizado (`Efectivo`/`Transferencia`), items **sin modificar** desde
 `leer_carrito`. Ante error de `crear_orden_completa` → **no reintenta**, escala.
 
+**Gate de confirmación (2026-07-29, no lo quites):** el flujo del prompt es
+`PASO 3 — RESUMEN Y CONFIRMACIÓN` (muestra el resumen, cierra con *"¿Te lo confirmo así?"* y
+**termina el turno**) → `PASO 4 — CREAR EL PEDIDO` (solo tras un "sí"/"dale"/"confirmo" llama
+`crear_orden_completa`) → `PASO 5` (confirma + datos bancarios si es Transferencia). Los datos
+bancarios van en el PASO 5, **no** en el resumen: antes del PASO 4 el pedido todavía no existe.
+Reglas duras que sostienen el gate: *nunca preguntes y crees en el mismo mensaje* y
+*prohibido asumir `metodo_pago`* — están tanto en el `systemMessage` como en el
+`toolDescription` de `crear_orden_completa`, a propósito. Sin ese PASO 4 el agente crea el pedido
+en el mismo turno del resumen e **inventa el método de pago** (`edge-cases.md#20`).
+
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `leer_carrito1` | Supabase (get) | `carritos` WHERE `telefono` |

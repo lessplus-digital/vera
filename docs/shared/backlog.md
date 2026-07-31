@@ -34,6 +34,72 @@
   gráfica con dos escalas Y; la buena práctica de dataviz es separarlos en dos charts o
   indexarlos a una base común.
 
+## POS — impresión de tickets + cajón de dinero (análisis 2026-07-30)
+
+> **Objetivo comercial:** reemplazar el POS + programa de facturación que la clienta ya usa
+> hoy. **Decisión del cliente (2026-07-30): sin facturación electrónica DIAN por ahora** — se
+> imprimen comprobantes internos, no documentos fiscales. Eso elimina la única parte
+> realmente difícil del problema. **Analizado, no priorizado: no se ha escrito código.**
+
+- **Impresión de factura del cliente + orden del domiciliario** `[S-M]` — dos formatos
+  térmicos disparados desde el kanban. El **hardware ya existe en el local** (no hay que
+  comprar nada):
+  - Impresora **Epson serie TM-T88** (probablemente IV o V). Papel de 80mm → **~72mm útiles**:
+    ese es el ancho contra el que hay que diseñar.
+  - Cajón **3nStar CD350, 24V, RJ11**. Es un periférico *tonto*: no se conecta al PC, se
+    enchufa al puerto **DK** de la impresora y esta lo abre con un pulso de 24V. Voltaje
+    compatible con la serie TM-T88. **Nunca se le habla al cajón, se le habla a la impresora.**
+  - **Plan A (recomendado):** `window.print()` + CSS `@media print` con `@page` a 72mm, y
+    Chrome lanzado con `--kiosk-printing` para que no salga el diálogo (exige la térmica como
+    impresora **predeterminada** del PC). El **cajón y el corte de papel no requieren código**:
+    el driver de Epson (*Advanced Printer Driver*, APD) trae la pestaña **Peripherals** con
+    apertura de cajón antes/después de imprimir, y corta el papel al cerrar el documento.
+    Cero instalación en el PC del cliente → es el único camino que respeta la visión
+    multi-tenant ("una sola app React desplegada una vez", ver sección SaaS abajo).
+  - **Plan B (solo si el driver no trae la opción de cajón):** ESC/POS crudo por WebUSB /
+    Web Serial, o un agente local (QZ Tray). Menos arriesgado de lo habitual porque Epson
+    **inventó** ESC/POS y su implementación es la de referencia, pero en Windows suele exigir
+    cambiar el driver por uno genérico y añade fricción de despliegue por cliente.
+  - **Enganche en el código:** `OrderActions.jsx` (cambios de estado) y `CreateOrderModal.jsx`.
+    La data ya está disponible sin queries nuevas — `useOrders` trae `detalle_pedidos`
+    embebido. Los textos del negocio (nombre, dirección, teléfono) **se leen de `info_negocio`
+    vía `useBusinessInfo`, nunca hardcodeados**: requisito del modelo multi-tenant.
+  - **Contenido acordado** — *Factura cliente:* datos del negocio, nº de pedido, fecha, items
+    con cantidad y precio unitario, recargo de domicilio si aplica, total, método de pago y
+    nota "comprobante interno — no válido como factura". *Orden del domiciliario:* letra
+    grande y sin adornos — nº de pedido, nombre y teléfono del cliente, dirección completa,
+    items, total a cobrar y **método de pago destacado** (que se vea de un vistazo si hay que
+    recibir efectivo o si ya pagó por transferencia).
+  - **Info del local pendiente de confirmar antes de empezar:** (1) ¿impresora por **USB o por
+    red**? — si es de red aparece la vía `ePOS-Print` propia de Epson, pero choca con
+    contenido mixto (dashboard HTTPS → impresora HTTP en LAN), así que USB es notablemente
+    más simple; (2) ¿el cajón ya está enchufado al puerto DK?; (3) qué PC y si tiene Chrome.
+  - **Riesgos asumidos:** los márgenes en 80mm por navegador son quisquillosos — hay que
+    contar con **2-3 rondas de ajuste contra impresiones físicas reales**, porque sin acceso
+    al hardware no se puede validar el resultado. **No desconectar el POS actual hasta probar
+    un día completo de operación real.**
+
+**Adyacentes analizados el 2026-07-30, fuera de alcance de esta tarea:**
+
+- **Caja / arqueo de turno** `[M]` — tablas nuevas `turnos_caja` (apertura, base, cierre,
+  conteo declarado vs. esperado) y `movimientos_caja` (gastos, retiros, propinas). El esperado
+  en efectivo se agrega desde `pedidos`. **Tres trampas del esquema:** `fecha_pedido` es
+  `timestamp` sin zona con valor UTC (usar `parseDb()`), el día de negocio arranca 05:00 UTC,
+  y `pedidos.total` **ya incluye los $5.000 de domicilio** que mete el trigger — si no se
+  separan, el arqueo cuadra mal cuando el domicilio lo cobra el repartidor.
+- **Venta en mostrador** `[M — cross-layer, riesgo]` — `CreateOrderModal` ya es el 80%, pero
+  faltan dos cosas: el cliente es obligatorio (en mostrador nadie da el teléfono → cliente
+  genérico o `cliente_id` nullable, **verificar si hoy lo es**) y `tipo_pedido` tiene un CHECK
+  de `domicilio`/`recoger`. Ampliarlo a `mesa`/`mostrador` **toca la BD compartida y los
+  prompts del bot** — es el único punto donde el POS puede romper la capa 1.
+- **Facturación electrónica DIAN** `[L — legal]` — descartada por ahora. Si algún día se
+  necesita: **integrar un proveedor autorizado por API desde n8n**, jamás implementar la firma
+  XML/UBL ni el CUFE en casa, y jamás desde el navegador (mismo motivo que el token de
+  WhatsApp de la sección Seguridad: las credenciales no pueden viajar en el bundle).
+- **Operación offline** `[L]` — un POS de verdad debe cobrar sin internet; hoy todo depende de
+  Supabase en vivo. Si se cae la conexión en el rush no hay kanban, ni comanda, ni cobro.
+  Exige cola local + sincronización: es un rediseño, no una feature.
+
 ## Features nuevas (ideas 2026-07-23)
 
 > Priorización sugerida: el top para vender el SaaS es Resumen diario WA + Tab Reseñas +
@@ -69,12 +135,16 @@
 - **Recordatorio de reserva por WhatsApp (n8n)** `[M]` — la plantilla `recordatorio_reserva` ya se usa
   en el dashboard como **confirmación al crear** (2026-07-28); falta el **cron en n8n** para el
   recordatorio del **día previo**: diario busca reservas de mañana (estado pendiente/confirmada) → envía la
-  plantilla (nombre/fecha/hora/personas desde `reservas`) → maneja los taps **Confirmar ✅ / Cancelar
-  ❌** (enganchar a `Sub — Crear/Cancelar Reserva`). Reduce no-shows. Decisión 2026-07-23: se hace en
-  una pasada aparte.
-- **Enrutar taps de botón de plantillas en el bot (n8n)** `[S-M]` — los Quick Reply
-  (`Quiero pedir`, `Confirmar`, `Sí, les cuento`) entran como mensajes al bot; validar que el agente
-  los maneje bien (reactivación → tomar pedido; reserva → confirmar/cancelar).
+  plantilla (nombre/fecha/hora/personas desde `reservas`). Reduce no-shows. Decisión 2026-07-23: se
+  hace en una pasada aparte. **Los taps `Confirmar` / `Cancelar` ya están enrutados**
+  (2026-07-29): `Normalizar tap` los reescribe a "Confirmar/Cancelar mi reserva" y el
+  ORQUESTADOR los manda al AGENTE RESERVAS, que ya tiene `consultar_reservas_cliente` y
+  `cancelar_reserva`. Lo que falta aquí es **solo el cron**.
+- ~~**Enrutar taps de botón de plantillas en el bot (n8n)**~~ ✅ **Hecho (2026-07-29)** — nodo
+  `Normalizar tap` + tercera salida del Switch inicial. Ver `changelog.md` y
+  `docs/bot/n8n-workflow.md`. **Pendiente: probar los 4 taps en real** — el fix se verificó
+  contra el payload de una ejecución real y contra los labels que devuelve Graph API, pero
+  todavía no se ha tapeado ningún botón desde WhatsApp después del cambio.
 - **Roles de usuario** `[L]` — admin total vs. "cocina" (solo kanban) vs. "marketing".
   Relevante cuando el restaurante tenga varios empleados usando el dashboard.
 

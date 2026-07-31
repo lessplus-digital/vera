@@ -18,11 +18,46 @@
 **Entrada:** Payload del WhatsApp Trigger
 **Evalúa:** Tipo de mensaje recibido
 
-| Ruta | Condición | Destino |
+| Salida | Condición | Destino |
 |---|---|---|
-| Texto | Mensaje tipo `text` | → Ruta de texto (flujo principal) |
-| Imagen | Mensaje tipo `image` | → Ruta de imagen (comprobante) |
-| Otro | Cualquier otro tipo | → No Operation, do nothing! |
+| 0 · Texto | Existe `messages[0].text.body` | → Ruta de texto (flujo principal) |
+| 1 · Imagen | `messages[0].type` contiene `image` | → Ruta de imagen (comprobante) |
+| 2 · Tap de botón | `messages[0].type` ∈ `button` \| `interactive` | → `Normalizar tap` → Ruta de texto |
+| (sin match) | Cualquier otra cosa | Se descarta (el Switch no tiene fallback) |
+
+El Switch no tiene "send to all matching outputs", así que gana la **primera** regla que
+matchea. Evalúa el payload **crudo** del trigger: un tap de Quick Reply no trae
+`text.body`, por eso no cae en la salida 0.
+
+> ⚠️ Los **status updates** (`statuses[]`, sin `messages[]`) que llegan porque el trigger
+> está suscrito a `messageStatusUpdates: ['sent']` tampoco matchean ninguna regla y se
+> descartan ahí. Es lo esperado, no un bug: son la mitad de las ejecuciones del workflow.
+
+### `Normalizar tap` (Code) — taps de Quick Reply
+
+Un tap de botón de plantilla llega como `messages[0].type = 'button'` con
+`button: { text, payload }` (**no** como `interactive`; eso es solo para botones enviados
+por mensaje interactivo, que se cubren igual por si acaso). Como no trae `text.body`, el
+resto del flujo lo ignoraba por completo.
+
+Este nodo inyecta el texto del botón en `messages[0].text.body` y reenvía el payload a
+`Extraer datos del mensaje`, así que **todo el flujo de texto sirve sin cambios** (incluido
+`No > Crear Cliente`, que referencia `$('Extraer datos del mensaje').item.json.telefono` —
+por eso el tap pasa por ese nodo y no por una rama paralela).
+
+Además desambigua los taps que solos no se entienden, porque la plantilla la manda el
+**dashboard**, no el agente, y el historial de chat no tiene contexto:
+
+| Botón (label real en Meta) | Plantilla | `mensaje` que ve el orquestador | Agente |
+|---|---|---|---|
+| `Quiero pedir` | `reactivacion_cliente` | `Quiero pedir` | menu |
+| `No, gracias` | `reactivacion_cliente` | `No, gracias` | soporte |
+| `Confirmar` | `recordatorio_reserva` | **`Confirmar mi reserva`** | reservas |
+| `Cancelar` | `recordatorio_reserva` | **`Cancelar mi reserva`** | reservas |
+
+Sin el remapeo, `Confirmar` suelto cae en la regla de "pedidos" del orquestador
+(`"confírmalo"`) o en el fallback a soporte. El mapeo aplica **solo a taps**, no a texto
+que el cliente escriba.
 
 ---
 
@@ -64,17 +99,22 @@ Switch (imagen)
        │
        ├─ modo == 'bot' → RUTA COMPROBANTE (pago de un pedido)
        │   ├─ Buscar pedido activo (Supabase — get row)
-       │   │   └─ Busca el pedido del cliente pendiente de comprobante
+       │   │   └─ telefono + estado='pendiente' + metodo_pago='Transferencia'
+       │   │      + estado_pago='pendiente'.  ⚠️ Puede devolver VARIAS filas:
+       │   │      el nodo Supabase no tiene sort ni limit.
        │   └─ ¿Pedido existe? (IF)
        │       ├─ FALSE → Pedido no encontrado (WhatsApp — message.send)
        │       │            └─ Avisa al cliente que no tiene pedido activo
        │       └─ TRUE →
        │           ├─ Preparar Upload (Code node)
-       │           │   └─ Prepara el archivo para subir al storage
+       │           │   └─ ELIGE el pedido: el más reciente por fecha_pedido
+       │           │      que aún no tenga comprobante_url. NO usar .first()
+       │           │      (ver edge-cases.md#18) y nombra el archivo {pedido_id}.{ext}
        │           ├─ Subir a supabase storage (HTTP Request)
        │           │   └─ Sube la imagen al bucket de Supabase Storage
        │           ├─ Update a row (Supabase — update row)
-       │           │   └─ Actualiza pedidos.comprobante_url con la URL del storage
+       │           │   └─ Actualiza pedidos.comprobante_url del pedido que eligió
+       │           │      Preparar Upload ($('Preparar Upload').first().json.pedidoId)
        │           └─ Comprobante recibido (WhatsApp — message.send)
        │                └─ Confirma al cliente que se recibió el comprobante
        │
@@ -89,10 +129,11 @@ Switch (imagen)
 ### Fase 1: Deduplicación y acumulación de mensajes
 
 ```
-Switch (texto)
+Switch (texto)  ·  y también Switch (tap de botón) → Normalizar tap
   │
   ├─ Extraer datos del mensaje (Edit Fields — manual)
   │   └─ Extrae telefono, nombre, texto del payload del Trigger
+  │      (para un tap, el texto ya lo puso Normalizar tap en messages[0].text.body)
   │
   ├─ Crear mensaje pendiente (Supabase — create row)
   │   └─ Guarda el mensaje en una tabla de mensajes pendientes
@@ -214,7 +255,9 @@ WhatsApp Trigger
        │                 · esperando_feedback  → Ejecutar Retener feedback
        │              → Code in JavaScript2 → Send message
        │
-       └─ OTRO → No Operation (ignorar)
+       ├─ TAP DE BOTÓN → Normalizar tap → se une a la RUTA DE TEXTO ↑
+       │
+       └─ (sin match: status updates, audio, etc.) → se descarta
 ```
 
 ---
@@ -243,8 +286,11 @@ WhatsApp Trigger
 **Enrutamiento por modo:** tras descargar, `Router de modo1` (mismas reglas que el
 `Router de modo` del flujo de texto) decide qué hacer con la imagen según `cliente.modo`:
 - `humano` → la imagen se guarda como mensaje en `mensajes_soporte` (panel de soporte).
-- `bot` → se asume **comprobante de pago**: busca el pedido activo y, si existe, sube la
-  imagen a Supabase Storage y guarda la URL en `pedidos.comprobante_url`.
+- `bot` → se asume **comprobante de pago**: busca los pedidos `pendiente` + `Transferencia` +
+  `estado_pago = 'pendiente'` del teléfono y, si hay alguno, sube la imagen a Supabase Storage y
+  guarda la URL en `pedidos.comprobante_url`. **La búsqueda puede devolver varias filas** (un cliente
+  puede arrastrar pedidos viejos sin cerrar); el desempate lo hace `Preparar Upload` por
+  `fecha_pedido` desc. Ver `edge-cases.md#18` y BUG-028.
 - `esperando_feedback` → `Pedir nota de nuevo` (se espera la calificación, no una imagen).
 
 ### Routers de modo (compartidos)

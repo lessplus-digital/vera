@@ -15,6 +15,102 @@
 
 ---
 
+### 2026-07-29 — El AGENTE PEDIDOS creaba el pedido sin esperar la confirmación del cliente
+
+**Contexto:** Dos pedidos seguidos salieron mal. En `PED-223` el bot preguntó *"¿Pagas en efectivo o
+por transferencia?"* y **en el mismo turno** ya había creado el pedido con `metodo_pago =
+'Transferencia'`. En `PED-224` ni siquiera preguntó: el cliente mandó la dirección y el bot respondió
+con el resumen y creó el pedido con `'Efectivo'`, un valor que nadie dijo nunca.
+**Causa (verificada vía MCP, ejecuciones `10127`/`10128` y `10149`/`10150`):** el `systemMessage` de
+`AGENTE PEDIDOS` **había perdido el PASO 4**: la numeración saltaba de PASO 3 a PASO 5. El PASO 3 decía
+*"Cuando tengas tipo_pedido + metodo_pago + dirección, **crea el pedido** … **y muestra el resumen**"*,
+es decir, crear y resumir en el **mismo turno** — el agente nunca tenía un turno donde parar y esperar.
+La sección 4 seguía exigiendo `✓ El cliente confirmó explícitamente`, un check que el flujo no le daba
+forma de cumplir. Ante la contradicción, el modelo rellenaba el hueco: inventaba `metodo_pago`.
+Las plantillas del resumen (CASO A–D) lo empujaban más, porque cada una fija una línea de pago y
+cierra con *"Lo mando a cocina 🍕"* — una afirmación, no una pregunta.
+**Decisión:** restaurar el gate de confirmación en el prompt. PASO 3 pasa a ser *"RESUMEN Y
+CONFIRMACIÓN (NO crea el pedido)"* y las cuatro plantillas cierran con *"¿Te lo confirmo así?"*;
+vuelve el **PASO 4 — CREAR EL PEDIDO**, que solo dispara `crear_orden_completa` tras un "sí"/"dale"/
+"confirmo". Se añaden dos reglas duras: **"nunca preguntes y crees en el mismo mensaje"** y
+**"prohibido asumir `metodo_pago` — 'Efectivo' no es el valor por defecto"**, más
+*"un dato que escribiste TÚ en el resumen no cuenta como confirmado por el cliente"*. Los datos
+bancarios se mueven del resumen al PASO 5 (después de que el pedido existe), si no el mensaje pedía
+comprobante de un pedido todavía no creado. La misma regla se duplica en el `toolDescription` de
+`crear_orden_completa`, que es lo que el modelo lee al decidir la llamada.
+**Verificación:** `n8n_get_workflow mode:'active'` confirma PASO 4 y la nueva descripción de la tool en
+el grafo **publicado** (`activeVersionId` regenerado 22:07:47), no solo en el draft.
+`n8n_validate_workflow`: 0 errores. **Falta probar con un pedido real por WhatsApp.**
+**Impacto:** n8n `Pizzeria Vera` (nodos `AGENTE PEDIDOS`, `crear_orden_completa`),
+`docs/bot/ai-agents.md` (§3), `docs/shared/edge-cases.md#20`. Ningún archivo del dashboard cambió.
+Datos: `PED-223` acabó bien (el cliente sí transfirió, comprobante subido, `en_cocina`);
+**`PED-224` sigue `pendiente` con un `metodo_pago = 'Efectivo'` que el cliente nunca eligió** —
+confirmarlo con el cliente antes de despacharlo.
+
+---
+
+### 2026-07-29 — El comprobante se guardaba en el pedido equivocado (no era bug del dashboard)
+
+**Contexto:** Un comprobante subido por WhatsApp aparecía en Storage pero el dashboard seguía mostrando
+*"Esperando comprobante de transferencia"*. La sospecha inicial fue el dashboard, y debuggear n8n
+reforzaba esa idea: **la ejecución estaba en verde, todos los nodos `success`**.
+**Causa (verificada vía MCP, ejecución `10134`):** `Buscar pedido activo` filtraba solo por `telefono`
++ `estado = 'pendiente'` y devolvió **2 filas** — `PED-109` (1-jul, **Efectivo**, viejo sin cerrar) y
+`PED-223` (el real, Transferencia). `Preparar Upload` hacía `.first()`; sin `ORDER BY` Postgres no
+garantiza orden y ganó el viejo. El archivo se subió como `PED-109.jpg` y `comprobante_url` se escribió
+en `PED-109`. El dashboard estaba **leyendo bien**: `PED-223.comprobante_url` era `null`, y
+`OrderCard.jsx:122` hace exactamente lo que debe con ese dato. Alcance: solo 3 de 46 pedidos por
+Transferencia tenían `comprobante_url`.
+**Decisión:** el fix va en n8n, no en el dashboard. `Buscar pedido activo` añade `metodo_pago =
+'Transferencia'` y `estado_pago = 'pendiente'`; `Preparar Upload` deja de usar `.first()` y ordena por
+`fecha_pedido` desc descartando los que ya tienen comprobante (el nodo Supabase **no ofrece
+sort/limit** — 0 de 27 propiedades — así que el orden se decide en JS); `Update a row` pasa a
+referenciar `$('Preparar Upload').first().json.pedidoId` en vez del `.item` del IF, que con varios
+items podía resolver a otra fila.
+**Verificación:** `n8n_get_workflow mode:'active'` confirma que los 3 cambios están en el grafo
+**publicado** (`activeVersionId` regenerado 21:55), no solo en el draft. Repolítica de datos: el archivo
+se copió a `comprobantes/PED-223.jpg` (99.553 bytes, idénticos; HTTP 200 público), `PED-223` quedó
+apuntando ahí y `PED-109.comprobante_url` volvió a `null`.
+**Impacto:** n8n `Pizzeria Vera` (nodos `Buscar pedido activo`, `Preparar Upload`, `Update a row`),
+datos de `pedidos` (`PED-109`, `PED-223`), Storage (`comprobantes/PED-223.jpg`),
+`docs/shared/edge-cases.md#18`, `docs/shared/bug-tracker.md` (BUG-028 nuevo, data debt residual).
+Ningún archivo del dashboard cambió.
+
+---
+
+### 2026-07-29 — Los taps de Quick Reply caían en el vacío: el Switch inicial no los conocía
+
+**Contexto:** La promo (`reactivacion_cliente`) llegaba bien, pero al tapear **"Quiero pedir"** el bot
+no hacía absolutamente nada. Causa raíz verificada vía MCP en el `Switch` inicial del workflow
+`Pizzeria Vera` (8LI3J7PLi35zf4EJ): tenía **solo 2 reglas** — existe `messages[0].text.body` (texto) y
+`type` contiene `image` — y **ningún fallback**, así que todo lo demás se descartaba en silencio. Un
+tap de Quick Reply de plantilla llega como `messages[0].type = 'button'` con
+`button: { text, payload }` y **no trae `text.body`**, así que no matcheaba ninguna regla. No era el
+LLM ni el orquestador: el mensaje nunca entraba al flujo.
+**Decisión:** Tercera salida en el `Switch` (`type` ∈ `button` | `interactive`) → nuevo Code node
+**`Normalizar tap`** → `Extraer datos del mensaje`. El nodo inyecta el texto del botón en
+`messages[0].text.body` y reenvía el payload, así que **el resto del flujo de texto sirve sin
+cambios**. Se hizo así, y no con una rama paralela, porque `No > Crear Cliente` referencia
+`$('Extraer datos del mensaje').item.json.telefono` — una rama que no pasara por ese nodo rompería
+la creación de clientes nuevos. Cambio **aditivo**: el camino de texto no se tocó.
+**Desambiguación:** `Normalizar tap` además reescribe `Confirmar` → "Confirmar mi reserva" y
+`Cancelar` → "Cancelar mi reserva". Sin eso, `Confirmar` suelto cae en la regla de **pedidos** del
+ORQUESTADOR (que lista `"confírmalo"`) o en el fallback a soporte, porque la plantilla la manda el
+**dashboard** y el historial de chat no tiene contexto de reserva. `Quiero pedir` y `No, gracias`
+pasan tal cual (ya rutean a menu y soporte). El remapeo aplica **solo a taps**, no a texto escrito.
+**Verificación:** los labels salieron de Graph API, no de los docs —
+`GET /1476425047271965/message_templates?fields=components` → solo 2 de las 7 plantillas tienen
+botones: `reactivacion_cliente` (`Quiero pedir` / `No, gracias`) y `recordatorio_reserva`
+(`Confirmar` / `Cancelar`). **Drift corregido:** el backlog hablaba de un botón `Sí, les cuento` que
+**no existe en ninguna plantilla**. El shape del payload y la tolerancia del JSON crudo de
+`Extraer datos del mensaje` se confirmaron contra la ejecución real 10132.
+**Pendiente:** **no se ha tapeado ningún botón en real después del cambio** — la verificación
+demuestra que el cableado y los labels calzan, no que el tap llegue hasta el agente.
+**Impacto:** n8n workflow `Pizzeria Vera` (nodo `Normalizar tap` nuevo + 3ª regla del `Switch` + 2
+conexiones), `docs/bot/n8n-workflow.md`, `docs/shared/backlog.md`, `docs/shared/edge-cases.md`.
+
+---
+
 ### 2026-07-29 — Se cierran los 3 huecos de texto libre: el dashboard ya solo manda plantillas
 
 **Contexto:** Meta aprobó las plantillas que faltaban. Hasta hoy tres envíos del dashboard iban por
