@@ -15,6 +15,53 @@
 
 ---
 
+### 2026-08-10 — BUG-028 resuelto: pedidos zombis en estados intermedios
+
+**Contexto:** 11 pedidos llevaban semanas en `pendiente` (el más viejo de hace 72 días). Son la
+munición que activó el bug del `.first()` (`edge-cases.md#18`): cualquier consulta que busque "el
+pedido pendiente del cliente" recibía N filas en vez de 1.
+**Hallazgo al verificar:** eran **15, no 11** — el tracker solo había contado los `pendiente`.
+Faltaban 3 en `en_camino` (23-jul) y 1 en `en_cocina` del 17-may, **85 días** colgado.
+**Hallazgo que cambió el plan:** `pedidos` tiene un trigger **AFTER UPDATE**
+(`notificar-estado-pedido`) que postea a un webhook de n8n, y ese webhook manda WhatsApp cuando
+cambia el estado. Cancelar los 15 "a secas" habría disparado mensajes *"❌ Tu pedido fue
+cancelado"* por pedidos de hasta 72 días. Se comprobó además que los 15 son **datos de prueba**:
+los teléfonos son los del desarrollador (`5731132…`, `5731848…`) o sintéticos (`573000000001`,
+`1234354353`) — ningún cliente real.
+**Decisión (a) — limpieza silenciosa:** se cancelaron los 15 con `ALTER TABLE … DISABLE TRIGGER`
+**dentro de la transacción** de la migración, así que no salió ni una notificación. Se cancelan y
+no se borran, para no alterar los agregados históricos de Estadísticas. `estado_pago` se deja como
+estaba: `'pendiente'` en un pedido cancelado es la verdad (nunca se cobró); forzarlo a `'rechazado'`
+inventaría un rechazo que ningún operador hizo.
+**Decisión (b) — expiración por día de negocio:** `expirar_pedidos_pendientes()` + job de pg_cron
+`expirar-pedidos-pendientes` (`0 16 * * *`). Se descartó la regla "por N horas" a propósito:
+`pendiente` es la columna *"Por aprobar"* del kanban, así que un pedido legítimo puede pasar horas
+ahí en una noche cargada y una regla por horas cancelaría pedidos reales que el operador todavía
+iba a aprobar. El corte por día **nunca toca el turno en curso**. Tampoco toca `en_cocina` ni
+`en_camino`: esos ya los aceptó la cocina y lo más probable es que se entregaran sin marcarse —
+cancelarlos automáticamente sería mentir; los cierra el operador desde Historial.
+**Por qué a las 16:00 UTC (11:00 Colombia) y no a medianoche:** el corte ya pasó, pero la
+notificación le llega al cliente a una hora decente. El pedido viejo no estorba mientras tanto
+porque el kanban solo muestra los del día actual. La notificación queda **activa** a propósito: un
+cliente cuyo pedido nunca se procesó merece enterarse, y el `motivo_rechazo` está redactado para
+encajar en la plantilla de n8n (*"Tu pedido fue cancelado, no alcanzamos a procesarlo antes del
+cierre del día."*).
+**Verificación:** tras la limpieza, `pedidos` queda en 81 `entregado` + 24 `cancelado` y **cero**
+en estados intermedios. `net._http_response` y `net.http_request_queue` en **0** → ni un webhook
+encolado, la limpieza fue realmente silenciosa. El trigger volvió a `tgenabled='O'`. La función de
+expiración se probó en transacción con `ROLLBACK` sobre las tres fronteras: un pedido de 2h antes
+del inicio del día se cancela; uno de las **00:05 de hoy** y uno de *ahora* sobreviven.
+**Pendiente:** el job aún no ha corrido en producción → queda en "En observación" del tracker.
+**Impacto:** Supabase — migraciones `bug028_limpiar_pedidos_colgados` y
+`bug028_expirar_pedidos_pendientes`. Docs — `database/schema.md` (función nueva + tabla de jobs de
+pg_cron, que no estaba documentada), `shared/bug-tracker.md`, `shared/backlog.md`. **Sin cambios en
+el dashboard ni en n8n.**
+**Cabo suelto menor:** queda el blob huérfano `comprobantes/PED-109.jpg` en Storage. Ya no tiene
+referencia en la BD (`comprobante_url` es `NULL`), así que es inofensivo; borrarlo por SQL solo
+quitaría la fila de metadatos y dejaría el archivo colgado en S3 → pasa a housekeeping del backlog.
+
+---
+
 ### 2026-08-10 — La escalada a humano llegaba al dashboard sin contexto
 
 **Contexto:** Un cliente escribía *"tengo un problema con el pedido, necesito hablar con un

@@ -21,6 +21,15 @@
   `Crear_orden_completa` y devolver `{ ok: false, error: 'agotado', items: [...] }` para que el
   Agente Pedidos avise y devuelva al cliente al Agente Menú a sustituir el item.
 
+## Housekeeping
+
+- **Borrar `comprobantes/PED-109.jpg` de Storage** — blob huérfano que dejó el bug del `.first()`
+  (era una copia del comprobante de `PED-223` guardada con el nombre equivocado). Desde el fix de
+  BUG-028 **ya no hay ninguna referencia en la BD** (`PED-109.comprobante_url` es `NULL`), así que
+  es inofensivo. No se puede borrar por SQL: quitar la fila de `storage.objects` dejaría el archivo
+  real colgado en S3. Hay que hacerlo desde el dashboard de Supabase (Storage → comprobantes) o con
+  la Storage API usando la `service_role`.
+
 ## Reservas
 
 - **Plantilla de WhatsApp con el costo del montaje** — la confirmación que manda el **dashboard**

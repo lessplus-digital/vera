@@ -211,7 +211,16 @@ WHERE pedido_id = NEW.pedido_id;
 | `historial_resumen` | `(p_from, p_to timestamp, p_estado, p_tipo, p_search, p_search_digits text, p_cliente_ids text[]) → jsonb` | Agregados del historial (total/entregados/cancelados/ingresos sin cancelados) con los mismos filtros que la lista paginada de la tab Historial. **SECURITY INVOKER** (respeta RLS: sin sesión cuenta 0). Migración `historial_resumen_rpc_e_indice_fecha` (2026-07-23), que también creó el índice `idx_pedidos_fecha_pedido`. |
 | `normalizar_texto` | `(text) → text` | unaccent + lower (base de `buscar_menu`). |
 | `registrar_contexto_handoff` | `(p_telefono text, p_limite int=40) → integer` | **Contexto al escalar a humano** (2026-08-10). Vuelca la conversación reciente del bot desde `n8n_chat_histories` a `mensajes_soporte` (`human`→`cliente`, `ai`→`bot`). Descarta ruido: mensajes `tool`, `content` no-string (llamadas a tools) y el JSON de clasificación del ORQUESTADOR (`~ '"agente"\s*:'`). Deduplica turnos **consecutivos** repetidos (la memoria es compartida: el mismo mensaje se guarda una vez por cadena que corre). Desempata el orden con microsegundos sobre el `id` de la memoria, porque varios turnos comparten `created_at` y el dashboard ordena por esa columna. **Idempotente por corte temporal:** solo copia lo posterior al último `mensajes_soporte` de ese teléfono, así re-escalar no duplica. Devuelve cuántos mensajes recuperó. **SECURITY DEFINER**. |
+| `expirar_pedidos_pendientes` | `() → integer` | **BUG-028** (2026-08-10). Cancela los pedidos que quedaron `pendiente` de **días de negocio anteriores** (Colombia UTC-5) con `motivo_rechazo = 'no alcanzamos a procesarlo antes del cierre del día'` — redactado para encajar en la plantilla de n8n. **No toca `en_cocina`/`en_camino`**: esos ya los aceptó la cocina y lo más probable es que se entregaran sin marcarse; los cierra el operador desde Historial. Devuelve cuántos cerró. **SECURITY DEFINER**. |
 | `limpiar_carritos_abandonados` / `limpiar_historial_chat` | `()` | Housekeeping. |
+
+### Jobs programados (`pg_cron`)
+
+| Job | Cron | Qué corre |
+|---|---|---|
+| `limpiar-carritos-abandonados` | `0 8 * * *` | `limpiar_carritos_abandonados()` |
+| `limpiar_historial_chat_semanal` | `0 3 * * 1` | `limpiar_historial_chat()` |
+| `expirar-pedidos-pendientes` | `0 16 * * *` | `expirar_pedidos_pendientes()` — 16:00 UTC = **11:00 Colombia**: el corte (00:00) ya pasó, pero la notificación de cancelación le llega al cliente a una hora decente y no a medianoche. Mientras tanto el pedido viejo no estorba, porque el kanban solo muestra los del día actual |
 
 > ✅ Desde 2026-07-22 **`Sub — Consultar_menu` llama a `buscar_menu`** (POST
 > `/rest/v1/rpc/buscar_menu` con `{termino, umbral: 0.2, limite: 30, solo_disponibles: true}`)
