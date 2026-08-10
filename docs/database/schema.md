@@ -136,9 +136,14 @@ migración `feedback_add_resuelta_at`, 2026-07-23; solo aplica a negativas/neutr
 `telefono` 🔑, `pedido_id`, `cliente_id`, `estado` (check `esperando_nota`/`esperando_comentario`),
 `fecha_solicitud`.
 
-### `mensajes_soporte` — chat de soporte (29 filas · RLS ✅ solo authenticated)
-`id` uuid 🔑, `telefono`, `origen` (check `cliente`/`admin`/`sistema`), `mensaje`,
+### `mensajes_soporte` — chat de soporte (RLS ✅ solo authenticated)
+`id` uuid 🔑, `telefono`, `origen` (check `cliente`/`admin`/`sistema`/**`bot`**), `mensaje`,
 `created_at`, `tipo_contenido` (`texto`/`imagen`), `imagen_url`.
+
+> **`origen = 'bot'` (2026-08-10):** turnos del agente IA **recuperados del historial** al escalar
+> la conversación a humano. No los escribe el bot en vivo: los vuelca la RPC
+> `registrar_contexto_handoff` desde `n8n_chat_histories`. El dashboard los pinta del lado del
+> cliente pero atenuados (son contexto pasado, no algo que responder).
 
 ### `info_negocio` — config clave/valor (17 filas · PK `clave` · RLS ✅)
 `clave` 🔑, `valor`, `categoria`. El bot la lee completa vía la tool `info_local` (getAll, sin
@@ -177,6 +182,7 @@ Claves por `categoria`:
 | `pedidos` | `notificar-estado-pedido` | AFTER UPDATE | `http_request` (pg_net) — notifica el cambio de estado (webhook) |
 | `reservas` | `trigger_validar_cupo` | BEFORE INSERT | Si hay 8 reservas solapadas (90 min) `confirmada` ese día → `RAISE EXCEPTION` |
 | `reservas` | `trigger_costo_motivo` | BEFORE INSERT **OR UPDATE OF `motivo`** | `costo_motivo` = `motivos_reserva.costo` de la clave en `motivo`; `motivo` vacío/NULL → costo 0 (2026-08-10) |
+| `clientes` | `trigger_contexto_handoff` | AFTER UPDATE OF `modo` · **WHEN `modo` pasa a `'humano'`** | Llama `registrar_contexto_handoff()` y deja una nota `sistema` — el operador abre la conversación con el contexto ya cargado (2026-08-10) |
 
 > **El total lo calcula el trigger, nunca el JS ni el LLM.** Ojo: `trigger_actualizar_total`
 > dispara **solo en INSERT** de `detalle_pedidos` (no UPDATE/DELETE) — por eso `editar_pedido`
@@ -204,6 +210,7 @@ WHERE pedido_id = NEW.pedido_id;
 | `generar_reserva_id` | `() → text` | Default de `reservas.reserva_id`. |
 | `historial_resumen` | `(p_from, p_to timestamp, p_estado, p_tipo, p_search, p_search_digits text, p_cliente_ids text[]) → jsonb` | Agregados del historial (total/entregados/cancelados/ingresos sin cancelados) con los mismos filtros que la lista paginada de la tab Historial. **SECURITY INVOKER** (respeta RLS: sin sesión cuenta 0). Migración `historial_resumen_rpc_e_indice_fecha` (2026-07-23), que también creó el índice `idx_pedidos_fecha_pedido`. |
 | `normalizar_texto` | `(text) → text` | unaccent + lower (base de `buscar_menu`). |
+| `registrar_contexto_handoff` | `(p_telefono text, p_limite int=40) → integer` | **Contexto al escalar a humano** (2026-08-10). Vuelca la conversación reciente del bot desde `n8n_chat_histories` a `mensajes_soporte` (`human`→`cliente`, `ai`→`bot`). Descarta ruido: mensajes `tool`, `content` no-string (llamadas a tools) y el JSON de clasificación del ORQUESTADOR (`~ '"agente"\s*:'`). Deduplica turnos **consecutivos** repetidos (la memoria es compartida: el mismo mensaje se guarda una vez por cadena que corre). Desempata el orden con microsegundos sobre el `id` de la memoria, porque varios turnos comparten `created_at` y el dashboard ordena por esa columna. **Idempotente por corte temporal:** solo copia lo posterior al último `mensajes_soporte` de ese teléfono, así re-escalar no duplica. Devuelve cuántos mensajes recuperó. **SECURITY DEFINER**. |
 | `limpiar_carritos_abandonados` / `limpiar_historial_chat` | `()` | Housekeeping. |
 
 > ✅ Desde 2026-07-22 **`Sub — Consultar_menu` llama a `buscar_menu`** (POST

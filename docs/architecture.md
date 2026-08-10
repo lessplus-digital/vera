@@ -108,6 +108,8 @@ pendiente → en_cocina → recoger → entregado
 bot (default)
   │
   ├─ Cliente/agente pide humano (solicitar_handoff) → modo = 'humano'
+  │   └─ trigger_contexto_handoff vuelca la conversación reciente del bot
+  │      (n8n_chat_histories) a mensajes_soporte → el admin ve el contexto
   │   └─ Mensajes van a mensajes_soporte; el admin responde desde el dashboard
   │       └─ Admin resuelve → modo = 'bot'
   │

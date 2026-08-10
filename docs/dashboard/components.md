@@ -134,6 +134,21 @@ src/
 - Resolver conversación → cambia `modo` a `'bot'` + notifica al cliente
 - Badge en el tab muestra cantidad de conversaciones activas (`useSupportCount`)
 
+**Contexto al recibir una escalada (2026-08-10):** al pasar un cliente a `modo='humano'`, el
+trigger `trigger_contexto_handoff` vuelca la conversación reciente con el bot a
+`mensajes_soporte` y deja una nota de sistema. El operador abre la conversación y **ya ve el
+problema que el cliente explicó** en vez de una pantalla vacía. Los 4 valores de `origen`
+que renderiza `ChatBubble` (mapa `ROLES`):
+
+| `origen` | Lado | Etiqueta | Aspecto |
+|---|---|---|---|
+| `admin` | derecha | Tú | `--blue-dim`, es lo que escribió el operador |
+| `cliente` | izquierda | Cliente | `--bg-card`, burbuja normal |
+| `bot` | izquierda | Bot | `--bg-inset` + borde **punteado** y texto atenuado — es contexto pasado recuperado del historial, no algo que responder. Sin color nuevo, a propósito |
+| `sistema` | centrado | — | Píldora gris (`.bubble-system`): escalada y resolución |
+
+Un `origen` desconocido cae en `cliente` (fallback del mapa), no rompe el render.
+
 ### 3. Estadísticas (Recharts)
 
 **Vista:** KPIs + gráficas analíticas con filtros de periodo

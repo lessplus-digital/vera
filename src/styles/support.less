@@ -301,6 +301,10 @@
 
     &.admin  { padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--blue-dim); border: 1px solid var(--blue-border); }
     &.client { padding: 8px 12px; border-radius: 12px 12px 12px 4px; background: var(--bg-card);  border: 1px solid var(--border);      }
+    // Turnos del bot recuperados al escalar: mismo lado que el cliente pero
+    // hundidos (fondo inset + borde punteado) — son contexto pasado, no algo
+    // que el operador tenga que contestar. Sin color nuevo, a propósito.
+    &.bot    { padding: 8px 12px; border-radius: 12px 12px 12px 4px; background: var(--bg-inset); border: 1px dashed var(--border);     }
     &.img    { padding: 6px; }
 
     .sender {
@@ -312,7 +316,10 @@
       &.img-pad { padding: 2px 6px 0; }
       &.admin  { color: var(--blue); }
       &.client { color: var(--amber); }
+      &.bot    { color: var(--text-muted); }
     }
+
+    &.bot .text { color: var(--text-secondary); }
 
     .text {
       font-size: 13px;

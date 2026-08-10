@@ -142,6 +142,16 @@ datos y **handoff** a humano. Registra el nombre si es válido (no emojis/religi
 
 Efecto del handoff: el Router de modo deja de pasar al orquestador y los mensajes del
 cliente caen en `mensajes_soporte` (panel de soporte del dashboard).
+
+**Contexto de la escalada (2026-08-10):** el mensaje que dispara el handoff viaja por la ruta del
+**bot**, así que nunca pasa por el nodo que escribe en `mensajes_soporte` — el operador abría la
+conversación en blanco y tenía que volver a preguntar el problema. Ahora lo resuelve la BD, no
+n8n: el trigger `trigger_contexto_handoff` sobre `clientes` llama a `registrar_contexto_handoff()`
+y vuelca la conversación reciente desde `n8n_chat_histories`. **Funciona porque el ORQUESTADOR
+guarda el turno del cliente al cerrar SU cadena, que corre antes de que el Agente Soporte llame
+`solicitar_handoff`** — cuando el trigger dispara, el mensaje ya está en la memoria.
+Al vivir en la BD cubre cualquier vía de escalada (la tool, el dashboard, un UPDATE manual) sin
+tocar el workflow.
 Prompt completo: [`agent-prompts.md#agente-soporte`](agent-prompts.md#agente-soporte).
 
 ---

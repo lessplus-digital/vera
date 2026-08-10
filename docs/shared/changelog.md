@@ -15,6 +15,52 @@
 
 ---
 
+### 2026-08-10 — La escalada a humano llegaba al dashboard sin contexto
+
+**Contexto:** Un cliente escribía *"tengo un problema con el pedido, necesito hablar con un
+humano"*, el bot escalaba correctamente… y la conversación aparecía **vacía** en la tab Soporte.
+El operador tenía que volver a preguntar el problema que el cliente acababa de explicar, justo
+cuando ya venía molesto.
+**Causa:** el `Router de modo` lee `clientes.modo` **al entrar** el mensaje. El mensaje que dispara
+el handoff entra todavía como `bot`, se procesa por la ruta de agentes, y es el Agente Soporte
+quien a mitad de camino llama `solicitar_handoff`. El nodo que escribe en `mensajes_soporte` está
+en la **otra** rama del router, así que solo capturaba los mensajes **siguientes**: el único que
+importaba era precisamente el que nunca se guardaba.
+**Decisión:** no reconstruirlo en n8n, sino recuperarlo de donde ya estaba — `n8n_chat_histories`,
+la memoria de los agentes. RPC **`registrar_contexto_handoff`** + trigger
+**`trigger_contexto_handoff`** sobre `clientes` (AFTER UPDATE OF `modo`, WHEN pasa a `'humano'`).
+Se puso **en la BD y no en el workflow** a propósito: así cubre cualquier vía de escalada —la tool
+del bot, el dashboard, un UPDATE manual— en vez de solo la que uno se acuerde de cablear, y no
+mete latencia en la ruta de respuesta del bot.
+**Por qué funciona (no es obvio):** el turno del cliente ya está en la memoria cuando el trigger
+dispara, porque el **ORQUESTADOR** corre primero y guarda al cerrar su cadena, antes de que el
+Agente Soporte arranque. Con un solo agente el backfill llegaría vacío.
+**Ruido que hubo que filtrar:** la memoria es **una sola sesión por teléfono para todos los
+agentes**, así que el mismo mensaje se guarda una vez por cadena que corre (se deduplican
+consecutivos, no todas las repeticiones); el ORQUESTADOR guarda su clasificación
+(`{"agente":"soporte",...}`) como mensaje `ai` normal; y los `content` no siempre son texto
+(array vacío en llamadas a tools, filas `type:'tool'` con el resultado crudo).
+**Orden de la conversación:** varios turnos comparten `created_at` porque se escriben juntos al
+cerrar la cadena. Como el chat ordena por esa columna, con empates la respuesta del bot podía
+pintarse **antes** de la pregunta del cliente (pasó en la primera prueba). Se desempata con
+microsegundos según el `id` de la memoria, que sí es secuencial.
+**`origen = 'bot'`:** valor nuevo en el check de `mensajes_soporte`. `ChatBubble` pasa a un mapa
+`ROLES` (con fallback a `cliente` para un origen desconocido) y lo pinta del lado del cliente pero
+**hundido** —`--bg-inset` + borde punteado + texto atenuado— porque es contexto pasado, no algo que
+el operador tenga que contestar. Sin color nuevo, a propósito.
+**Verificación:** probado en transacción con `ROLLBACK` simulando una conversación real con todo su
+ruido (clasificación del orquestador, turnos duplicados por la memoria compartida, `content` array,
+fila `tool`). Resultado: 5 mensajes limpios en el orden correcto + la nota de sistema, y el mensaje
+que disparó el handoff presente. Re-escalar tras resolver **no duplica** (suma solo la nota nueva),
+gracias al corte por el último `mensajes_soporte`. `npm run build` limpio.
+**Falta probar con un handoff real por WhatsApp.**
+**Impacto:** Supabase — migraciones `handoff_contexto_origen_bot`, `registrar_contexto_handoff`,
+`trigger_contexto_handoff`, `registrar_contexto_handoff_orden_estricto`. Dashboard —
+`ChatBubble.jsx`, `support.less`. **Ningún cambio en n8n.** Docs — `database/schema.md`,
+`architecture.md`, `bot/ai-agents.md`, `dashboard/components.md`, `shared/edge-cases.md#21`.
+
+---
+
 ### 2026-08-10 — Motivo (ocasión) de la reserva y su costo de montaje
 
 **Contexto:** El local monta decoración para cumpleaños, aniversarios, declaraciones, grados y
