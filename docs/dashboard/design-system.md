@@ -179,6 +179,19 @@ Promovidos desde el splash de auth al hacer server-side el historial (2026-07-23
 - El spinner gira en `--amber` sobre `--border` (marca, no estado). No inventar variantes
   de color por página.
 
+## 8c. Marca de pizza mitad y mitad (`.mm-tag` en `index.css`)
+
+Distintivo inline `½+½` que **precede** al nombre del producto en cualquier lista de ítems
+(Kanban, crear/editar pedido, detalle del historial). Global en `index.css` porque las tres
+vistas viven en LESS distintos y la marca tiene que verse idéntica en todas.
+
+- Color **`--purple`** sobre `--purple-dim` con borde `--purple-border`. El morado ya
+  significa "domicilio" en los badges de la card, así que aquí **no** es un estado: es una
+  etiqueta de composición del producto. No inventar un color nuevo para esto.
+- Solo aparece cuando la línea de `detalle_pedidos` trae `mitades`. El nombre ya dice
+  *"Mitad X / Mitad Y"*; el tag existe para que se detecte de un vistazo en la cocina.
+- La **masa** (Tradicional/Estofada) se muestra como un `.variant` más, no como otro badge.
+
 ## 9. Qué NO hacer (resumen del feedback origen)
 
 - ❌ Degradados en cards/contenedores de info · ❌ dos fuentes mezcladas en una vista

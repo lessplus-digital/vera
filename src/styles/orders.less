@@ -674,6 +674,109 @@
       }
     }
 
+    // Modo del picker: producto normal vs pizza mitad y mitad
+    .mp-mode {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 10px;
+
+      .opt {
+        flex: 1;
+        padding: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--bg-card);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-family: var(--font-sans);
+        transition: all 0.1s;
+
+        &.active {
+          background: var(--purple-dim);
+          border-color: var(--purple-border);
+          color: var(--purple);
+        }
+      }
+    }
+
+    // Mitad y mitad: las dos mitades elegidas + avisos del flujo
+    .mm-picked {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+
+      .mm-slot {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 7px 9px;
+        text-align: left;
+        background: var(--bg-card);
+        border: 1px dashed var(--border);
+        border-radius: var(--radius-sm);
+        font-family: var(--font-sans);
+        cursor: default;
+
+        &.filled {
+          border-style: solid;
+          border-color: var(--purple-border);
+          background: var(--purple-dim);
+          cursor: pointer;
+        }
+
+        .lbl {
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .val {
+          font-size: 12px;
+          color: var(--text-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
+    }
+
+    .mm-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+
+      strong { color: var(--text-secondary); font-weight: 600; }
+    }
+
+    .mm-rule {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .mm-msg {
+      padding: 16px 8px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .mm-error {
+      background: var(--red-dim);
+      border: 1px solid var(--red-border);
+      border-radius: var(--radius-sm);
+      color: var(--red);
+      font-size: 12px;
+      padding: 7px 9px;
+      margin-bottom: 10px;
+    }
+
     // Variant selector
     .variant-title { font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 8px; }
 

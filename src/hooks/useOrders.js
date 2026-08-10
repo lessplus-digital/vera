@@ -38,7 +38,8 @@ export function useOrders() {
           nombre_producto,
           variante,
           cantidad,
-          precio_unitario
+          precio_unitario,
+          mitades
         )
       `)
       .gte('fecha_pedido', today.toISOString())

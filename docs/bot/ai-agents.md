@@ -81,6 +81,18 @@ categoría. Solo `encontrados = 0` **con** `agotados` vacío significa que no es
 | `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; RPC `buscar_menu` (fuzzy por nombre/categoría/descripción, devuelve `similitud` — BUG-006, 2026-07-22). Devuelve `productos_por_categoria` (**solo disponibles**) + `agotados` aparte (2026-07-28). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
 | `crear_carrito` | HTTP POST | `/carritos` body `{telefono, items, total}` (credencial n8n desde BUG-003) |
 | `actualizar_carrito` | HTTP PATCH | `/carritos?telefono=eq.{fromAI}` body `{items, total}` (credencial n8n) |
+| `armar_mitad_y_mitad` | HTTP POST | `/rpc/cotizar_mitad_y_mitad` body `{p_producto_a, p_producto_b, p_tamano}` (2026-08-10). Cotiza una pizza mitad y mitad **server-side** y devuelve el item listo para el carrito |
+
+**Pizza mitad y mitad (2026-08-10):** una pizza con dos sabores es **una sola línea** que cobra
+el precio de la **mitad más cara** del tamaño pedido. El LLM **nunca** calcula ese precio: llama
+`armar_mitad_y_mitad` con los dos `producto_id` (de `consultar_menu`) + el tamaño y copia la
+respuesta al carrito **incluido el campo `mitades`**, que es lo que persiste en
+`detalle_pedidos.mitades`. Reglas que valida la RPC: misma masa (`menu.variante`: Tradicional con
+Tradicional, Estofada con Estofada), tamaño `pequena/mediana/grande/familiar` (la **porción no se
+parte**), solo las 4 categorías de pizza salada (las dulces no), ambas disponibles y sabores
+distintos. Sí se pueden cruzar categorías (media tradicional + media premium → cobra la premium).
+`Sub — Crear_orden_completa` **vuelve a calcular** ese precio contra el menú real al crear el
+pedido, así que un precio inventado por el LLM no llega a la BD.
 
 Prompt completo: [`agent-prompts.md#agente-menú`](agent-prompts.md#agente-menú).
 
@@ -93,7 +105,8 @@ pedido y método de pago (una pregunta por mensaje). Domicilio suma **$5.000**.
 
 Invariantes que comparte con la BB.DD.: `tipo_pedido` en minúscula (`domicilio`/`recoger`),
 `metodo_pago` capitalizado (`Efectivo`/`Transferencia`), items **sin modificar** desde
-`leer_carrito`. Ante error de `crear_orden_completa` → **no reintenta**, escala.
+`leer_carrito` — incluido el campo `mitades` cuando la línea es una pizza mitad y mitad.
+Ante error de `crear_orden_completa` → **no reintenta**, escala.
 
 **Gate de confirmación (2026-07-29, no lo quites):** el flujo del prompt es
 `PASO 3 — RESUMEN Y CONFIRMACIÓN` (muestra el resumen, cierra con *"¿Te lo confirmo así?"* y

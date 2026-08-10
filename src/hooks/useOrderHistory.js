@@ -18,7 +18,7 @@ const SELECT_PEDIDO = `
   fecha_pedido, fecha_entrega, estado, metodo_pago, estado_pago,
   comprobante_url, total, repartidor, notas, motivo_rechazo,
   clientes ( nombre ),
-  detalle_pedidos ( detalle_id, nombre_producto, variante, cantidad, precio_unitario, subtotal, notas_item )
+  detalle_pedidos ( detalle_id, nombre_producto, variante, cantidad, precio_unitario, subtotal, notas_item, mitades )
 `
 
 // Tope del export (una sola bajada). Si se alcanza, se avisa: acortar el rango.

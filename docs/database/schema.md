@@ -76,6 +76,16 @@
 | `precio_unitario` | numeric | **copiado del menú al crear** (no cambia con el menú) |
 | `subtotal` | numeric | **columna generada** = `cantidad * precio_unitario` |
 | `notas_item` | text | nullable |
+| `mitades` | jsonb | nullable · **pizza mitad y mitad** (migración `mitad_y_mitad_columna_y_cotizador`, 2026-08-10) |
+
+> **Pizza mitad y mitad.** Una pizza con dos sabores es **UNA sola fila** de `detalle_pedidos`:
+> `producto_id` = la mitad **más cara** (la que fija el precio, y así la FK sigue siendo válida),
+> `nombre_producto` = `"Mitad X / Mitad Y"`, `variante` = el **tamaño**, `precio_unitario` = el
+> precio de esa mitad más cara en ese tamaño, y `mitades` = array de **exactamente 2** objetos
+> `{producto_id, nombre, variante, precio}` (donde `variante` es la **masa** — el único sitio
+> donde se conserva). En productos normales `mitades` es `NULL`. Al ser una línea normal, el
+> trigger del total, el historial y las estadísticas siguen funcionando sin cambios.
+> Quien decide el precio es la RPC `cotizar_mitad_y_mitad` (ver abajo), nunca el LLM ni el JS.
 
 ### `carritos` — carrito temporal del bot (0 filas · PK `telefono` · RLS ✅)
 `telefono` 🔑, `items` jsonb (default `[]`), `total` numeric, `updated_at` timestamptz.
@@ -164,7 +174,8 @@ WHERE pedido_id = NEW.pedido_id;
 |---|---|---|
 | `buscar_menu` | `(termino text, umbral float=0.2, limite int=5, solo_disponibles bool=true)` | **Búsqueda difusa** del menú: `normalizar_texto` (unaccent+lower) + diccionario de typos (`papata→patata`, `servex→cervez`, `hamurguesa→hamburguesa`, `birra→cerveza`…) + 3 capas de score (containment / `similarity` full-string / word-level trgm) **sobre `nombre`, `categoria` (peso 0.8) y `descripcion` (peso 0.7)** — extendida 2026-07-22 (migración `bug006_buscar_menu_categoria_descripcion`; antes solo `nombre`). **Devuelve `descripcion` y `similitud` (0–1)**, ordenado desc. Término vacío/null → devuelve el menú (respeta `limite`). |
 | `buscar_menu_categoria` | `(cat text, solo_disponibles bool=true)` | Lista productos de una categoría. |
-| `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio**, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. |
+| `cotizar_mitad_y_mitad` | `(p_producto_a text, p_producto_b text, p_tamano text) → jsonb` | **Cotizador de pizza mitad y mitad** (2026-08-10). Valida: los dos productos existen y están disponibles, misma **masa** (`menu.variante`), categoría de pizza salada (`pizza_tradicional/especial/premium/premium_especial`), sabores distintos y tamaño en `pequena/mediana/grande/familiar` (**porción excluida**). Cobra el precio de la **mitad más cara**. Devuelve `{ok:true, producto_id, nombre_producto, variante, masa, precio_unitario, mitades, explicacion}` o `{ok:false, error, message}` (`MASA_DISTINTA`, `TAMANO_NO_PERMITIDO`, `CATEGORIA_NO_PERMITIDA`, `PRODUCTO_AGOTADO`, `MITADES_IGUALES`, `TAMANO_NO_DISPONIBLE`…). La usan **el bot** (tool `armar_mitad_y_mitad`) y **el dashboard** (`MenuPicker`) — misma regla, una sola fuente. |
+| `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio**, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. Desde 2026-08-10 (migración `editar_pedido_arrastra_mitades_y_notas_item`) también arrastra **`mitades` y `notas_item`** — antes los perdía al reinsertar. |
 | `generar_reserva_id` | `() → text` | Default de `reservas.reserva_id`. |
 | `historial_resumen` | `(p_from, p_to timestamp, p_estado, p_tipo, p_search, p_search_digits text, p_cliente_ids text[]) → jsonb` | Agregados del historial (total/entregados/cancelados/ingresos sin cancelados) con los mismos filtros que la lista paginada de la tab Historial. **SECURITY INVOKER** (respeta RLS: sin sesión cuenta 0). Migración `historial_resumen_rpc_e_indice_fecha` (2026-07-23), que también creó el índice `idx_pedidos_fecha_pedido`. |
 | `normalizar_texto` | `(text) → text` | unaccent + lower (base de `buscar_menu`). |

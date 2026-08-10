@@ -15,6 +15,56 @@
 
 ---
 
+### 2026-08-10 — Pizza mitad y mitad (bot + BD + dashboard)
+
+**Contexto:** El negocio vende pizzas con dos sabores, pero el sistema no las modelaba. El bot no
+tenía forma de cotizarlas y en el dashboard había que fingirlas con una pizza normal + una nota,
+así que el precio quedaba a criterio de quien tomara el pedido.
+**Decisión de modelado:** una mitad y mitad es **UNA sola línea** de `detalle_pedidos`, no dos ni
+un producto nuevo del menú: `producto_id` = la mitad **más cara** (fija el precio y mantiene la FK
+válida), `nombre_producto` = `"Mitad X / Mitad Y"`, `variante` = el tamaño, `precio_unitario` = el
+precio de la más cara, y una columna nueva **`mitades jsonb`** con las dos mitades
+(`{producto_id, nombre, variante, precio}` ×2). Al ser una línea normal, el trigger del total, el
+historial, el export y las estadísticas siguen funcionando **sin tocarse**. La alternativa —
+producto de menú por cada combinación— habría hecho explotar el menú (36 pizzas saladas × 2 masas
+→ cientos de filas) y la de dos líneas a mitad de precio habría roto la regla de cobro.
+**Regla de cobro:** se cobra **la mitad más cara** del tamaño pedido. Se decide en la RPC
+`cotizar_mitad_y_mitad`, que es la **única** fuente: la llaman tanto el bot (tool
+`armar_mitad_y_mitad`) como el dashboard (`MenuPicker`). Ni el LLM ni el JS del frontend calculan
+ese precio. Restricciones que valida: misma **masa** (`menu.variante`), tamaño
+`pequena/mediana/grande/familiar` (la **porción no se parte**), solo las 4 categorías de pizza
+salada (las dulces no), ambas disponibles y sabores distintos. Cruzar categorías **sí** se puede
+(media tradicional + media premium → cobra la premium).
+**Defensa en profundidad:** `Sub — Crear_orden_completa` **recalcula** el precio de toda línea con
+`mitades` contra el menú real antes de insertar, así que un `precio_unitario` inventado por el LLM
+nunca llega a la BD. Es la segunda barrera después de la RPC.
+**Efecto colateral corregido:** `editar_pedido` borra y reinserta las líneas copiando solo 6
+campos, así que editar un pedido desde el dashboard **perdía `notas_item`** (ya pasaba antes, sin
+que nadie lo notara) y habría perdido `mitades`, dejando una línea que cobra el precio de una
+pizza cara sin decir de qué era la otra mitad. Ahora arrastra ambos.
+**Verificación:** RPC probada contra los 8 casos (ok tradicional/estofada, masa distinta, porción,
+dulce, tilde en "pequeña", mitades iguales, producto inexistente). Ciclo completo probado en
+transacción con `ROLLBACK`: insert → trigger (`57.000` + `5.000` domicilio = `62.000`) →
+`editar_pedido` a cantidad 2 (`114.000` + `5.000` = `119.000`) con `mitades` y `notas_item`
+intactos. `n8n_validate_workflow`: 0 errores en los dos workflows; `mode:'active'` confirma el
+nodo `armar_mitad_y_mitad` y los prompts en el grafo **publicado**. `npm run build` limpio.
+**Falta probar con un pedido real por WhatsApp y con un pedido manual desde el dashboard.**
+**Impacto:** Supabase — migraciones `mitad_y_mitad_columna_y_cotizador`, `mitad_y_mitad_rpc_cotizar`,
+`editar_pedido_arrastra_mitades_y_notas_item`. n8n — `Pizzeria Vera` (nodo nuevo
+`armar_mitad_y_mitad`, prompts de `AGENTE MENÚ` y `AGENTE PEDIDOS`, descripción de
+`crear_orden_completa`) y `Sub — Crear_orden_completa` (3 Code nodes + el select del HTTP de menú).
+Dashboard — `MenuPicker`, `CreateOrderModal`, `EditOrderModal`, `OrderCard`, `OrderDetailModal`,
+`useOrders`, `useOrderHistory`, `index.css` (`.mm-tag`), `orders.less`. Docs — `database/schema.md`,
+`bot/ai-agents.md`, `bot/agent-prompts.md`, `bot/subworkflows.md`, `dashboard/components.md`,
+`dashboard/design-system.md`.
+
+**Drift heredado detectado en la misma pasada:** al releer los prompts vivos apareció que las
+reglas de BUG-010 (*"modificar/cancelar un pedido YA REGISTRADO" → soporte → handoff*) estaban en
+n8n desde 2026-07-22 pero **nunca se copiaron a `agent-prompts.md`**, que se declara verbatim.
+Ya están sincronizadas (ORQUESTADOR y AGENTE SOPORTE).
+
+---
+
 ### 2026-07-29 — El AGENTE PEDIDOS creaba el pedido sin esperar la confirmación del cliente
 
 **Contexto:** Dos pedidos seguidos salieron mal. En `PED-223` el bot preguntó *"¿Pagas en efectivo o

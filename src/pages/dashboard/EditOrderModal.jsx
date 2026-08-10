@@ -19,6 +19,7 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
           variante: item.variante || 'Estándar',
           cantidad: item.cantidad,
           precio_unitario: Number(item.precio_unitario || 0),
+          mitades: item.mitades || null,
         }))
       )
     }
@@ -72,6 +73,9 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
       variante: item.variante,
       cantidad: item.cantidad,
       precio_unitario: item.precio_unitario,
+      // `editar_pedido` borra y reinserta las líneas: sin esto una pizza mitad y
+      // mitad perdería de qué era cada mitad al editar el pedido.
+      mitades: item.mitades || null,
     }))
 
     const { data, error: rpcError } = await supabase.rpc('editar_pedido', {
@@ -142,7 +146,10 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
             {items.map((item) => (
               <div key={item.key} className="em-item">
                 <div className="info">
-                  <div className="name">{item.nombre_producto}</div>
+                  <div className="name">
+                    {item.mitades && <span className="mm-tag">½+½</span>}
+                    {item.nombre_producto}
+                  </div>
                   {item.variante && item.variante !== 'Estándar' && (
                     <div className="variant">{item.variante}</div>
                   )}

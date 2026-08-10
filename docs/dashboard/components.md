@@ -99,7 +99,8 @@ src/
 **Cada OrderCard muestra:**
 - Número de pedido (truncado a 8 chars)
 - Teléfono, tipo (domicilio/recoger), método de pago
-- Items con precio unitario (`detalle_pedidos`)
+- Items con precio unitario (`detalle_pedidos`); las pizzas **mitad y mitad** llevan el
+  distintivo `.mm-tag` (`½+½`) y muestran además la **masa**, que solo vive en `mitades[0].variante`
 - Total, notas del cliente
 - Estado del comprobante (transferencia pendiente / botón ver)
 - Botones de acción según estado (`OrderActions`)
@@ -457,4 +458,15 @@ constants.js) — ya **no** hardcodeado en
 - `OrderCard` detecta comprobante de Transferencia pendiente y muestra aviso
 - `EditOrderModal` calcula el recargo de domicilio como diferencia entre `total` e items — no lo modifica, solo lo preserva
 - `EditOrderModal` usa el RPC `editar_pedido` (no update directo) para recalcular totales vía trigger
+- **Pizza mitad y mitad (2026-08-10):** `MenuPicker` tiene dos modos (`Producto` / `Mitad y mitad`).
+  En el segundo se eligen las dos mitades (la lista de la segunda se filtra a la **misma masa** que
+  la primera) y luego el tamaño, entre los que existen en **ambas**, sin `porcion`. El precio que se
+  muestra por tamaño es local (el máximo de las dos), pero al confirmar se llama la RPC
+  `cotizar_mitad_y_mitad` — **la misma que usa el bot** — y se emite lo que devuelve la BD: el JS del
+  dashboard nunca fija el precio. El item emitido lleva `mitades`, que `CreateOrderModal` inserta en
+  `detalle_pedidos.mitades` y `EditOrderModal` reenvía por `editar_pedido` (si no, editar un pedido
+  borraría de qué era cada mitad). Los hooks `useOrders` y `useOrderHistory` seleccionan la columna
+  `mitades`, y `OrderCard` / `OrderDetailModal` la pintan con `.mm-tag`. Las reglas del negocio
+  (misma masa, sin porción, solo pizza salada, cobra la más cara) las decide la RPC, no este código
+  — ver [`../database/schema.md`](../database/schema.md) y [`../bot/ai-agents.md`](../bot/ai-agents.md)
 - Las imágenes en `SupportPanel` usan `loading="lazy"` + fallback visual si fallan

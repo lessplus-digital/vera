@@ -803,6 +803,29 @@ select option { background-color: var(--bg-modal); color: var(--text-primary); }
 .tnum { font-variant-numeric: tabular-nums; }
 
 /* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Marca de pizza mitad y mitad
+   Distintivo inline que precede al nombre del producto en
+   cualquier lista de ítems (Kanban, editar/crear pedido,
+   detalle del historial). Solo aparece cuando la línea de
+   `detalle_pedidos` trae `mitades`.
+═══════════════════════════════════════════════════════════ */
+
+.mm-tag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--purple-dim);
+  border: 1px solid var(--purple-border);
+  color: var(--purple);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
    DESIGN SYSTEM — Spinner (carga)
    Promovido desde auth.less (splash) al hacer server-side el
    historial. `.spinner` solo (30px) para cargas de página;

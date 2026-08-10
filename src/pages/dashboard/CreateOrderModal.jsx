@@ -142,6 +142,8 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
       variante: item.variante,
       cantidad: item.cantidad,
       precio_unitario: item.precio_unitario,
+      // null en productos normales; las 2 mitades en una pizza mitad y mitad
+      mitades: item.mitades || null,
     }))
 
     const { error: detalleError } = await supabase.from('detalle_pedidos').insert(detalles)
@@ -307,7 +309,10 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
               {items.map((item) => (
                 <div key={item.key} className="em-item">
                   <div className="info">
-                    <div className="name">{item.nombre_producto}</div>
+                    <div className="name">
+                      {item.mitades && <span className="mm-tag">½+½</span>}
+                      {item.nombre_producto}
+                    </div>
                     {item.variante && item.variante !== 'Estándar' && (
                       <div className="variant">{item.variante}</div>
                     )}

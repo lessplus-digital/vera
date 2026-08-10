@@ -96,18 +96,26 @@ export default function OrderCard({ order, isNew, onUpdated }) {
         {/* Items */}
         {order.detalle_pedidos?.length > 0 && (
           <div className="items-box">
-            {order.detalle_pedidos.map((item, i) => (
-              <div key={i} className="item">
-                <span>
-                  <span className="qty">{item.cantidad}x</span>
-                  {' '}{item.nombre_producto}
-                  {item.variante && item.variante !== 'Estándar' && (
-                    <span className="variant"> · {item.variante}</span>
-                  )}
-                </span>
-                <span className="price">${Number(item.precio_unitario || 0).toLocaleString('es-CO')}</span>
-              </div>
-            ))}
+            {order.detalle_pedidos.map((item, i) => {
+              // `mitades` solo viene en pizzas mitad y mitad. `nombre_producto` ya dice
+              // "Mitad X / Mitad Y", pero la masa vive únicamente aquí y la cocina la necesita.
+              const masa = item.mitades?.[0]?.variante
+              return (
+                <div key={i} className="item">
+                  <span>
+                    <span className="qty">{item.cantidad}x</span>
+                    {' '}
+                    {item.mitades && <span className="mm-tag">½+½</span>}
+                    {item.nombre_producto}
+                    {item.variante && item.variante !== 'Estándar' && (
+                      <span className="variant"> · {item.variante}</span>
+                    )}
+                    {masa && <span className="variant"> · {masa}</span>}
+                  </span>
+                  <span className="price">${Number(item.precio_unitario || 0).toLocaleString('es-CO')}</span>
+                </div>
+              )
+            })}
           </div>
         )}
 

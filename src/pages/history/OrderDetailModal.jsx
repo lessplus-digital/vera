@@ -156,8 +156,11 @@ export default function OrderDetailModal({ order, onMarkDelivered, onCancelOrder
                   <div className="od-item-row" key={it.detalle_id}>
                     <span className="qty tnum">{it.cantidad}×</span>
                     <span className="name">
+                      {it.mitades && <span className="mm-tag">½+½</span>}
                       {it.nombre_producto}
                       {it.variante && it.variante !== 'Estándar' && <span className="variant"> · {it.variante}</span>}
+                      {/* La masa (Tradicional/Estofada) solo se conserva dentro de `mitades` */}
+                      {it.mitades?.[0]?.variante && <span className="variant"> · {it.mitades[0].variante}</span>}
                       {it.notas_item && <span className="inote">“{it.notas_item}”</span>}
                     </span>
                     <span className="sub tnum">{formatPrice(it.subtotal)}</span>
