@@ -21,6 +21,20 @@
   `Crear_orden_completa` y devolver `{ ok: false, error: 'agotado', items: [...] }` para que el
   Agente Pedidos avise y devuelva al cliente al Agente Menú a sustituir el item.
 
+## Reservas
+
+- **Plantilla de WhatsApp con el costo del montaje** — la confirmación que manda el **dashboard**
+  usa `recordatorio_reserva` (Meta, 4 params: nombre, fecha, hora, personas), así que **no incluye
+  la ocasión ni su costo**: el cliente recibe la confirmación sin ver los $80.000 del cumpleaños.
+  El bot sí se lo dice, porque su respuesta es texto libre dentro de la ventana de 24h. Fix: crear
+  y aprobar en WhatsApp Manager una plantilla de 6 params (+ ocasión, + costo) y agregarla a
+  `WA_TEMPLATES`. No se puede resolver desde el código: hay que aprobarla en Meta primero.
+- **Editar una reserva ya creada** — hoy `ReservationDetail` solo permite eliminar. Con los
+  motivos, cambiar la ocasión de una reserva existente obliga a borrarla y recrearla (lo que
+  dispara dos WhatsApps al cliente). El trigger `trigger_costo_motivo` ya soporta el UPDATE.
+- **Ocasiones editables desde la tab Configuración** — `motivos_reserva` (nombre, costo, activo)
+  se cambia hoy con un `UPDATE` a mano. Los precios sembrados el 2026-08-10 son **placeholder**.
+
 ## Dashboard
 
 - **`useOrders`: exponer estado `error` en el UI** — hoy un fallo de fetch solo hace

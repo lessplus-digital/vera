@@ -106,12 +106,23 @@ las 22:30 (pasa el cierre de 9 PM) — revisar si es intencional.
 
 - **ID:** `xyb9zB6nz6OmmboX` · **Tool:** `crear_reserva` (Agente Reservas)
 - **Inputs:** `telefono`, `nombre`, `fecha`, `hora`, `personas`, `cliente_id` (sin espacio desde
-  el fix de BUG-004, 2026-07-23)
-- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas }` o `{ ok:false, error }`
+  el fix de BUG-004, 2026-07-23), **`motivo`** (2026-08-10)
+- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas, motivo, costo_motivo, costo_legible }`
+  o `{ ok:false, error }`
 
 ```
 When Executed → Validar y verificar cupo (Code, solo prepara la fila) → INSERT (reservas) → Formatear respuesta
 ```
+
+- **Motivo de la reserva (2026-08-10):** el sub recibe solo la **clave** del motivo y la normaliza
+  (`trim().toLowerCase()`, vacío → `sin_ocasion`). **No manda el costo**: lo escribe el trigger
+  `trigger_costo_motivo` desde `motivos_reserva`, así que un precio inventado por el LLM no puede
+  llegar a la fila. `Formatear respuesta` devuelve `costo_motivo` y `costo_legible` (ya formateado)
+  para que el agente confirme el valor sin recalcularlo.
+- ⚠️ **Latente:** `Validar y verificar cupo` lee `input.notas`, pero `notas` **nunca se declaró**
+  como input del trigger ni lo pasa el nodo `crear_reserva` del main → siempre entra `null`. El bot
+  no puede guardar notas en una reserva. No lo arreglé aquí porque implica ampliar la firma de la
+  tool y el prompt; registrado en el bug-tracker.
 
 - **BUG-004 (✅ 2026-07-23):** la key `cliente_id ` (con espacio) se renombró a `cliente_id` en
   todo el camino (schema de la tool en el main, trigger e INSERT del subworkflow).

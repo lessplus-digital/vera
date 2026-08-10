@@ -45,9 +45,12 @@ const FORMATS = {
 
 function toEvent(r) {
   const start = new Date(`${r.fecha}T${r.hora}`)
+  // 🎉 marca las reservas con montaje (ocasión con costo): son las que la sala
+  // tiene que preparar antes, así que se ven sin abrir el detalle.
+  const montaje = Number(r.costo_motivo || 0) > 0 ? '🎉 ' : ''
   return {
     id: r.reserva_id,
-    title: `${r.nombre_cliente || 'Sin nombre'} · ${r.personas} pers.`,
+    title: `${montaje}${r.nombre_cliente || 'Sin nombre'} · ${r.personas} pers.`,
     start,
     end: addMinutes(start, RESERVATION_DURATION_MIN),
     resource: r,

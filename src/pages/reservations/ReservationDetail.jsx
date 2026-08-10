@@ -1,12 +1,22 @@
 import React, { useState } from 'react'
-import { RESERVATION_STATES } from '../../utils/constants'
+import { useReservationReasons } from '../../hooks/useReservationReasons'
+import { RESERVATION_STATES, MOTIVO_DEFECTO } from '../../utils/constants'
 import Icon from '../../components/Icon'
 
 export default function ReservationDetail({ reservation: r, legible, onDelete, onClose }) {
   const [confirming, setConfirming] = useState(false)
   const [deleting,   setDeleting]   = useState(false)
+  const { reasons } = useReservationReasons()
 
   const estado = RESERVATION_STATES.find(s => s.value === r.estado) || RESERVATION_STATES[0]
+
+  // El nombre visible sale de `motivos_reserva`; el costo se lee de la RESERVA
+  // (es la foto del precio al crearla), no del catálogo, que pudo haber cambiado.
+  // Si el motivo se desactivó del catálogo, la reserva vieja sigue mostrando su clave.
+  const reason = reasons.find(m => m.clave === r.motivo) || null
+  const costoMotivo = Number(r.costo_motivo || 0)
+  const motivoLabel = reason?.nombre || r.motivo || 'Sin ocasión especial'
+  const tieneMotivo = r.motivo && r.motivo !== MOTIVO_DEFECTO
 
   async function handleDelete() {
     setDeleting(true)
@@ -53,6 +63,18 @@ export default function ReservationDetail({ reservation: r, legible, onDelete, o
             <div className="rd-item">
               <span className="rm-label">Origen</span>
               <span className="rd-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name={r.origen === 'dashboard' ? 'desktop' : 'bot'} size={13} /> {r.origen === 'dashboard' ? 'Dashboard' : 'WhatsApp'}</span>
+            </div>
+            <div className="rd-item wide">
+              <span className="rm-label">Ocasión</span>
+              <span className="rd-value">
+                {tieneMotivo ? '🎉 ' : ''}{motivoLabel}
+                {costoMotivo > 0 && (
+                  <span className="rd-costo tnum"> · ${costoMotivo.toLocaleString('es-CO')}</span>
+                )}
+              </span>
+              {costoMotivo > 0 && (
+                <span className="rm-hint">Montaje — se cobra en el local, no genera pedido</span>
+              )}
             </div>
           </div>
 

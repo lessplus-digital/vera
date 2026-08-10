@@ -148,13 +148,23 @@ Prompt completo: [`agent-prompts.md#agente-soporte`](agent-prompts.md#agente-sop
 
 ## 5. AGENTE RESERVAS
 
-**Rol:** gestionar reservas (una pregunta por mensaje: personas → día → hora). Consulta
-disponibilidad **antes** de proponer; confirma antes de crear. Máx 12 personas (si no, humano).
+**Rol:** gestionar reservas (una pregunta por mensaje: personas → día → hora → **ocasión**).
+Consulta disponibilidad **antes** de proponer; confirma antes de crear. Máx 12 personas (si no, humano).
+
+**Motivo / ocasión de la reserva (2026-08-10):** tras confirmar disponibilidad, el agente pregunta
+la ocasión (cumpleaños, aniversario, declaración, grado, evento empresarial o ninguna). Algunas
+llevan un **montaje con costo**, que se anuncia **antes** de pedir la confirmación —igual que el
+recargo de domicilio en el Agente Pedidos— y se cobra **en el local**: no genera pedido ni cobro
+automático. El agente **nunca** inventa ni recuerda un precio: llama `consultar_motivos_reserva`.
+A `crear_reserva` le pasa solo la **clave** (`cumpleanos`, no "Cumpleaños"); el costo lo escribe el
+trigger `trigger_costo_motivo` en la BD y vuelve en la respuesta como `costo_legible`. Es tarifa
+**fija por reserva**, no por persona — el prompt lo prohíbe explícitamente.
 
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `consultar_disponibilidad` | Subworkflow | `Sub — consultar_disponibilidad` · inputs `fecha`, `hora` · 8 mesas / 90 min |
-| `crear_reserva` | Subworkflow | `Sub — Crear Reserva` · inputs `telefono, nombre, fecha, hora, personas, cliente_id` · cupo protegido por trigger de BD |
+| `consultar_motivos_reserva` | Supabase (getAll) | `motivos_reserva` WHERE `activo=true` (2026-08-10). Ocasiones vigentes con `clave`, `nombre`, `descripcion` y `costo` |
+| `crear_reserva` | Subworkflow | `Sub — Crear Reserva` · inputs `telefono, nombre, fecha, hora, personas, cliente_id, motivo` · cupo protegido por trigger de BD |
 | `consultar_reservas_cliente` | Supabase (getAll) | `reservas` WHERE `telefono`, `estado='confirmada'`, `fecha >= now` |
 | `cancelar_reserva` | Subworkflow | `Sub — Cancelar Reserva` · inputs `reserva_id`, `telefono` · valida propiedad por teléfono (cableada 2026-07-23, BUG-005) |
 

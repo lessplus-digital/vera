@@ -394,6 +394,15 @@
     color: var(--text-muted);
   }
 
+  // Helper BELOW del input (patrón del design system). El `.rm-hint` de arriba
+  // se usa además inline dentro de `.rm-label`, donde hereda el tamaño del label;
+  // suelto dentro del campo necesita su propio tamaño y aire.
+  .rm-field > .rm-hint {
+    font-size: 11px;
+    line-height: 1.45;
+    margin-top: -1px;
+  }
+
   /* Selector de cliente (debe existir en la tabla clientes) */
   .rm-client-selected {
     display: flex;
@@ -610,11 +619,18 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+
+    // Ocupa las dos columnas del grid (ocasión, que puede llevar helper debajo)
+    &.wide { grid-column: 1 / -1; }
   }
 
   .rd-value {
     font-size: 13px;
     color: var(--text-primary);
+  }
+
+  .rd-costo {
+    color: var(--text-secondary);
   }
 
   .rd-phone {

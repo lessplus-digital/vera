@@ -52,6 +52,7 @@ src/
 │   ├── useSupportConversations.js← Conversaciones + mensajes del panel de soporte
 │   ├── useClients.js             ← Clientes + realtime UPDATE + saveClient
 │   ├── useReservations.js        ← Reservas + realtime * + create/deleteReservation
+│   ├── useReservationReasons.js  ← `motivos_reserva` activos (ocasión + costo), solo lectura
 │   ├── useMenu.js                ← Catálogo `menu` + realtime * + setDisponible (optimista)
 │   ├── useReviews.js             ← `feedback` + clientes/pedidos embebidos + realtime * (canal feedback-rt)
 │   ├── useBusinessInfo.js        ← `info_negocio` clave/valor + saveInfo (sin realtime, adrede)
@@ -61,7 +62,7 @@ src/
 │   └── useMediaQuery.js          ← Media queries (sidebar colapsado / móvil)
 │
 ├── utils/
-│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*, CATEGORY_LABELS/categoryLabel, ORDER_STATES
+│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*, MOTIVO_DEFECTO, CATEGORY_LABELS/categoryLabel, ORDER_STATES
 │   ├── formatters.js             ← timeAgoShort, timeAgo, formatPrice, formatPriceShort, formatPhone
 │   ├── exportHistory.js          ← Export del historial: CSV (BOM) + Excel con formato (exceljs lazy)
 │   ├── dateRanges.js             ← parseDb + rangos con día de negocio Colombia (UTC-5)
@@ -184,21 +185,37 @@ src/
 ### 5. Reservas (Calendario)
 
 **Vista:** Calendario react-big-calendar con vistas Día / Semana / Mes, tematizado con las CSS vars del dashboard (dark/light)
-**Datos:** `useReservations` hook — fetch completo de `reservas` + realtime `*` (el bot también crea reservas)
-**Archivos:** `src/pages/reservations/` + `src/hooks/useReservations.js` + `src/styles/reservations.less`
+**Datos:** `useReservations` hook — fetch completo de `reservas` + realtime `*` (el bot también crea reservas). `useReservationReasons` trae el catálogo de ocasiones
+**Archivos:** `src/pages/reservations/` + `src/hooks/useReservations.js` + `src/hooks/useReservationReasons.js` + `src/styles/reservations.less`
 
 **Funcionalidad:**
 - Toolbar custom (`CalToolbar`): Hoy / ‹ › / label del periodo / leyenda de estados / switch de vista / botón "+ Nueva reserva"
-- Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
+- Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado, **ocasión** y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
 - Click en una reserva abre `ReservationDetail` (datos completos + link wa.me) con eliminación en dos pasos (confirmación inline)
-- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte). Las dos vías son **distintas a propósito**:
-  - **Crear** (`notifyCreated`) → **plantilla** `recordatorio_reserva` (params: nombre, fecha legible, hora, personas). Es la única forma de que llegue a un cliente creado a mano que nunca le escribió al bot (fuera de la ventana de 24h el texto libre se acepta con 200 y **no** se entrega — edge-case #16)
-  - **Eliminar** (`notifyDeleted`) → **texto libre**, porque **no hay plantilla aprobada para cancelación**. Solo se entrega si el cliente escribió en las últimas 24h, así que el toast dice "aviso enviado (solo llega si el cliente escribió en las últimas 24h)" en vez de afirmar que se notificó
+- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte). Ambas van por **plantilla aprobada**, no por texto libre: fuera de la ventana de 24h Meta acepta el texto libre con 200 pero **no lo entrega** (edge-case #16), y una reserva creada a mano es justo el caso de un cliente que nunca le escribió al bot
+  - **Crear** (`notifyCreated`) → `recordatorio_reserva` (params: nombre, fecha legible, hora, personas)
+  - **Eliminar** (`notifyDeleted`) → `cancelacion_reserva` (params: nombre, fecha legible, hora) — Utility, desde 2026-07-29
 - Feedback con el toast global del DS (`useToast` + `<Toast>`; antes era un toast propio de esta página)
 - Eventos coloreados por `estado` (`RESERVATION_STATES`): pendiente=amber, confirmada=green, cancelada=red tachada
 - Duración visual del evento: `RESERVATION_DURATION_MIN` (90 min) — la BD solo guarda `hora` de inicio
-- `reserva_id` manual: `RSV-M<timestamp>` (M = manual, mismo patrón que `DET-M`); `origen: 'dashboard'`
+- `reserva_id` lo genera la **BD** (`generar_reserva_id()` como default): el hook no lo envía, para evitar colisiones, y lee la fila de vuelta con `.select().single()`. `origen: 'dashboard'`
 - `cliente_id`, `nombre_cliente` y `telefono` salen del cliente seleccionado (desnormalizados en `reservas`); valida que la fecha/hora no haya pasado
+
+**Ocasión / motivo de la reserva (2026-08-10):**
+- El selector se llena desde `motivos_reserva` (hook `useReservationReasons`, solo `activo=true`,
+  ordenado por `orden`) — la **misma tabla** que lee el bot. No hay lista de motivos ni precios
+  hardcodeados en el front: la única clave que el código conoce por nombre es `MOTIVO_DEFECTO`
+  (`'sin_ocasion'`), en `constants.js`
+- `createReservation` manda **solo la clave**; `costo_motivo` lo escribe el trigger
+  `trigger_costo_motivo` en la BD, así que el precio nunca depende del frontend
+- `ReservationDetail` muestra el nombre visible desde el catálogo pero **el costo desde la reserva**
+  (`costo_motivo` es la foto del precio al crearla; el catálogo pudo cambiar después)
+- En el calendario, las reservas con montaje (costo > 0) llevan **🎉** en el título: son las que la
+  sala tiene que preparar antes, y así se ven sin abrir el detalle
+- ⚠️ La plantilla `recordatorio_reserva` tiene 4 params fijos, así que **la confirmación por
+  WhatsApp del dashboard no incluye la ocasión ni su costo**. Requiere aprobar una plantilla nueva
+  en Meta — anotado en el backlog. El bot sí lo dice, porque su respuesta es texto libre dentro de
+  la ventana de 24h
 - Vistas de tiempo limitadas a 10:00–23:30, scroll inicial a las 17:00
 
 ### 6. Menú (Disponibilidad del catálogo)

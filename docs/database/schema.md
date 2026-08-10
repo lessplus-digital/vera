@@ -90,11 +90,35 @@
 ### `carritos` — carrito temporal del bot (0 filas · PK `telefono` · RLS ✅)
 `telefono` 🔑, `items` jsonb (default `[]`), `total` numeric, `updated_at` timestamptz.
 
-### `reservas` — (6 filas · RLS ✅)
+### `reservas` — (15 filas · RLS ✅)
 `reserva_id` 🔑 (`generar_reserva_id()`), `cliente_id` (FK, nullable, **ON DELETE CASCADE**), `telefono`,
 `nombre_cliente`, `fecha` date, `hora` time, `personas` int (**check 1–12**),
 `estado` (**check `confirmada`/`cancelada`** — no hay `pendiente`), `origen`
-(`whatsapp`/`dashboard`), `notas`, `created_at`.
+(`whatsapp`/`dashboard`), `notas`, `created_at`,
+**`motivo`** (FK → `motivos_reserva.clave`, ON DELETE SET NULL) y
+**`costo_motivo`** numeric NOT NULL default 0 (migración `motivos_reserva_tabla_y_costo`, 2026-08-10).
+
+### `motivos_reserva` — ocasiones de reserva y su costo (6 filas · PK `clave` · RLS ✅)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `clave` 🔑 | text | slug estable; es lo que se guarda en `reservas.motivo` |
+| `nombre` | text | lo que ve el cliente (`Cumpleaños`) |
+| `descripcion` | text | qué incluye el montaje |
+| `costo` | numeric | **check ≥ 0** · tarifa **FIJA por reserva**, NO por persona |
+| `activo` | boolean | default `true` · `false` = deja de ofrecerse, pero las reservas históricas conservan la clave |
+| `orden` | integer | orden de presentación (menor primero) |
+
+Seed inicial (**precios PLACEHOLDER**, se ajustan con un `UPDATE`): `sin_ocasion` $0,
+`cumpleanos` $80.000, `aniversario` $120.000, `declaracion` $150.000, `grado` $90.000,
+`empresarial` $200.000. Las 15 reservas que existían antes de la migración quedaron en
+`sin_ocasion` (no se les puede inventar una ocasión retroactiva).
+
+> **El costo NUNCA lo escribe quien inserta.** Ni el LLM del bot ni el JS del dashboard mandan
+> `costo_motivo`: solo mandan la `clave` del motivo, y el trigger `trigger_costo_motivo` copia el
+> precio desde esta tabla. Lo que queda en `reservas.costo_motivo` es una **foto**: cambiar el
+> precio del motivo no altera reservas ya creadas. Es la misma convención que el total de `pedidos`.
+> Fuente única para las dos capas: el bot la lee con la tool `consultar_motivos_reserva` y el
+> dashboard con el hook `useReservationReasons`.
 
 ### `feedback` — calificaciones (1 fila · RLS ✅)
 `feedback_id` 🔑 (`FB-`), `cliente_id` (FK, **ON DELETE CASCADE**), `pedido_id` (FK, **unique**,
@@ -152,6 +176,7 @@ Claves por `categoria`:
 | `pedidos` | `trigger_fecha_entrega` | BEFORE UPDATE | Fija `fecha_entrega = now()` al pasar a `estado='entregado'` |
 | `pedidos` | `notificar-estado-pedido` | AFTER UPDATE | `http_request` (pg_net) — notifica el cambio de estado (webhook) |
 | `reservas` | `trigger_validar_cupo` | BEFORE INSERT | Si hay 8 reservas solapadas (90 min) `confirmada` ese día → `RAISE EXCEPTION` |
+| `reservas` | `trigger_costo_motivo` | BEFORE INSERT **OR UPDATE OF `motivo`** | `costo_motivo` = `motivos_reserva.costo` de la clave en `motivo`; `motivo` vacío/NULL → costo 0 (2026-08-10) |
 
 > **El total lo calcula el trigger, nunca el JS ni el LLM.** Ojo: `trigger_actualizar_total`
 > dispara **solo en INSERT** de `detalle_pedidos` (no UPDATE/DELETE) — por eso `editar_pedido`

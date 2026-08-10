@@ -15,6 +15,58 @@
 
 ---
 
+### 2026-08-10 — Motivo (ocasión) de la reserva y su costo de montaje
+
+**Contexto:** El local monta decoración para cumpleaños, aniversarios, declaraciones, grados y
+eventos empresariales, y eso tiene un costo. Nada de eso se preguntaba: el bot creaba la reserva
+con fecha/hora/personas y el montaje se acordaba por fuera, así que el precio quedaba a criterio de
+quien atendiera y la sala se enteraba tarde de que había que preparar algo.
+**Decisión:** tabla **`motivos_reserva`** (`clave`, `nombre`, `descripcion`, `costo`, `activo`,
+`orden`) como **fuente única** para las dos capas: el bot la lee con la tool nueva
+`consultar_motivos_reserva` y el dashboard con el hook `useReservationReasons`. En `reservas` se
+agregan `motivo` (FK) y `costo_motivo`. La alternativa —lista hardcodeada en `constants.js` + la
+misma lista escrita a mano en el prompt de n8n— se descartó: son dos copias que se desincronizan
+solas (ya nos pasó con los prompts) y cada cambio de precio sería un deploy.
+**El costo lo escribe un trigger, no quien inserta.** `trigger_costo_motivo` (BEFORE INSERT OR
+UPDATE OF `motivo`) copia el precio desde `motivos_reserva`. Ni el LLM ni el JS del dashboard
+mandan `costo_motivo`: solo la clave. Misma convención que el total de `pedidos`. Lo que queda en
+la reserva es una **foto**: cambiar el precio del motivo no altera reservas ya creadas.
+**Modelo de cobro (decidido con el cliente):** tarifa **fija por reserva**, no por persona, y
+**solo se informa y se guarda** — no genera pedido ni cobro automático, se paga en el local. Eso
+mantiene el cambio fuera de la lógica de pedidos y de las estadísticas de ventas.
+**Flujo del bot:** la ocasión se pregunta **después** de confirmar disponibilidad (no tiene sentido
+ofrecer decoración para un horario lleno) y el costo se anuncia **antes** de pedir la confirmación,
+igual que el recargo de domicilio en el Agente Pedidos.
+**Precios sembrados (PLACEHOLDER, a criterio del operador):** `sin_ocasion` $0, `cumpleanos`
+$80.000, `aniversario` $120.000, `declaracion` $150.000, `grado` $90.000, `empresarial` $200.000.
+Las 15 reservas preexistentes quedaron en `sin_ocasion`.
+**Verificación:** trigger probado en transacción con `ROLLBACK` sobre 4 casos — insert mandando un
+costo falso de `999` (lo ignora y pone $120.000), cambio a `sin_ocasion` ($0), cambio a
+`declaracion` ($150.000) y un UPDATE que no toca `motivo` (deja el costo quieto).
+`n8n_validate_workflow`: 0 errores en los dos workflows. `npm run build` limpio.
+**Falta probar con una reserva real por WhatsApp y una manual desde el dashboard.**
+**Impacto:** Supabase — migraciones `motivos_reserva_tabla_y_costo` y `trigger_costo_motivo_reserva`.
+n8n — `Pizzeria Vera` (tool nueva `consultar_motivos_reserva`, prompt de `AGENTE RESERVAS`,
+descripción e inputs de `crear_reserva`) y `Sub — Crear Reserva` (los 4 nodos). Dashboard —
+`useReservationReasons` (nuevo), `useReservations`, `ReservationModal`, `ReservationDetail`,
+`ReservationsPage`, `constants.js` (`MOTIVO_DEFECTO`), `reservations.less`. Docs — `database/schema.md`,
+`bot/ai-agents.md`, `bot/agent-prompts.md`, `bot/subworkflows.md`, `dashboard/components.md`,
+`shared/backlog.md`, `shared/bug-tracker.md`.
+
+**Limitación conocida:** la plantilla `recordatorio_reserva` de Meta tiene 4 params fijos, así que
+la confirmación por WhatsApp **del dashboard** no menciona la ocasión ni su costo. Requiere aprobar
+una plantilla nueva en WhatsApp Manager — al backlog. El bot sí lo dice (texto libre dentro de la
+ventana de 24h).
+
+**Hallazgos de paso:** (1) **BUG-029** — el bot nunca pudo guardar `notas` en una reserva: el Code
+node del sub lee `input.notas` pero `notas` no está declarado como input ni lo manda el main.
+Registrado, no arreglado (amplía la firma de la tool y el prompt: es otra feature). (2) Drift en
+`dashboard/components.md`: decía que la cancelación va por texto libre "porque no hay plantilla
+aprobada" (usa `cancelacion_reserva` desde 2026-07-29) y que el `reserva_id` manual lo genera el
+front como `RSV-M<timestamp>` (lo genera la BD con `generar_reserva_id()`). Ambos corregidos.
+
+---
+
 ### 2026-08-10 — Pizza mitad y mitad (bot + BD + dashboard)
 
 **Contexto:** El negocio vende pizzas con dos sabores, pero el sistema no las modelaba. El bot no

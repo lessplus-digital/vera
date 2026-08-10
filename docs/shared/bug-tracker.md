@@ -12,13 +12,34 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-029**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-030**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-029 · 🟢 Baja · 🔴 Abierto — el bot no puede guardar notas en una reserva
+
+- **Componente:** bot → n8n `Sub — Crear Reserva`, nodo `Validar y verificar cupo`; nodo
+  `crear_reserva` del workflow principal
+- **Síntoma:** el Code node arma la fila con `notas: input.notas || null`, pero **`notas` nunca se
+  declaró** como input del `executeWorkflowTrigger` y el nodo `crear_reserva` del main tampoco lo
+  manda vía `$fromAI`. Resultado: `reservas.notas` entra **siempre `null`** en las reservas creadas
+  por WhatsApp. Si el cliente dice "mesa cerca de la ventana", se pierde.
+- **Verificado vía MCP (2026-08-10):** los `workflowInputs` del sub son `telefono`, `nombre`,
+  `fecha`, `hora`, `personas`, `cliente_id` y `motivo` — no hay `notas`. El campo del INSERT existe
+  y apunta al Code node, así que el cableado se corta un paso antes.
+- **Contraste:** las reservas creadas desde el **dashboard** sí guardan notas (`ReservationModal`
+  tiene el campo y `useReservations` lo inserta). Solo falla el camino del bot.
+- **Fix propuesto:** declarar `notas` como input del sub, agregar
+  `notas: {{ $fromAI('notas', '...') }}` al nodo `crear_reserva` del main y una línea en el prompt
+  del Agente Reservas para que capture peticiones especiales. No se hizo junto con `motivo`
+  (2026-08-10) porque amplía la firma de la tool y el flujo conversacional: es una feature aparte,
+  no parte de los motivos.
+
+---
 
 ### BUG-028 · 🟡 Media · 🔴 Abierto — 11 pedidos llevan semanas en `pendiente` y envenenan las búsquedas del bot
 

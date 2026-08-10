@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { MOTIVO_DEFECTO } from '../utils/constants'
 
 export function useReservations() {
   const [reservations, setReservations] = useState([])
@@ -33,9 +34,11 @@ export function useReservations() {
     return () => supabase.removeChannel(channel)
   }, [fetchReservations])
 
-  async function createReservation({ cliente_id, nombre_cliente, telefono, fecha, hora, personas, estado, notas }) {
+  async function createReservation({ cliente_id, nombre_cliente, telefono, fecha, hora, personas, estado, motivo, notas }) {
     // `reserva_id` lo genera la BD por default (`generar_reserva_id()`); no lo enviamos
     // para evitar colisiones. Leemos la fila de vuelta para tener el id real generado.
+    // `costo_motivo` tampoco se envía: lo escribe el trigger `trigger_costo_motivo`
+    // desde `motivos_reserva`, así que el precio nunca depende del frontend.
     const { data: reservation, error: insertError } = await supabase
       .from('reservas')
       .insert({
@@ -47,6 +50,7 @@ export function useReservations() {
         personas:   Number(personas),
         estado,
         origen:     'dashboard',
+        motivo:     motivo || MOTIVO_DEFECTO,
         notas:      notas.trim() || null,
         created_at: new Date().toISOString(),
       })
