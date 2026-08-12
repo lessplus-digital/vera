@@ -99,6 +99,21 @@ role="switch" aria-checked={bool}>` sin contenido; el CSS pinta track + thumb de
 directas desde una fila (sin modal) se acompaña de update optimista + toast de
 error si la BD falla. Uso actual: disponibilidad del menú (tab Menú, fila y modal).
 
+## 4a-bis. Control segmentado (cambiar de vista dentro de una pantalla)
+
+Grupo de botones dentro de una píldora (`--bg-card` + borde, `padding: 4px`); el activo se
+pinta con `--bg-inset` + `--text-primary`, los inactivos en `--text-secondary`. **No usa
+ámbar:** indica *dónde estás*, no una acción — el ámbar sigue reservado al CTA.
+
+Usos: filtro de sentimiento en Reseñas (`.rev-segmented`, con contador por opción) y
+sub-vistas de Configuración (`.settings-segmented`, 2026-08-11). Vive duplicado en
+`reviews.less` y `settings.less` porque los dos LESS no se comparten; si aparece un tercer
+uso, promoverlo a `index.css`.
+
+**Cuándo usarlo en vez de una tab del sidebar:** cuando las vistas son la misma tarea y cada
+una necesita **su propio botón `primary`**. Dos CTAs no pueden convivir en una pantalla (§3),
+así que separarlas en sub-vistas es lo que resuelve el conflicto sin inflar la navegación.
+
 ## 4b. Tablas (listados)
 
 Patrones globales en `index.css`, compartidos por Clientes y Menú:

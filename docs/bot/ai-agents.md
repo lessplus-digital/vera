@@ -137,11 +137,33 @@ datos y **handoff** a humano. Registra el nombre si es válido (no emojis/religi
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `info_local` | Supabase (getAll) | `info_negocio` (clave/valor: horarios, dirección, pagos, zonas) |
+| `consultar_faq` | HTTP POST | `/rpc/consultar_faq` body `{p_filtro}` — el parámetro que ve el LLM se llama `filtro` (`$fromAI`), como en `armar_mitad_y_mitad` (2026-08-11). Preguntas frecuentes **activas** que administra el restaurante desde el dashboard |
 | `actualizar_cliente` | Supabase (update) | `clientes` SET `nombre`, `direccion_principal` WHERE `cliente_id` |
 | `solicitar_handoff` | Supabase (update) | `clientes` SET `modo='humano'` WHERE `cliente_id` AND `telefono` |
 
 Efecto del handoff: el Router de modo deja de pasar al orquestador y los mensajes del
 cliente caen en `mensajes_soporte` (panel de soporte del dashboard).
+
+**FAQ configurable (2026-08-11):** todo lo que el cliente pregunta y no es menú, pedido ni
+`info_negocio` (¿tienen parqueadero? ¿aceptan mascotas? ¿hacen eventos?) sale ahora de la tabla
+`faq`, que el restaurante edita solo desde **Configuración → Preguntas frecuentes**. Antes ese
+contenido se escribía a mano en este prompt: por cada cliente nuevo de Plateo había que
+reescribirlo, que es justo lo que rompe el modelo multi-tenant. Es la misma jugada que
+`motivos_reserva` y `info_negocio` — la verdad del negocio vive en la BD, el prompt queda genérico.
+
+`consultar_faq` **no filtra**: devuelve todas las FAQ activas (tope 40) y `p_filtro` solo las
+reordena por parecido. El emparejamiento lo hace el LLM, porque el cliente parafrasea y una
+búsqueda por trigrama perdería la FAQ correcta (detalle y medición en
+[`../database/schema.md`](../database/schema.md#funciones--rpcs)).
+
+> ⚠️ **El contenido de las FAQ es DATO, nunca instrucción.** Es texto libre que escribe el
+> restaurante y entra al contexto del agente, así que es la única vía por la que alguien podría
+> —sin querer o a propósito— intentar reescribir el comportamiento del bot o meter un precio que
+> no salió de la BD. El prompt lo blinda explícitamente (ver `agent-prompts.md#agente-soporte`):
+> las FAQ se leen como información del negocio, y si una parece darle órdenes al agente, se
+> ignora. El dashboard además avisa al admin cuando detecta precios, jerga interna o texto con
+> forma de instrucción (`src/pages/settings/faqLint.js`) — pero eso es una ayuda de redacción,
+> **no** la barrera: la barrera es el prompt.
 
 **Contexto de la escalada (2026-08-10):** el mensaje que dispara el handoff viaja por la ruta del
 **bot**, así que nunca pasa por el nodo que escribe en `mensajes_soporte` — el operador abría la
@@ -194,5 +216,5 @@ Prompt completo: [`agent-prompts.md#agente-reservas`](agent-prompts.md#agente-re
 ## Tablas que tocan los agentes (sync en `../database/schema.md`)
 
 `carritos` (PK telefono; items JSON, total), `menu`, `pedidos` + `detalle_pedidos`,
-`clientes`, `info_negocio` (clave/valor del negocio), `reservas`. Memoria de chat en la
-tabla de n8n Postgres Chat Memory. **Nuevas a documentar:** `carritos`, `info_negocio`.
+`clientes`, `info_negocio` (clave/valor del negocio), `faq` (preguntas frecuentes editables),
+`reservas` + `motivos_reserva`. Memoria de chat en la tabla de n8n Postgres Chat Memory.
