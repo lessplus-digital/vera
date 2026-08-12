@@ -23,6 +23,38 @@
 
 ## Housekeeping
 
+- **Datos de prueba de roles en la BD de PRODUCCIÓN** `[S]` — sembrados el **2026-08-12** para
+  validar los tres roles en el navegador. **Se dejan a propósito** hasta terminar las pruebas
+  exhaustivas; bórralos cuando ya no hagan falta.
+
+  | Qué | Cuánto | Identificador |
+  |---|---|---|
+  | Usuarios de Auth + su perfil | 3 | `mesero.prueba@vera.test` · `domi.prueba@vera.test` · `domi2.prueba@vera.test` |
+  | Pedidos ficticios de hoy | 4 | `PED-234`…`PED-237` (`notas = 'PRUEBA ROLES — borrar'`) |
+  | Cliente ficticio | 1 | `ZZ Cliente Prueba Roles` (`573000000099`) |
+  | Pedidos históricos con `domiciliario_id` puesto | 61 | pedidos **reales/sembrados** a los que se asignó repartidor para poblar el historial |
+
+  ⚠️ **Los 4 pedidos ficticios cuentan en las estadísticas del día** mientras existan.
+
+  El teléfono `573000000099` es falso **a propósito**: marcar entregado dispara
+  `notificar-estado-pedido`, que hace POST a n8n y este le escribe por WhatsApp al número del
+  pedido. Con un cliente real le llegaría un mensaje sobre un pedido que nunca hizo. **No
+  reasignes esos pedidos a un cliente real para probar.**
+
+  Limpieza (el primer UPDATE deshace la asignación de los 61 históricos):
+
+  ```sql
+  update public.pedidos set domiciliario_id = null where domiciliario_id is not null;
+  delete from auth.users where email like '%.prueba@vera.test';
+  delete from public.pedidos where notas = 'PRUEBA ROLES — borrar';
+  delete from public.clientes where telefono = '573000000099';
+  ```
+
+  Si para entonces se hubieran subido fotos de perfil, además:
+  `delete from storage.objects where bucket_id='avatares';` y borrar los archivos desde el panel
+  de Supabase (quitar solo la fila deja el objeto colgado en S3 — misma trampa que el blob de
+  `comprobantes` de abajo).
+
 - **Borrar `comprobantes/PED-109.jpg` de Storage** — blob huérfano que dejó el bug del `.first()`
   (era una copia del comprobante de `PED-223` guardada con el nombre equivocado). Desde el fix de
   BUG-028 **ya no hay ninguna referencia en la BD** (`PED-109.comprobante_url` es `NULL`), así que
