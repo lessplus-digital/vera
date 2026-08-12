@@ -1169,3 +1169,95 @@
     opacity: 1;
   }
 }
+
+// ── Asignación de domiciliario (solo admin) ──────────────────────
+// Vive dentro de la tarjeta del kanban, entre "Editar pedido" y las acciones
+// de estado. Escribir aquí `pedidos.domiciliario_id` es literalmente lo que
+// hace aparecer el pedido en la pantalla del repartidor: la política RLS
+// filtra por esa columna.
+.assign {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+
+  // Asignado deja de ser una tarea pendiente: borde sólido y acento morado,
+  // el mismo que ya marca "domicilio" en las etiquetas de la tarjeta.
+  &.asignado {
+    border-style: solid;
+    border-color: var(--purple-border);
+  }
+
+  .assign-icon {
+    display: inline-flex;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .assign-select {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:disabled { opacity: 0.6; cursor: wait; }
+    option { background: var(--bg-card); color: var(--text-primary); }
+  }
+
+  .assign-state {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+
+    &.ok { color: var(--green); }
+  }
+
+  .assign-error {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: var(--red);
+    line-height: 1.4;
+  }
+}
+
+.assign-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+
+  svg { flex-shrink: 0; margin-top: 1px; }
+}
+
+// Error de una acción de estado, dentro de la tarjeta.
+.oc-error {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}

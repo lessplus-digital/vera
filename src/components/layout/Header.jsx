@@ -2,7 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import { timeAgoShort } from '../../utils/formatters'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useAuth } from '../../hooks/useAuth'
+import { ROLES, ROL_LABEL } from '../../utils/permisos'
 import Icon from '../Icon'
+import Avatar from '../Avatar'
+import ProfileModal from '../ProfileModal'
+import Toast from '../Toast'
+import { useToast } from '../../hooks/useToast'
 
 export default function Header({
   theme,
@@ -11,9 +16,16 @@ export default function Header({
   lastUpdate,
   onToggleSidebar,
   showHamburger,
+  rol,
 }) {
-  const hideStats = useMediaQuery('(max-width: 900px)')
-  const compact   = useMediaQuery('(max-width: 560px)')
+  const estrecho = useMediaQuery('(max-width: 900px)')
+  const compact  = useMediaQuery('(max-width: 560px)')
+
+  // Al domiciliario no se le muestran las stats del día: `useOrders` le llega
+  // filtrado por RLS, así que "Pedidos hoy" e "Ingresos" serían sus propios
+  // números con una etiqueta que sugiere las del restaurante. Su resumen —
+  // entregas y efectivo por cobrar — vive en DeliveriesPage.
+  const hideStats = estrecho || rol === ROLES.DOMICILIARIO
 
   return (
     <header className="app-topbar" style={{
@@ -53,7 +65,9 @@ export default function Header({
           </div>
           {!compact && (
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-              {SECTION_LABELS[activeTab] || 'Panel'}
+              {activeTab === 'dashboard' && rol === ROLES.DOMICILIARIO
+                ? 'Mis entregas'
+                : SECTION_LABELS[activeTab] || 'Panel'}
             </div>
           )}
         </div>
@@ -105,14 +119,17 @@ const SECTION_LABELS = {
 
 /* ─── Menú de administrador (sesión real de Supabase Auth) ─── */
 function AdminMenu({ compact }) {
-  const { user, signOut } = useAuth()
+  const { user, perfil, rol, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [showPerfil, setShowPerfil] = useState(false)
+  const { toast, showToast } = useToast()
   const ref = useRef(null)
 
-  const email   = user?.email || ''
-  const name    = user?.user_metadata?.nombre || email.split('@')[0] || 'Usuario'
-  const initial = (name[0] || 'U').toUpperCase()
+  // El nombre sale de `perfiles`, que es donde el usuario lo edita; el
+  // user_metadata de Auth queda como respaldo para cuentas antiguas.
+  const email = user?.email || ''
+  const name  = perfil?.nombre || user?.user_metadata?.nombre || email.split('@')[0] || 'Usuario'
 
   useEffect(() => {
     if (!open) return
@@ -140,11 +157,11 @@ function AdminMenu({ compact }) {
         aria-haspopup="true"
         aria-expanded={open}
       >
-        <span className="admin-avatar">{initial}</span>
+        <Avatar src={perfil?.avatar_url} nombre={name} size={34} />
         {!compact && (
           <span className="admin-id">
             <span className="admin-name">{name}</span>
-            <span className="admin-role">Vera Pizzería</span>
+            <span className="admin-role">{ROL_LABEL[rol] ?? 'Sin rol'}</span>
           </span>
         )}
         <span className={`admin-caret${open ? ' open' : ''}`}><Icon name="arrow-down" size={14} /></span>
@@ -155,9 +172,10 @@ function AdminMenu({ compact }) {
           {/* Prefijo am- (admin menu), NUNCA ad-: los adblockers (EasyList) ocultan
               clases que empiezan por ad- y el dropdown se veía vacío en producción. */}
           <div className="am-header">
-            <span className="admin-avatar lg">{initial}</span>
+            <Avatar src={perfil?.avatar_url} nombre={name} size={42} />
             <div style={{ minWidth: 0 }}>
               <div className="am-greet">Hola, {name}</div>
+              <div className="am-sub">{ROL_LABEL[rol] ?? 'Sin rol'}</div>
               <div className="am-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {email}
               </div>
@@ -166,12 +184,27 @@ function AdminMenu({ compact }) {
 
           <div className="am-divider" />
 
+          <button
+            className="am-item"
+            onClick={() => { setOpen(false); setShowPerfil(true) }}
+          >
+            <Icon name="settings" size={15} />
+            <span>Mi perfil</span>
+          </button>
+
           <button className="am-item am-danger" onClick={handleSignOut} disabled={signingOut}>
             <Icon name="logout" size={15} />
             <span>{signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}</span>
           </button>
         </div>
       )}
+
+      {/* El modal vive aquí y no en App: es el único punto que TODOS los roles
+          comparten — el domiciliario no tiene la tab Configuración. */}
+      {showPerfil && (
+        <ProfileModal onClose={() => setShowPerfil(false)} showToast={showToast} />
+      )}
+      <Toast toast={toast} />
     </div>
   )
 }

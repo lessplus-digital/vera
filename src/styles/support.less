@@ -161,6 +161,75 @@
       }
     }
 
+    // ── Respuestas rápidas ──
+    // Se administran en Configuración › Respuestas rápidas. Aquí solo se
+    // insertan en el input: un clic NUNCA envía nada por WhatsApp.
+    .quick-replies {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px 0;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      min-width: 0;
+
+      .qr-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+
+        @media (max-width: 900px) { display: none; }
+      }
+
+      // Con muchas respuestas la fila hace scroll lateral en vez de crecer
+      // hacia arriba y comerse el historial del chat.
+      .qr-chips {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
+
+        &::-webkit-scrollbar { height: 4px; }
+        &::-webkit-scrollbar-thumb {
+          background: var(--border);
+          border-radius: var(--radius-pill);
+        }
+      }
+
+      .qr-chip {
+        flex-shrink: 0;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding: 5px 12px;
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--bg-card);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-pill);
+        cursor: pointer;
+        transition: all 0.15s ease;
+
+        &:hover {
+          color: var(--text-primary);
+          border-color: var(--blue-border);
+        }
+      }
+    }
+
+    // Con la barra de rápidas encima, su borde ya separa del historial.
+    .quick-replies + .input-area { border-top: none; }
+
     .input-area {
       padding: 12px 20px;
       border-top: 1px solid var(--border);

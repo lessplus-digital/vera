@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   SETTINGS — Tab Configuración (info_negocio)
+   SETTINGS — Tab Configuración (info_negocio + faq)
    Formularios con el patrón global .field y botones .btn
    (index.css); aquí solo el layout de la página y sus cards.
 ═══════════════════════════════════════════════════════════ */
@@ -131,4 +131,1076 @@
   gap: 14px;
 
   textarea { resize: vertical; }
+}
+
+/* ── Selector de sub-vista (info del negocio / FAQ) ──
+   Mismo control segmentado que la tab Reseñas (.rev-segmented); vive aparte
+   porque los dos LESS no se comparten. */
+
+.settings-segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  max-width: 100%;
+
+  @media (max-width: 560px) { width: 100%; }
+}
+
+.settings-seg {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); }
+
+  &.active {
+    background: var(--bg-inset);
+    color: var(--text-primary);
+  }
+
+  @media (max-width: 560px) { flex: 1 1 auto; min-width: 0; padding: 6px 8px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FAQ — preguntas frecuentes editables (tabla `faq`)
+═══════════════════════════════════════════════════════════ */
+
+.faq-count {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ── Estado vacío ── */
+
+.faq-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.faq-empty-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.faq-empty-text {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 520px;
+  margin: 0;
+}
+
+.faq-empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.faq-empty-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.faq-chip {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+}
+
+/* ── Lista ── */
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.faq-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  transition: background 0.15s ease;
+
+  &:hover { background: var(--bg-card-hover); }
+
+  /* Inactiva: se atenúa el contenido, no el cromo — sigue siendo operable. */
+  &.off {
+    .faq-q, .faq-a { opacity: 0.5; }
+  }
+
+  @media (max-width: 720px) {
+    grid-template-columns: auto 1fr auto;
+
+    .faq-edit { grid-column: 2 / -1; justify-self: start; }
+  }
+}
+
+.faq-order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.faq-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--amber-border); }
+  &:disabled { opacity: 0.35; cursor: default; }
+}
+
+/* La fila entera abre el modal: el texto es el botón. */
+.faq-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.faq-q {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.faq-a {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.faq-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.faq-state-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  min-width: 52px;
+
+  &.on  { color: var(--green); }
+  &.off { color: var(--text-muted); }
+
+  @media (max-width: 560px) { display: none; }
+}
+
+.faq-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); border-color: var(--amber-border); }
+}
+
+/* ── Modal de alta/edición ── */
+
+.faq-modal {
+  width: 560px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .faq-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+    .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 3px; }
+  }
+
+  .faq-modal-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: 62vh;
+    overflow-y: auto;
+
+    textarea { resize: vertical; }
+
+    /* El contador va a la derecha del helper, en la misma línea base. */
+    .field-help {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+  }
+
+  .faq-modal-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .faq-foot-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+}
+
+.faq-counter {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* Estado activa/inactiva dentro del modal (mismo bloque que .pm-stock del menú). */
+.faq-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.faq-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.faq-toggle-state { font-size: var(--fs-body); font-weight: 700; color: var(--text-primary); }
+.faq-toggle-hint  { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.45; }
+
+.faq-errors {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Avisos de redacción: ámbar porque NO bloquean — informan y dejan seguir. */
+.faq-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.faq-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--amber-dim);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  line-height: 1.5;
+
+  svg { flex-shrink: 0; margin-top: 1px; color: var(--amber); }
+}
+
+.faq-confirm-delete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.faq-confirm-text {
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.faq-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Respuestas rápidas del chat de soporte (tabla `respuestas_rapidas`)
+
+   Misma anatomía que el bloque FAQ de arriba (lista ordenable + modal), pero
+   con sus propias clases: son dos features distintas y una NO alimenta al bot.
+   Los selectores se repiten a propósito en vez de compartirse — igual que
+   orders/clients/reservations repiten su patrón de fila — para que tocar una
+   pantalla no mueva la otra.
+═══════════════════════════════════════════════════════════ */
+
+.rr-count {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ── Estado vacío ── */
+
+.rr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.rr-empty-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.rr-empty-text {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 520px;
+  margin: 0;
+}
+
+.rr-empty-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.rr-empty-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rr-chip {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+}
+
+/* ── Lista ── */
+
+.rr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rr-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  transition: background 0.15s ease;
+
+  &:hover { background: var(--bg-card-hover); }
+
+  /* Inactiva: se atenúa el contenido, no el cromo — sigue siendo operable. */
+  &.off {
+    .rr-atajo, .rr-msg { opacity: 0.5; }
+  }
+
+  @media (max-width: 720px) {
+    grid-template-columns: auto 1fr auto;
+
+    .rr-edit { grid-column: 2 / -1; justify-self: start; }
+  }
+}
+
+.rr-order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rr-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) { color: var(--text-primary); border-color: var(--amber-border); }
+  &:disabled { opacity: 0.35; cursor: default; }
+}
+
+/* La fila entera abre el modal: el texto es el botón. */
+.rr-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.rr-atajo {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rr-msg {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rr-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rr-state-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  min-width: 52px;
+
+  &.on  { color: var(--green); }
+  &.off { color: var(--text-muted); }
+
+  @media (max-width: 560px) { display: none; }
+}
+
+.rr-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); border-color: var(--amber-border); }
+}
+
+/* ── Modal de alta/edición ── */
+
+.rr-modal {
+  width: 560px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .rr-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+    .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 3px; }
+  }
+
+  .rr-modal-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: 62vh;
+    overflow-y: auto;
+
+    textarea { resize: vertical; }
+
+    /* El contador va a la derecha del helper, en la misma línea base. */
+    .field-help {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+    }
+  }
+
+  .rr-modal-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .rr-foot-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+}
+
+.rr-counter {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* Insertar el marcador {nombre}. Va pegado al campo de mensaje, sin el
+   recuadro del helper: es una acción, no una explicación. */
+.rr-marcador {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: -8px;
+}
+
+.rr-marcador-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); border-color: var(--amber-border); }
+}
+
+.rr-marcador-hint {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* Preview: el mensaje ya resuelto, con la forma de una burbuja del chat para
+   que se lea como lo va a ver el cliente. */
+.rr-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rr-preview-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rr-preview-bubble {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: var(--fs-body-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Estado activa/inactiva dentro del modal. */
+.rr-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.rr-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rr-toggle-state { font-size: var(--fs-body); font-weight: 700; color: var(--text-primary); }
+.rr-toggle-hint  { font-size: var(--fs-caption); color: var(--text-muted); line-height: 1.45; }
+
+.rr-errors {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rr-confirm-delete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.rr-confirm-text {
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.rr-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Mi perfil (components/ProfileModal.jsx)
+
+   Se abre desde el menú de la barra superior, no desde una sub-vista de
+   Configuración: el domiciliario no tiene esa tab y también necesita poner su
+   nombre y su foto. Los estilos viven aquí porque es el archivo de las
+   pantallas de administración de uno mismo y del negocio.
+═══════════════════════════════════════════════════════════ */
+
+.perfil-modal {
+  width: 480px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .perfil-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+    .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 3px; }
+  }
+
+  .perfil-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-height: 66vh;
+    overflow-y: auto;
+  }
+
+  .perfil-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+  }
+}
+
+.perfil-foto {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.perfil-foto-acciones {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.perfil-foto-hint {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+/* El rol se muestra, no se edita: cambiarlo es de la vista Usuarios y la BD lo
+   rechazaría igual (trigger_proteger_perfil). */
+.perfil-rol {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  align-items: baseline;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+}
+
+.perfil-rol-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.perfil-rol-valor {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.perfil-rol-hint {
+  grid-column: 2;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+.perfil-error {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Usuarios (Configuración → Usuarios)
+═══════════════════════════════════════════════════════════ */
+
+.us-count {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Aviso de por qué no hay botón "crear usuario". Informativo, no un error:
+   azul, no ámbar ni rojo. */
+.us-alta {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--blue-border);
+  background: var(--blue-dim);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+
+  svg { flex-shrink: 0; margin-top: 2px; color: var(--blue); }
+  strong { color: var(--text-primary); }
+}
+
+.us-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.us-row {
+  display: grid;
+  grid-template-columns: auto 1.4fr auto 1.3fr auto;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  transition: background 0.15s ease;
+
+  &:hover { background: var(--bg-card-hover); }
+
+  /* Sin acceso: se atenúa la identidad, no los controles — hay que poder
+     reactivarlo desde la misma fila. */
+  &.off {
+    .avatar, .us-id { opacity: 0.5; }
+  }
+
+  @media (max-width: 1100px) {
+    grid-template-columns: auto 1fr auto;
+
+    .us-acceso { display: none; }
+    .us-rol { grid-column: 1 / -1; }
+  }
+
+  @media (max-width: 620px) {
+    grid-template-columns: auto 1fr;
+
+    .us-estado { grid-column: 1 / -1; justify-self: start; }
+  }
+}
+
+.us-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.us-nombre {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-tu {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+}
+
+.us-email, .us-tel {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-acceso {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+}
+
+.us-acceso-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.us-acceso-valor {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+
+.us-rol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.us-rol-select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { border-color: var(--amber-border); }
+  &:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  option { background: var(--bg-card); color: var(--text-primary); }
+}
+
+.us-rol-hint {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.us-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.us-estado-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  min-width: 68px;
+
+  &.on  { color: var(--green); }
+  &.off { color: var(--text-muted); }
+}
+
+/* Historial de entregas del domiciliario, abierto desde la fila de Usuarios.
+   El contenido lo pinta DeliveryHistory (deliveries.less) en su variante
+   `.compacto`; aquí solo el contenedor del modal. */
+
+.us-historial {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); border-color: var(--amber-border); }
+}
+
+.us-hist-modal {
+  width: 620px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .us-hist-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+    .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 2px; }
+  }
+
+  .us-hist-id {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .us-hist-body {
+    padding: 16px 20px;
+    max-height: 68vh;
+    overflow-y: auto;
+  }
 }

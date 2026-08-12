@@ -53,6 +53,9 @@
   sistema (ver `docs/dashboard/design-system.md`); faltan los modales/botones de
   `orders.less`, `reservations.less` y `support.less`: llevar CTAs a `.btn primary` (1 por
   pantalla), formularios al patrón `.field` (helpers debajo), y purgar `--font-mono` restante.
+  Incluye `.quick-replies` / `.qr-chip` (2026-08-12): se escribió con px crudos para no
+  desentonar con el resto de `support.less`, y debe pasar a tokens (`--fs-caption`, etc.) en la
+  misma tanda. El lado de Configuración (`rr-*`) ya nace con tokens.
 - **`SalesChart`: eliminar el eje dual** — pedidos (barras) + ingresos (línea) comparten
   gráfica con dos escalas Y; la buena práctica de dataviz es separarlos en dos charts o
   indexarlos a una base común.
@@ -168,8 +171,29 @@
   `docs/bot/n8n-workflow.md`. **Pendiente: probar los 4 taps en real** — el fix se verificó
   contra el payload de una ejecución real y contra los labels que devuelve Graph API, pero
   todavía no se ha tapeado ningún botón desde WhatsApp después del cambio.
-- **Roles de usuario** `[L]` — admin total vs. "cocina" (solo kanban) vs. "marketing".
-  Relevante cuando el restaurante tenga varios empleados usando el dashboard.
+- ~~**Roles de usuario**~~ ✅ **Etapa 1 hecha (2026-08-12)** — `perfiles` + RLS por rol
+  (`admin`/`mesero`/`domiciliario`), verificada con suplantación por API. Ver `changelog.md`
+  y `docs/database/schema.md` §Modelo de permisos. **Falta:**
+  - ~~**Etapa 2**~~ ✅ **hecha (2026-08-12)** — `AssignCourier` en el kanban, `DeliveriesPage`
+    para el repartidor y entrega por RPC. Incluyó cerrar un hueco: el mesero podía asignar
+    domiciliarios por API porque la RLS no limita columnas.
+  - ~~**Etapa 3**~~ ✅ **hecha (2026-08-12)** — bucket `avatares` con políticas por carpeta,
+    "Mi perfil" en el menú superior (todos los roles) y Configuración → Usuarios para asignar
+    rol y activar/desactivar.
+  - **Rol mesero: parte de salón** — bloqueado por PLATEO-52. Hoy el mesero tiene pedidos,
+    historial, clientes, reservas y menú (lectura); le falta mesas, que exige ampliar el CHECK
+    de `tipo_pedido` — ver "Venta en mostrador" arriba, mismo riesgo cross-layer.
+  - **Limpiar `pedidos.repartidor`** `[S]` — columna muerta (NULL en los 105 pedidos) que
+    quedó sustituida por `domiciliario_id`. Solo la lee `OrderDetailModal`; eliminarla exige
+    tocar esa lectura.
+  - **Invitar usuarios desde la UI** `[M]` — hoy se crean a mano en Supabase porque la admin
+    API exige `service_role`, que no puede ir en el bundle. Si se quiere en el dashboard: Edge
+    Function o webhook en n8n, nunca desde React. La pantalla de Usuarios ya explica el flujo
+    manual, así que esto es comodidad, no un bloqueo.
+  - **Avatares huérfanos en Storage** `[S]` — al cambiar de foto se borra la anterior en
+    best-effort; si ese borrado falla queda el archivo suelto (se prefirió eso a arriesgar que
+    un usuario se quede sin foto). Si el bucket crece, un barrido que compare
+    `storage.objects` contra `perfiles.avatar_url` lo limpia.
 
 ## Bot
 

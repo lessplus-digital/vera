@@ -3,9 +3,20 @@ import Column from './Column'
 import CreateOrderModal from './CreateOrderModal'
 import { COLUMNS } from '../../utils/constants'
 import Icon from '../../components/Icon'
+import { useAuth } from '../../hooks/useAuth'
+import { useDomiciliarios } from '../../hooks/useDomiciliarios'
+import { puede } from '../../utils/permisos'
 
 export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
+  const { rol } = useAuth()
   const [showCreate, setShowCreate] = useState(false)
+
+  // La lista se carga UNA vez para todo el kanban y se baja a las tarjetas: si
+  // cada `OrderCard` la pidiera por su cuenta serían N consultas idénticas en
+  // el rush. Para quien no puede asignar, el hook devuelve vacío (la RLS solo
+  // le deja ver su propio perfil) y `AssignCourier` ni se monta.
+  const { domiciliarios } = useDomiciliarios()
+  const puedeAsignar = puede(rol, 'asignarDomiciliario')
 
   if (loading) {
     return (
@@ -34,7 +45,8 @@ export default function DashboardPage({ loading, orders, newIds, onUpdated }) {
           orders={getColumnOrders(col)}
           newIds={newIds}
           onUpdated={onUpdated}
-          onCreate={col.key === 'pendiente' ? () => setShowCreate(true) : undefined}
+          domiciliarios={domiciliarios}
+          onCreate={col.key === 'pendiente' && puede(rol, 'crearPedido') ? () => setShowCreate(true) : undefined}
         />
       ))}
 

@@ -432,17 +432,26 @@ html, body {
   transition: all 0.16s ease;
 }
 .admin-trigger:hover { background: var(--bg-base); border-color: var(--border); }
-.admin-avatar {
-  width: 34px; height: 34px;
+/* Avatar compartido (components/Avatar.jsx). El tamaño lo fija el componente
+   por estilo inline: el mismo avatar aparece a 28, 34, 40 y 72px y una clase
+   por tamaño sería un modificador nuevo cada vez.
+   Sustituye a .admin-avatar, que solo servía a la barra superior. */
+.avatar {
   flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   background: var(--amber);
   color: #fff;
   font-weight: 700;
-  font-size: 14px;
   border-radius: 50%;
+  overflow: hidden;
+  user-select: none;
 }
-.admin-avatar.lg { width: 42px; height: 42px; font-size: 17px; }
+/* La foto tapa el círculo ámbar; `cover` evita que una foto no cuadrada se
+   deforme (las de perfil casi nunca lo son). */
+.avatar.img {
+  object-fit: cover;
+  background: var(--bg-inset);
+}
 .admin-id { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
 .admin-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
 .admin-role { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }

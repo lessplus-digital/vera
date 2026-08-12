@@ -33,6 +33,8 @@ export function useOrders() {
         motivo_rechazo,
         notas,
         fecha_pedido,
+        domiciliario_id,
+        clientes ( nombre ),
         detalle_pedidos (
           producto_id,
           nombre_producto,
