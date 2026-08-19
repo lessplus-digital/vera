@@ -99,6 +99,21 @@ role="switch" aria-checked={bool}>` sin contenido; el CSS pinta track + thumb de
 directas desde una fila (sin modal) se acompaña de update optimista + toast de
 error si la BD falla. Uso actual: disponibilidad del menú (tab Menú, fila y modal).
 
+## 4a-bis. Control segmentado (cambiar de vista dentro de una pantalla)
+
+Grupo de botones dentro de una píldora (`--bg-card` + borde, `padding: 4px`); el activo se
+pinta con `--bg-inset` + `--text-primary`, los inactivos en `--text-secondary`. **No usa
+ámbar:** indica *dónde estás*, no una acción — el ámbar sigue reservado al CTA.
+
+Usos: filtro de sentimiento en Reseñas (`.rev-segmented`, con contador por opción) y
+sub-vistas de Configuración (`.settings-segmented`, 2026-08-11). Vive duplicado en
+`reviews.less` y `settings.less` porque los dos LESS no se comparten; si aparece un tercer
+uso, promoverlo a `index.css`.
+
+**Cuándo usarlo en vez de una tab del sidebar:** cuando las vistas son la misma tarea y cada
+una necesita **su propio botón `primary`**. Dos CTAs no pueden convivir en una pantalla (§3),
+así que separarlas en sub-vistas es lo que resuelve el conflicto sin inflar la navegación.
+
 ## 4b. Tablas (listados)
 
 Patrones globales en `index.css`, compartidos por Clientes y Menú:
@@ -178,6 +193,19 @@ Promovidos desde el splash de auth al hacer server-side el historial (2026-07-23
   reemplazar contenido visible por un spinner — atenuar y superponer.
 - El spinner gira en `--amber` sobre `--border` (marca, no estado). No inventar variantes
   de color por página.
+
+## 8c. Marca de pizza mitad y mitad (`.mm-tag` en `index.css`)
+
+Distintivo inline `½+½` que **precede** al nombre del producto en cualquier lista de ítems
+(Kanban, crear/editar pedido, detalle del historial). Global en `index.css` porque las tres
+vistas viven en LESS distintos y la marca tiene que verse idéntica en todas.
+
+- Color **`--purple`** sobre `--purple-dim` con borde `--purple-border`. El morado ya
+  significa "domicilio" en los badges de la card, así que aquí **no** es un estado: es una
+  etiqueta de composición del producto. No inventar un color nuevo para esto.
+- Solo aparece cuando la línea de `detalle_pedidos` trae `mitades`. El nombre ya dice
+  *"Mitad X / Mitad Y"*; el tag existe para que se detecte de un vistazo en la cocina.
+- La **masa** (Tradicional/Estofada) se muestra como un `.variant` más, no como otro badge.
 
 ## 9. Qué NO hacer (resumen del feedback origen)
 

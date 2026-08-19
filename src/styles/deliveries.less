@@ -1,0 +1,556 @@
+/* ═══════════════════════════════════════════════════════════
+   Mis entregas — pantalla del rol domiciliario
+
+   Sustituye al kanban en la tab Pedidos. Diseñada para un móvil sostenido con
+   una mano en la calle, no para un monitor en la caja: una columna, la
+   dirección grande, y el monto a cobrar imposible de pasar por alto.
+
+   Nace con tokens del design system (a diferencia de `support.less`, que
+   sigue pendiente de migrar).
+═══════════════════════════════════════════════════════════ */
+
+.deliveries {
+  padding: var(--page-pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 720px;   /* una columna: hay UNA cosa que hacer a la vez */
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Resumen de la ronda ── */
+
+.dv-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.dv-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.dv-stat-num {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.dv-stat-label {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+/* ── Grupos (en camino / en preparación) ── */
+
+.dv-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dv-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  svg { color: var(--text-muted); }
+}
+
+/* ── Tarjeta de entrega ── */
+
+.dv-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.dv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.dv-id {
+  font-size: var(--fs-body-sm);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.dv-time {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+/* La dirección es a lo que vino: el elemento más grande de la tarjeta. */
+.dv-addr {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-heading);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+
+  svg { flex-shrink: 0; margin-top: 3px; color: var(--amber); }
+}
+
+.dv-client {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.dv-client-name {
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+}
+
+/* Objetivo táctil generoso: se pulsa con guantes y en movimiento. */
+.dv-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover { border-color: var(--blue-border); }
+}
+
+.dv-items {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+
+  li {
+    font-size: var(--fs-body-sm);
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+}
+
+.dv-qty {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dv-notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+
+  svg { flex-shrink: 0; margin-top: 2px; color: var(--amber); }
+}
+
+/* ── Cobro ──
+   El único dato que, si se lee mal, cuesta dinero: efectivo se resalta en
+   ámbar; ya pagado se queda plano para que no compita. */
+.dv-cobro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+
+  &.efectivo {
+    background: var(--amber-dim);
+    border-color: var(--amber-border);
+
+    .dv-cobro-monto { color: var(--amber); }
+    svg { color: var(--amber); }
+  }
+}
+
+.dv-cobro-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.dv-cobro-monto {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dv-entregar {
+  width: 100%;
+  justify-content: center;
+  padding: 12px;      /* alto cómodo para el pulgar */
+  font-size: var(--fs-body);
+}
+
+/* Confirmación en dos pasos: marcar entregado no tiene deshacer. */
+.dv-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--amber-border);
+  background: var(--amber-dim);
+  border-radius: var(--radius-md);
+}
+
+.dv-confirm-text {
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.dv-confirm-actions {
+  display: flex;
+  gap: var(--sp-2);
+
+  .btn { flex: 1; justify-content: center; }
+}
+
+.dv-error {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* ── Estado vacío ── */
+
+.dv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  padding: 48px var(--sp-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.dv-empty-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dv-empty-text {
+  margin: 0;
+  max-width: 420px;
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 560px) {
+  .dv-summary { grid-template-columns: 1fr; }
+  .dv-stat {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    text-align: left;
+  }
+}
+
+/* ── Selector Activas / Historial ── */
+
+.dv-segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  max-width: 100%;
+}
+
+.dv-seg {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); }
+  &.active { background: var(--bg-inset); color: var(--text-primary); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Historial de entregas (DeliveryHistory)
+
+   Mismo componente en dos sitios: la pantalla del repartidor y el modal que
+   abre el admin desde Usuarios. `.compacto` es la variante del modal, donde
+   el ancho es menor y el resumen no puede ocupar tres columnas holgadas.
+═══════════════════════════════════════════════════════════ */
+
+.dh {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.dh-periodos {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+
+.dh-periodo {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); }
+  &.active { background: var(--bg-inset); color: var(--text-primary); }
+}
+
+.dh-resumen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+}
+
+.dh-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: center;
+  min-width: 0;
+}
+
+.dh-stat-num {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dh-stat-label {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.dh-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dh-fila {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.dh-cuando {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: center;
+  min-width: 62px;
+}
+
+.dh-fecha {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.dh-hora {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+
+.dh-donde {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dh-cliente {
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-dir {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-monto {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.dh-total {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Efectivo se marca también aquí: al cuadrar la caja del turno es lo único
+   que el repartidor tuvo en la mano. */
+.dh-metodo {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+
+  &.efectivo { color: var(--amber); }
+}
+
+.dh-mas {
+  align-self: center;
+}
+
+.dh-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--fs-body-sm);
+}
+
+.dh-error {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--red-dim);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+}
+
+/* Variante del modal del admin: menos ancho disponible. */
+.dh.compacto {
+  .dh-resumen { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .dh-stat { padding: var(--sp-2); }
+  .dh-stat-num { font-size: var(--fs-body); }
+  .dh-fila { grid-template-columns: auto 1fr auto; padding: 8px 10px; }
+}
+
+@media (max-width: 560px) {
+  .dh-resumen { grid-template-columns: 1fr; }
+  .dh-stat {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    text-align: left;
+  }
+  .dh-fila { grid-template-columns: 1fr auto; }
+  .dh-cuando {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    gap: 6px;
+    text-align: left;
+    min-width: 0;
+  }
+}
+
+/* Barrio en la tarjeta de entrega del domiciliario. */
+.dv-barrio {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}

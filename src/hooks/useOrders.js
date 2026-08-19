@@ -25,6 +25,9 @@ export function useOrders() {
         telefono,
         tipo_pedido,
         direccion_entrega,
+        barrio,
+        zona,
+        costo_domicilio,
         metodo_pago,
         total,
         estado,
@@ -33,12 +36,15 @@ export function useOrders() {
         motivo_rechazo,
         notas,
         fecha_pedido,
+        domiciliario_id,
+        clientes ( nombre ),
         detalle_pedidos (
           producto_id,
           nombre_producto,
           variante,
           cantidad,
-          precio_unitario
+          precio_unitario,
+          mitades
         )
       `)
       .gte('fecha_pedido', today.toISOString())

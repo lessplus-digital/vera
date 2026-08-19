@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import Icon from '../Icon'
+import { puedeVerTab, ROL_LABEL, ROLES } from '../../utils/permisos'
 
 const NAV_ITEMS = [
   { id: 'dashboard',    label: 'Pedidos',      icon: 'clipboard' },
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
 ]
 
 export default function Sidebar({
+  rol,
   activeTab,
   onTabChange,
   supportCount,
@@ -24,6 +26,18 @@ export default function Sidebar({
   onCloseMobile,
 }) {
   const badges = { support: supportCount }
+
+  // Ocultar en vez de deshabilitar: una opción deshabilitada invita a pedir el
+  // permiso; una que no está simplemente no forma parte del trabajo del rol.
+  const items = NAV_ITEMS
+    .filter(item => puedeVerTab(rol, item.id))
+    // Para el domiciliario esa tab no es el kanban de pedidos, es su lista de
+    // entregas (ver DeliveriesPage). El id no cambia; solo cómo se llama.
+    .map(item =>
+      item.id === 'dashboard' && rol === ROLES.DOMICILIARIO
+        ? { ...item, label: 'Mis entregas', icon: 'scooter' }
+        : item
+    )
 
   return (
     <>
@@ -40,14 +54,14 @@ export default function Sidebar({
           {!collapsed && (
             <span className="sb-brand-text">
               <span className="sb-brand-name">Vera Pizzería</span>
-              <span className="sb-brand-tag">Admin</span>
+              <span className="sb-brand-tag">{ROL_LABEL[rol] ?? 'Sin rol'}</span>
             </span>
           )}
         </div>
 
         {/* ─── Navegación ─── */}
         <nav className="sb-nav">
-          {NAV_ITEMS.map(item => (
+          {items.map(item => (
             <NavItem
               key={item.id}
               item={item}

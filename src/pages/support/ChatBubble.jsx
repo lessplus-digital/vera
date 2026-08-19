@@ -1,9 +1,18 @@
 import { parseDb } from '../../utils/dateRanges'
 import Icon from '../../components/Icon'
 
+// `origen` puede ser: cliente · admin · sistema · bot.
+// `bot` son los turnos del agente IA que se recuperan del historial al escalar la
+// conversación (ver la RPC `registrar_contexto_handoff`): van del lado del cliente
+// pero atenuados, porque son contexto pasado y no algo que haya que responder.
+const ROLES = {
+  admin:   { side: 'right', cls: 'admin',  label: 'Tú'      },
+  bot:     { side: 'left',  cls: 'bot',    label: 'Bot'     },
+  cliente: { side: 'left',  cls: 'client', label: 'Cliente' },
+}
+
 export default function ChatBubble({ msg, onImageClick }) {
   const isSystem = msg.origen === 'sistema'
-  const isAdmin  = msg.origen === 'admin'
   const isImage  = msg.tipo_contenido === 'imagen' && msg.imagen_url
 
   if (isSystem) {
@@ -14,14 +23,14 @@ export default function ChatBubble({ msg, onImageClick }) {
     )
   }
 
-  const side      = isAdmin ? 'right' : 'left'
-  const bubbleCls = `bubble ${isAdmin ? 'admin' : 'client'}${isImage ? ' img' : ''}`
+  const role      = ROLES[msg.origen] || ROLES.cliente
+  const bubbleCls = `bubble ${role.cls}${isImage ? ' img' : ''}`
 
   return (
-    <div className={`bubble-wrap ${side}`}>
+    <div className={`bubble-wrap ${role.side}`}>
       <div className={bubbleCls}>
-        <div className={`sender ${isAdmin ? 'admin' : 'client'}${isImage ? ' img-pad' : ''}`}>
-          {isAdmin ? 'Tú' : 'Cliente'}
+        <div className={`sender ${role.cls}${isImage ? ' img-pad' : ''}`}>
+          {role.label}
         </div>
 
         {isImage ? (

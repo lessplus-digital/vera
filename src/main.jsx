@@ -14,6 +14,7 @@ import './styles/menu.less'
 import './styles/settings.less'
 import './styles/history.less'
 import './styles/reviews.less'
+import './styles/deliveries.less'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

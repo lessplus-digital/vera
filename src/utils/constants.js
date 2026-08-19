@@ -101,6 +101,13 @@ export const RESERVATION_STATES = [
 // Duración visual de una reserva en el calendario (minutos)
 export const RESERVATION_DURATION_MIN = 90
 
+// Motivo (ocasión) por defecto de una reserva. Es la única clave de
+// `motivos_reserva` que el código conoce por nombre: el resto —incluidos los
+// precios— se leen de la BD (hook `useReservationReasons`, tool
+// `consultar_motivos_reserva` en el bot). No listar aquí las demás: se
+// desincronizarían con la tabla.
+export const MOTIVO_DEFECTO = 'sin_ocasion'
+
 export const SUPPORT_TABLES = {
   conversations: 'conversaciones_soporte',
   messages:      'mensajes_soporte',

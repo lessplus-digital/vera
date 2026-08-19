@@ -15,6 +15,519 @@
 
 ---
 
+### 2026-08-18 — Zonas de domicilio con tarifa por barrio
+
+**Contexto:** el costo del domicilio era la constante `costo_domicilio NUMERIC := 5000` escondida
+dentro de `actualizar_total_pedido()`, y las "zonas" eran dos strings sueltos de `info_negocio`
+(`zona_delivery`, `costo_delivery`) que el bot solo podía recitar. Verificado antes de tocar nada:
+`costo_delivery` estaba **vacío**, así que el bot nunca tuvo de dónde sacar el precio del envío —
+lo recitaba desde el prompt, donde `$5.000` aparecía quemado en 6 sitios.
+
+**Decisión (a) — el costo baja a una columna.** `pedidos.costo_domicilio` (+ `barrio` y `zona`).
+El total deja de ser una caja negra: se puede desglosar, exportar y cuadrar el arqueo sin
+despejarlo restando. `editar_pedido` y `EditOrderModal` dejan de inferir el recargo como
+`total − suma de ítems`, un despeje que con tarifa variable daba un número distinto por zona.
+
+**Decisión (b) — el catálogo son dos tablas, no una.** `zonas_entrega` (la tarifa) + `barrios`
+(cuelgan de una zona), calcado de `motivos_reserva` + `reservas.costo_motivo`: el precio lo copia
+un trigger (`trigger_tarifa_domicilio`), nunca quien inserta, y lo que queda en el pedido es una
+foto. Cambiar una tarifa no reescribe pedidos viejos.
+
+**Decisión (c) — un barrio sin mapear NO rechaza el pedido.** Cae en la zona `es_base` (sembrada
+en $5.000, exactamente lo que se cobraba antes) y `pedidos.zona` queda NULL. Esto también hace que
+el despliegue sea seguro en cualquier orden: mientras el bot todavía no mande el barrio, todo se
+comporta igual que ayer. La zona base está protegida contra borrado y desactivación porque sin
+ella ese caso cobraría **$0**. Los barrios no mapeados afloran en Configuración → Zonas como
+"Barrios sin zona", con cuántos pedidos llegaron de cada uno.
+
+**Decisión (d) — `barrio` va desnormalizado en `pedidos`** (texto, sin FK), como
+`detalle_pedidos.nombre_producto`: el domiciliario tiene que poder leerlo aunque el admin después
+renombre, reasigne o borre el barrio. La FK va en `zona`, que es lo que sirve para agrupar.
+
+**Backfill:** los 82 domicilios históricos con recargo exacto de $5.000 quedaron con
+`costo_domicilio = 5000`; `total` no se tocó, así que **ningún total cambió un peso**. Verificado
+con 9 escenarios en una transacción revertida (match sucio, cambio de zona, errata, barrio sin
+mapear, override manual, paso a recoger, borrado de ítem, y un pedido histórico sin ítems).
+
+**Impacto:** BD — 5 migraciones (`zonas_entrega_y_barrios`, `pedidos_barrio_y_costo_domicilio`,
+`tarifa_domicilio_variable_en_totales`, `rpc_consultar_cobertura`,
+`retirar_zona_y_costo_delivery_de_info_negocio`). Dashboard — `useDeliveryZones` (+
+`useBarrioOptions`), `DeliveryZonesSection`, `ZoneModal`, y cambios en `SettingsPage`,
+`BusinessInfoSection`, `CreateOrderModal`, `EditOrderModal`, `OrderCard`, `OrderDetailModal`,
+`ClientModal`, `useClients`, `useOrders`, `useOrderHistory`, `useDeliveryHistory`,
+`exportHistory`. Bot — `Sub — Crear_orden_completa` acepta y propaga `barrio`.
+
+**Pendiente:** el workflow principal de n8n **no se pudo escribir** (ver BUG-030): faltan la tool
+`consultar_cobertura` en Agente Pedidos y Soporte, y limpiar el `$5.000` quemado de los prompts.
+Mientras tanto el bot sigue cobrando $5.000 vía la tarifa base, que es justo lo que dice su prompt.
+Instrucciones literales para aplicarlo: [`docs/bot/pendiente-zonas-domicilio.md`](../bot/pendiente-zonas-domicilio.md)
+(atajo en Claude Code: `/zonas-bot`).
+
+**De paso:** arreglado un bug latente en `actualizar_total_pedido()` — usaba `NEW.pedido_id`, que
+en un `DELETE` es NULL, así que **borrar un ítem nunca recalculaba el total**. Ver edge-cases §22.
+
+---
+
+### 2026-08-12 — Historial de entregas del domiciliario
+
+**Contexto:** el repartidor solo veía sus entregas activas — `useOrders` trae el día de negocio
+actual y estados vivos, así que lo entregado desaparecía de su pantalla. No tenía forma de ver lo
+que había hecho, ni el admin de evaluarlo.
+
+**Decisión (a) — un componente, dos entradas:** `DeliveryHistory` lo usa el repartidor en su
+sub-vista Historial y el admin desde Configuración → Usuarios. La diferencia es el prop
+`domiciliarioId`. **El componente no comprueba rol**, y es correcto: `pedidos_select` ya decide qué
+filas existen para quien mira. Si un domiciliario pasara el id de otro, vería una lista vacía.
+
+**Decisión (b) — `resumen_entregas` es SECURITY INVOKER**, al revés que el resto de RPC de este
+esquema. Al heredar la RLS de `pedidos`, la autorización sale gratis: no hace falta un chequeo de
+rol propio porque las filas ajenas sencillamente no existen para quien pregunta. Verificado — el
+repartidor pidiendo el resumen de otro recibe ceros, no un error.
+
+**Decisión (c) — el resumen no se calcula en el cliente:** la lista está paginada de 20 en 20 y
+sumar solo lo cargado daría un total que crece al hacer scroll. Por eso el agregado va por RPC
+sobre todo el período.
+
+**Detalle:** se filtra y ordena por **`fecha_entrega`** (timestamptz), no por `fecha_pedido`
+(timestamp sin tz con valor UTC) — lo que se mide aquí es cuándo se entregó, no cuándo se pidió.
+Y un `useRef` de nº de petición descarta respuestas tardías, para que cambiar rápido de período no
+deje pintada una consulta vieja.
+
+**Impacto:** migración `historial_entregas_resumen` · `src/hooks/useDeliveryHistory.js` ·
+`src/pages/deliveries/DeliveryHistory.jsx` · `DeliveriesPage` (segmentado Activas/Historial, con
+las activas extraídas a `VistaActivas`) · `UsersSection` (botón *Ver entregas* + modal) ·
+`deliveries.less`, `settings.less`.
+
+---
+
+### 2026-08-12 — Usuarios, roles y perfiles · Etapa 3: perfiles y gestión de usuarios
+
+**Contexto:** con las etapas 1 y 2 los roles ya funcionaban, pero el rol solo se cambiaba con un
+`UPDATE` a mano sobre `perfiles` y nadie podía poner su nombre ni su foto.
+
+**Decisión (a) — bucket `avatares` propio, no reutilizar `comprobantes`:** ese tiene una política
+de INSERT para `anon` (la usa el bot al guardar comprobantes de transferencia) y meter ahí los
+avatares les habría dado esa misma puerta. Público en lectura, como `comprobantes`: es la foto de
+un empleado y las URLs firmadas obligarían a renovarlas en cada render. **La ruta es el permiso**
+(`<usuario_id>/<timestamp>.<ext>`; las políticas comparan `foldername(name)[1]` con `auth.uid()`),
+y el tamaño y el tipo los valida el **servidor** vía `file_size_limit` / `allowed_mime_types` — el
+formulario valida lo mismo, pero eso es cortesía.
+
+**Decisión (b) — "Mi perfil" en el menú superior, no en Configuración:** el domiciliario no tiene
+esa tab y también necesita nombre y foto. El menú de la barra superior es el único punto que los
+tres roles comparten.
+
+**Decisión (c) — la lista de usuarios va por RPC:** el email vive en `auth.users`, que PostgREST no
+expone ni debe. Se descartó denormalizarlo en `perfiles` —un duplicado que se desincroniza el día
+que alguien cambie de correo— a favor de `listar_usuarios()`, `SECURITY DEFINER` y admin-only.
+
+**Decisión (d) — sin botón "Crear usuario", y explicado en pantalla:** el alta exige la admin API
+con `service_role`, que no puede viajar en el bundle. Las cuentas se crean en Supabase y aparecen
+al instante como `domiciliario` (rol de menor alcance) vía `trigger_crear_perfil`; el panel solo
+reparte permisos. La pantalla lo dice en vez de dejar al admin buscando el botón.
+
+**Detalle que no es obvio:** editarse el rol a uno mismo se bloquea en la **UI**, no en la BD. El
+trigger solo impide quedarse *sin* admin, así que con dos admins uno podía degradarse y perder el
+acceso de golpe sin aviso.
+
+**Verificación** (suplantación por API, igual que las etapas anteriores): un domiciliario recibe
+42501 al llamar `listar_usuarios()`, edita su propio perfil (1 fila) pero el de otro afecta 0;
+sube a su carpeta del bucket pero a la de otro y a `comprobantes` recibe 42501; el admin lista,
+cambia rol y desactiva, y degradar o borrar al **último admin activo** rebota con 23514.
+
+**Impacto:** migraciones `roles_etapa3_bucket_avatares` y `roles_etapa3_listar_usuarios` ·
+`src/lib/avatares.js` · `src/components/Avatar.jsx` + `ProfileModal.jsx` · `src/hooks/useUsuarios.js`
+· `useAuth().actualizarPerfil` · `src/pages/settings/UsersSection.jsx` + `SettingsPage` (4ª
+sub-vista) · `Header` (Mi perfil + avatar real) · `settings.less`, `index.css` (`.admin-avatar`
+sustituida por `.avatar`, compartida).
+
+---
+
+### 2026-08-12 — Usuarios, roles y perfiles · Etapa 2: asignación y entregas
+
+**Contexto:** con la Etapa 1 la BD ya distinguía los tres roles, pero la UI seguía siendo la de un
+solo admin: no había forma de asignar un domicilio, y un domiciliario veía el kanban con botones
+que la RLS le rechazaba en silencio.
+
+**Decisión (a) — el domiciliario no opera un kanban:** las cuatro columnas son flujo de cocina.
+`DeliveriesPage` lo sustituye en la misma tab: una columna, la **dirección** como elemento más
+grande, el teléfono como `tel:` y el cobro resaltado **solo si es efectivo** — el único dato que si
+se lee mal cuesta dinero. Entregar pide confirmación en dos pasos, y cuando es efectivo el texto
+pregunta por el monto ("¿Recibiste $48.000 en efectivo?"): el botón vive en un bolsillo, en una
+moto, y marcar entregado no tiene deshacer.
+
+**Decisión (b) — la entrega va por RPC para TODOS los roles:** para el domiciliario es obligatorio
+(no tiene política de UPDATE). Para admin y mesero, que sí podrían hacerlo directo, se usa igual
+para no mantener dos caminos que puedan divergir. De paso desapareció el `fecha_entrega` que el JS
+mandaba a mano: lo pone `trigger_fecha_entrega`, y era la misma verdad escrita dos veces.
+
+**Hallazgo — el mesero podía asignar domiciliarios.** La UI se lo ocultaba, pero el mesero
+necesita `UPDATE` sobre `pedidos` para el flujo de cocina y **las políticas RLS no limitan por
+columna**: un `PATCH /rest/v1/pedidos {"domiciliario_id": "..."}` le reasignaba el reparto.
+Verificado antes de arreglarlo (afectaba 1 fila). Se cerró extendiendo
+`trigger_validar_asignacion` para exigir `es_admin()` cuando la asignación cambia — con la guarda
+de no estorbar al mesero moviendo estados de un pedido ya asignado, comprobado que sigue pudiendo.
+Es la tercera vez que aparece el mismo patrón (`perfiles.rol`, `pedidos` del domiciliario,
+ahora esto), así que quedó como tabla propia en `schema.md`: **cuando la regla es "esta COLUMNA
+solo la toca este rol", la frontera es un trigger, no una política.**
+
+**Impacto:** migración `roles_etapa2_asignacion_solo_admin` · `src/hooks/useDomiciliarios.js` ·
+`src/pages/dashboard/AssignCourier.jsx` · `src/pages/deliveries/DeliveriesPage.jsx` +
+`src/styles/deliveries.less` · `OrderCard`/`OrderActions`/`Column`/`DashboardPage` (rol desde el
+contexto, entrega por RPC) · `useOrders` (`domiciliario_id` + `clientes(nombre)` embebido) ·
+`Header`/`Sidebar` (etiquetas y stats por rol; el menú de usuario ahora muestra el nombre de
+`perfiles` y el rol real en vez de "Vera Pizzería" fijo) · `orders.less`.
+
+---
+
+### 2026-08-12 — Usuarios, roles y perfiles · Etapa 1: el cimiento de seguridad
+
+**Contexto:** el restaurante necesita varios empleados sobre el mismo dashboard con alcances
+distintos (admin / mesero / domiciliario). El punto de partida era peor de lo que parecía: las 16
+tablas tenían **una sola política**, `auth_full_access` = `to authenticated using(true)`. No había
+nada que extender — cualquier sesión podía todo. Y como el JWT viaja en cada llamada REST y de
+realtime, filtrar el kanban en React habría sido decorado: un domiciliario pidiendo
+`GET /rest/v1/pedidos?select=*` se leía el restaurante entero.
+
+**Decisión (a) — sin `restaurante_id`:** la tarjeta pedía "tabla de usuarios **por restaurante**",
+pero el modelo multi-tenant acordado (2026-06-19) es **un proyecto Supabase por cliente**. La
+tenencia ya está resuelta por aislamiento físico; añadir la columna habría contradicho la
+arquitectura. `perfiles` es 1:1 con `auth.users` de ESTE proyecto.
+
+**Decisión (b) — el rol se lee de la BD, no del JWT:** `public.mi_rol()` (`STABLE SECURITY
+DEFINER`) es la fuente única para políticas y para la UI. Se evaluó meterlo en el JWT con un
+custom access token hook (más rápido, evita el lookup); se descartó porque se configura fuera de
+SQL y no se puede versionar como migración. `SECURITY DEFINER` no es opcional: leer `perfiles`
+desde las políticas *de* `perfiles` da recursión infinita. Devuelve NULL sin sesión, sin perfil o
+inactivo — **el modelo falla cerrado**.
+
+**Decisión (c) — la entrega va por RPC, no por política de UPDATE:** es el punto que más
+fácilmente se hace mal. **RLS filtra FILAS, no COLUMNAS.** Un `for update using (domiciliario_id =
+auth.uid())` habría dejado al domiciliario mandar `total = 0` o `estado_pago = 'confirmado'` en su
+propia fila, con la política autorizándolo porque efectivamente es suya. Por eso el domiciliario
+**no tiene política de UPDATE** sobre `pedidos` y su única escritura es `marcar_entregado()`.
+El mismo razonamiento en `perfiles`: `trigger_proteger_perfil` impide que un usuario se suba el
+`rol` en el mismo UPDATE con el que edita su nombre.
+
+**Hallazgo — `editar_pedido` era un agujero abierto:** es `SECURITY DEFINER`, así que **salta
+RLS**, y no tenía ningún chequeo de autorización. Cualquier usuario autenticado podía reescribir
+los ítems de cualquier pedido llamándola por REST, y ninguna política lo habría impedido. Se le
+añadió el guard de rol y el `set search_path = public` que le faltaba. Lección general anotada en
+`schema.md`: **una función `DEFINER` no está protegida por la RLS; tiene que autorizar sola.**
+
+**Verificación:** no se dio por buena la teoría. Se crearon usuarios reales de prueba y se
+suplantaron por API (`set local role authenticated` + `request.jwt.claims`) sobre los 105 pedidos
+reales: el domiciliario ve 2 de 105 pedidos, 2 de 33 clientes y 3 de 196 líneas; 0 en soporte,
+reseñas y reservas; su `UPDATE` sobre su propio pedido afecta **0 filas**; la escalada a admin,
+`editar_pedido` y marcar una entrega ajena devuelven **42501**; marcar la suya funciona y el
+trigger pone `fecha_entrega`. El admin no perdió nada. Tabla completa en `schema.md`.
+
+**Impacto:** migraciones `roles_etapa1_perfiles_y_helpers`, `roles_etapa1_rpc_marcar_entregado`,
+`roles_etapa1_rls_por_rol` · `src/utils/permisos.js` (mapa rol→tabs/capacidades, explícitamente
+subordinado a la RLS) · `src/hooks/useAuth.jsx` (carga el perfil + realtime del propio rol) ·
+`src/App.jsx` (espera al perfil, pantalla "sin acceso", gate por tab) ·
+`src/components/layout/Sidebar.jsx` (navegación filtrada + rol visible).
+
+**Pendiente (etapas 2 y 3):** UI de asignación pedido→domiciliario y acciones del kanban por rol;
+perfil con foto (bucket + políticas de Storage); CRUD de usuarios en Configuración. El rol
+**mesero** queda definido y operativo sobre pedidos, pero su parte de salón depende de PLATEO-52,
+que hoy no existe (`tipo_pedido` sigue con CHECK `domicilio|recoger`).
+
+---
+
+### 2026-08-12 — Respuestas rápidas en el chat de soporte
+
+**Contexto:** atendiendo un handoff el operador teclea los mismos cuatro o cinco mensajes todo el
+día ("ya salió tu domicilio", "confírmame la dirección"). En hora pico eso es tiempo perdido y
+erratas. No estaba en el backlog; sale de la operación.
+
+**Decisión (a) — en la BD, no en `constants.js`:** tabla `respuestas_rapidas` (migración
+`crear_respuestas_rapidas`) administrada desde **Configuración → Respuestas rápidas**, tercera
+sub-vista junto a Información del negocio y Preguntas frecuentes. Hardcodear el array habría sido
+más rápido, pero cambiar un texto exigiría redeploy y rompería el mismo modelo multi-tenant que
+motivó `info_negocio` y `faq`. La tabla calca a `faq` (`RR-###`, CHECK de longitud, trigger de
+normalización, RLS `auth_full_access`) y añade un **índice único sobre `lower(btrim(atajo))`**:
+dos chips con la misma etiqueta serían indistinguibles en el chat.
+
+**Decisión (b) — el chip ESCRIBE, no envía:** un clic inserta el texto en el input, en la posición
+del cursor, y el operador lo revisa y presiona Enviar. Enviar de golpe era más veloz pero un clic
+accidental sale a WhatsApp sin vuelta atrás, y `sendMessage` ya es best-effort contra la Graph API.
+
+**Decisión (c) — un solo marcador, `{nombre}`:** cada marcador extra es un dato que puede faltar al
+enviar y dejar un `{algo}` crudo delante del cliente. `aplicarNombre()`
+(`src/utils/quickReplies.js`) usa el **primer** nombre y, cuando el cliente no tiene nombre
+registrado, **borra el marcador junto con la coma que lo sigue** — "Hola {nombre}, tu pedido…"
+queda "Hola, tu pedido…", no "Hola , tu pedido…" ni "Hola cliente,".
+
+**Decisión (d) — sin `faqLint` aquí, a propósito:** es la primera de las tablas editables que **no
+lee el bot**. El texto lo envía una persona que además puede editarlo antes de mandarlo, así que
+nunca entra al contexto de un agente y las guardas anti-inyección de `faq` no aplican. Queda
+anotado en `schema.md`: si algún día el bot llegara a leerla, ese razonamiento se cae y hay que
+ponerle el lint.
+
+**Impacto:** migración `crear_respuestas_rapidas` · `src/hooks/useRespuestasRapidas.js` ·
+`src/utils/quickReplies.js` · `src/pages/settings/QuickRepliesSection.jsx` + `QuickReplyModal.jsx`
+· `SettingsPage.jsx` (3 sub-vistas) · `src/pages/support/SupportPanel.jsx` (chips + `autoResize`
+unificado en un `useEffect`: el textarea no se encogía al enviar porque se medía `scrollHeight`
+antes de que React pintara) · `settings.less` (bloque `rr-*`) · `support.less` (`.quick-replies`)
+· docs de schema y componentes.
+
+---
+
+### 2026-08-11 — FAQ configurable + contexto dinámico del Agente Soporte
+
+**Contexto:** demasiada verdad del negocio vivía escrita a mano en el prompt del Agente Soporte en
+n8n. Mientras el cliente sea solo Vera eso no duele; con el segundo cliente de Plateo obliga a
+reescribir el prompt a mano por cada restaurante — exactamente lo que rompe el modelo multi-tenant.
+Es la misma jugada que ya se hizo con `info_negocio` (tab Configuración) y `motivos_reserva`: la
+verdad del negocio vive en la BD, el prompt queda genérico.
+
+**Decisión (a) — tabla `faq` + CRUD propio:** migración `faq_configurable`. `faq_id` (`FAQ-###`),
+`pregunta`, `respuesta`, `activa`, `orden`, con CHECK de longitud (200/600) y el trigger
+`trigger_normalizar_faq` (pregunta a una línea, respuesta sin CR/tabuladores, `updated_at`).
+Normalizar **en la BD y no solo en el formulario** es a propósito: la frontera es la tabla, así un
+`UPDATE` manual tampoco mete texto sucio. La tabla nace **vacía**: sembrar respuestas de ejemplo
+habría sido inventar afirmaciones del negocio que el bot le diría a clientes reales.
+
+**Decisión (b) — el RPC no filtra, solo reordena:** `consultar_faq(p_filtro, p_limite=40)`
+devuelve **todas** las FAQ activas y usa `p_filtro` únicamente para ordenarlas por parecido. Se
+descartó copiar el enfoque de `buscar_menu` (filtrar por umbral de trigrama) tras medirlo contra
+datos de prueba: en el menú el cliente nombra el producto casi literal, pero una FAQ se pregunta
+parafraseada — *"¿puedo llevar mi perro?"* contra *"¿Aceptan mascotas?"* da **0.045** de
+similitud, así que un umbral habría escondido justo la FAQ correcta. El emparejamiento semántico
+lo hace el LLM; la BD solo le entrega el conjunto acotado (tope duro de 40 filas).
+
+**Decisión (c) — dónde va el blindaje:** las FAQ son texto libre del restaurante que entra al
+contexto del agente, así que son una vía para chocar con las reglas globales (no mencionar
+internos, precios exactos desde la BD). Se separó en dos capas que no hay que confundir: el
+**prompt** es la barrera real (trata las FAQ como dato, ignora lo que parezca instrucción, no cita
+precios de una FAQ), y el **lint del dashboard** (`faqLint.js`) es solo ayuda de redacción —
+detecta precios, jerga interna y texto con forma de instrucción, y **avisa sin bloquear**
+(el botón pasa a "Guardar de todos modos"). Bloquear de verdad se dejó únicamente para lo que la
+BD también rechaza (longitudes), para no pelear con el dueño del restaurante por un falso positivo.
+
+**Impacto:**
+- **BD:** migración `faq_configurable` — tabla `faq` + `faq_seq`, RLS `auth_full_access`,
+  `normalizar_faq()` + trigger, `consultar_faq()`. Verificado en vivo: trigger normaliza, los 3
+  CHECK rebotan lo inválido, el RPC ordena bien.
+- **Dashboard:** `useFaq.js`, `FaqSection.jsx`, `FaqModal.jsx`, `faqLint.js` nuevos;
+  `SettingsPage.jsx` pasa a shell con **sub-vistas** (`.settings-segmented`) y el formulario
+  existente sale a `BusinessInfoSection.jsx`. Sub-vistas y no una tab nueva del sidebar porque son
+  la misma tarea y así cada una conserva su único botón `primary` (DS §3).
+- **Bot:** ✅ **aplicado** (workflow `Pizzeria Vera`, `8LI3J7PLi35zf4EJ`, 100 → 101 nodos): nodo
+  `consultar_faq` (`httpRequestTool` v4.4 contra `/rpc/consultar_faq`, credencial `Supabase
+  account` por referencia) colgado del `AGENTE SOPORTE` por `ai_tool`, y `systemMessage`
+  reemplazado por el bloque de `agent-prompts.md#agente-soporte`. Con esto las dos mitades de la
+  FAQ configurable quedan cerradas: lo que el restaurante escribe, el bot lo lee.
+
+  **Nota de método — se aplicó por la REST API, no por el MCP de n8n** (tampoco estaba levantado
+  esta vez). Dos cosas que hay que saber si se repite la vía:
+  - El `PUT /workflows/{id}` exige `settings`, pero su schema es `additionalProperties: false` y
+    **rechaza** `binaryMode`, `availableInMCP` y `timeSavedMode`, que sí existen en el workflow
+    vivo. Hay que quitarlas del payload; verificado después del update que n8n **las conserva**
+    (hace merge, no las pisa) — pero el `400` inicial parece un error del nodo y no lo es.
+  - El parámetro que ve el LLM se llama `filtro` (`$fromAI('filtro', …)` → body `p_filtro`),
+    siguiendo la convención de `armar_mitad_y_mitad`. El prompt decía `p_filtro`; se corrigió a
+    `filtro` en `agent-prompts.md` **y** en lo que quedó cargado, para que el nombre que el
+    prompt menciona sea el que el agente realmente tiene.
+
+---
+
+### 2026-08-10 — BUG-028 resuelto: pedidos zombis en estados intermedios
+
+**Contexto:** 11 pedidos llevaban semanas en `pendiente` (el más viejo de hace 72 días). Son la
+munición que activó el bug del `.first()` (`edge-cases.md#18`): cualquier consulta que busque "el
+pedido pendiente del cliente" recibía N filas en vez de 1.
+**Hallazgo al verificar:** eran **15, no 11** — el tracker solo había contado los `pendiente`.
+Faltaban 3 en `en_camino` (23-jul) y 1 en `en_cocina` del 17-may, **85 días** colgado.
+**Hallazgo que cambió el plan:** `pedidos` tiene un trigger **AFTER UPDATE**
+(`notificar-estado-pedido`) que postea a un webhook de n8n, y ese webhook manda WhatsApp cuando
+cambia el estado. Cancelar los 15 "a secas" habría disparado mensajes *"❌ Tu pedido fue
+cancelado"* por pedidos de hasta 72 días. Se comprobó además que los 15 son **datos de prueba**:
+los teléfonos son los del desarrollador (`5731132…`, `5731848…`) o sintéticos (`573000000001`,
+`1234354353`) — ningún cliente real.
+**Decisión (a) — limpieza silenciosa:** se cancelaron los 15 con `ALTER TABLE … DISABLE TRIGGER`
+**dentro de la transacción** de la migración, así que no salió ni una notificación. Se cancelan y
+no se borran, para no alterar los agregados históricos de Estadísticas. `estado_pago` se deja como
+estaba: `'pendiente'` en un pedido cancelado es la verdad (nunca se cobró); forzarlo a `'rechazado'`
+inventaría un rechazo que ningún operador hizo.
+**Decisión (b) — expiración por día de negocio:** `expirar_pedidos_pendientes()` + job de pg_cron
+`expirar-pedidos-pendientes` (`0 16 * * *`). Se descartó la regla "por N horas" a propósito:
+`pendiente` es la columna *"Por aprobar"* del kanban, así que un pedido legítimo puede pasar horas
+ahí en una noche cargada y una regla por horas cancelaría pedidos reales que el operador todavía
+iba a aprobar. El corte por día **nunca toca el turno en curso**. Tampoco toca `en_cocina` ni
+`en_camino`: esos ya los aceptó la cocina y lo más probable es que se entregaran sin marcarse —
+cancelarlos automáticamente sería mentir; los cierra el operador desde Historial.
+**Por qué a las 16:00 UTC (11:00 Colombia) y no a medianoche:** el corte ya pasó, pero la
+notificación le llega al cliente a una hora decente. El pedido viejo no estorba mientras tanto
+porque el kanban solo muestra los del día actual. La notificación queda **activa** a propósito: un
+cliente cuyo pedido nunca se procesó merece enterarse, y el `motivo_rechazo` está redactado para
+encajar en la plantilla de n8n (*"Tu pedido fue cancelado, no alcanzamos a procesarlo antes del
+cierre del día."*).
+**Verificación:** tras la limpieza, `pedidos` queda en 81 `entregado` + 24 `cancelado` y **cero**
+en estados intermedios. `net._http_response` y `net.http_request_queue` en **0** → ni un webhook
+encolado, la limpieza fue realmente silenciosa. El trigger volvió a `tgenabled='O'`. La función de
+expiración se probó en transacción con `ROLLBACK` sobre las tres fronteras: un pedido de 2h antes
+del inicio del día se cancela; uno de las **00:05 de hoy** y uno de *ahora* sobreviven.
+**Pendiente:** el job aún no ha corrido en producción → queda en "En observación" del tracker.
+**Impacto:** Supabase — migraciones `bug028_limpiar_pedidos_colgados` y
+`bug028_expirar_pedidos_pendientes`. Docs — `database/schema.md` (función nueva + tabla de jobs de
+pg_cron, que no estaba documentada), `shared/bug-tracker.md`, `shared/backlog.md`. **Sin cambios en
+el dashboard ni en n8n.**
+**Cabo suelto menor:** queda el blob huérfano `comprobantes/PED-109.jpg` en Storage. Ya no tiene
+referencia en la BD (`comprobante_url` es `NULL`), así que es inofensivo; borrarlo por SQL solo
+quitaría la fila de metadatos y dejaría el archivo colgado en S3 → pasa a housekeeping del backlog.
+
+---
+
+### 2026-08-10 — La escalada a humano llegaba al dashboard sin contexto
+
+**Contexto:** Un cliente escribía *"tengo un problema con el pedido, necesito hablar con un
+humano"*, el bot escalaba correctamente… y la conversación aparecía **vacía** en la tab Soporte.
+El operador tenía que volver a preguntar el problema que el cliente acababa de explicar, justo
+cuando ya venía molesto.
+**Causa:** el `Router de modo` lee `clientes.modo` **al entrar** el mensaje. El mensaje que dispara
+el handoff entra todavía como `bot`, se procesa por la ruta de agentes, y es el Agente Soporte
+quien a mitad de camino llama `solicitar_handoff`. El nodo que escribe en `mensajes_soporte` está
+en la **otra** rama del router, así que solo capturaba los mensajes **siguientes**: el único que
+importaba era precisamente el que nunca se guardaba.
+**Decisión:** no reconstruirlo en n8n, sino recuperarlo de donde ya estaba — `n8n_chat_histories`,
+la memoria de los agentes. RPC **`registrar_contexto_handoff`** + trigger
+**`trigger_contexto_handoff`** sobre `clientes` (AFTER UPDATE OF `modo`, WHEN pasa a `'humano'`).
+Se puso **en la BD y no en el workflow** a propósito: así cubre cualquier vía de escalada —la tool
+del bot, el dashboard, un UPDATE manual— en vez de solo la que uno se acuerde de cablear, y no
+mete latencia en la ruta de respuesta del bot.
+**Por qué funciona (no es obvio):** el turno del cliente ya está en la memoria cuando el trigger
+dispara, porque el **ORQUESTADOR** corre primero y guarda al cerrar su cadena, antes de que el
+Agente Soporte arranque. Con un solo agente el backfill llegaría vacío.
+**Ruido que hubo que filtrar:** la memoria es **una sola sesión por teléfono para todos los
+agentes**, así que el mismo mensaje se guarda una vez por cadena que corre (se deduplican
+consecutivos, no todas las repeticiones); el ORQUESTADOR guarda su clasificación
+(`{"agente":"soporte",...}`) como mensaje `ai` normal; y los `content` no siempre son texto
+(array vacío en llamadas a tools, filas `type:'tool'` con el resultado crudo).
+**Orden de la conversación:** varios turnos comparten `created_at` porque se escriben juntos al
+cerrar la cadena. Como el chat ordena por esa columna, con empates la respuesta del bot podía
+pintarse **antes** de la pregunta del cliente (pasó en la primera prueba). Se desempata con
+microsegundos según el `id` de la memoria, que sí es secuencial.
+**`origen = 'bot'`:** valor nuevo en el check de `mensajes_soporte`. `ChatBubble` pasa a un mapa
+`ROLES` (con fallback a `cliente` para un origen desconocido) y lo pinta del lado del cliente pero
+**hundido** —`--bg-inset` + borde punteado + texto atenuado— porque es contexto pasado, no algo que
+el operador tenga que contestar. Sin color nuevo, a propósito.
+**Verificación:** probado en transacción con `ROLLBACK` simulando una conversación real con todo su
+ruido (clasificación del orquestador, turnos duplicados por la memoria compartida, `content` array,
+fila `tool`). Resultado: 5 mensajes limpios en el orden correcto + la nota de sistema, y el mensaje
+que disparó el handoff presente. Re-escalar tras resolver **no duplica** (suma solo la nota nueva),
+gracias al corte por el último `mensajes_soporte`. `npm run build` limpio.
+**Falta probar con un handoff real por WhatsApp.**
+**Impacto:** Supabase — migraciones `handoff_contexto_origen_bot`, `registrar_contexto_handoff`,
+`trigger_contexto_handoff`, `registrar_contexto_handoff_orden_estricto`. Dashboard —
+`ChatBubble.jsx`, `support.less`. **Ningún cambio en n8n.** Docs — `database/schema.md`,
+`architecture.md`, `bot/ai-agents.md`, `dashboard/components.md`, `shared/edge-cases.md#21`.
+
+---
+
+### 2026-08-10 — Motivo (ocasión) de la reserva y su costo de montaje
+
+**Contexto:** El local monta decoración para cumpleaños, aniversarios, declaraciones, grados y
+eventos empresariales, y eso tiene un costo. Nada de eso se preguntaba: el bot creaba la reserva
+con fecha/hora/personas y el montaje se acordaba por fuera, así que el precio quedaba a criterio de
+quien atendiera y la sala se enteraba tarde de que había que preparar algo.
+**Decisión:** tabla **`motivos_reserva`** (`clave`, `nombre`, `descripcion`, `costo`, `activo`,
+`orden`) como **fuente única** para las dos capas: el bot la lee con la tool nueva
+`consultar_motivos_reserva` y el dashboard con el hook `useReservationReasons`. En `reservas` se
+agregan `motivo` (FK) y `costo_motivo`. La alternativa —lista hardcodeada en `constants.js` + la
+misma lista escrita a mano en el prompt de n8n— se descartó: son dos copias que se desincronizan
+solas (ya nos pasó con los prompts) y cada cambio de precio sería un deploy.
+**El costo lo escribe un trigger, no quien inserta.** `trigger_costo_motivo` (BEFORE INSERT OR
+UPDATE OF `motivo`) copia el precio desde `motivos_reserva`. Ni el LLM ni el JS del dashboard
+mandan `costo_motivo`: solo la clave. Misma convención que el total de `pedidos`. Lo que queda en
+la reserva es una **foto**: cambiar el precio del motivo no altera reservas ya creadas.
+**Modelo de cobro (decidido con el cliente):** tarifa **fija por reserva**, no por persona, y
+**solo se informa y se guarda** — no genera pedido ni cobro automático, se paga en el local. Eso
+mantiene el cambio fuera de la lógica de pedidos y de las estadísticas de ventas.
+**Flujo del bot:** la ocasión se pregunta **después** de confirmar disponibilidad (no tiene sentido
+ofrecer decoración para un horario lleno) y el costo se anuncia **antes** de pedir la confirmación,
+igual que el recargo de domicilio en el Agente Pedidos.
+**Precios sembrados (PLACEHOLDER, a criterio del operador):** `sin_ocasion` $0, `cumpleanos`
+$80.000, `aniversario` $120.000, `declaracion` $150.000, `grado` $90.000, `empresarial` $200.000.
+Las 15 reservas preexistentes quedaron en `sin_ocasion`.
+**Verificación:** trigger probado en transacción con `ROLLBACK` sobre 4 casos — insert mandando un
+costo falso de `999` (lo ignora y pone $120.000), cambio a `sin_ocasion` ($0), cambio a
+`declaracion` ($150.000) y un UPDATE que no toca `motivo` (deja el costo quieto).
+`n8n_validate_workflow`: 0 errores en los dos workflows. `npm run build` limpio.
+**Falta probar con una reserva real por WhatsApp y una manual desde el dashboard.**
+**Impacto:** Supabase — migraciones `motivos_reserva_tabla_y_costo` y `trigger_costo_motivo_reserva`.
+n8n — `Pizzeria Vera` (tool nueva `consultar_motivos_reserva`, prompt de `AGENTE RESERVAS`,
+descripción e inputs de `crear_reserva`) y `Sub — Crear Reserva` (los 4 nodos). Dashboard —
+`useReservationReasons` (nuevo), `useReservations`, `ReservationModal`, `ReservationDetail`,
+`ReservationsPage`, `constants.js` (`MOTIVO_DEFECTO`), `reservations.less`. Docs — `database/schema.md`,
+`bot/ai-agents.md`, `bot/agent-prompts.md`, `bot/subworkflows.md`, `dashboard/components.md`,
+`shared/backlog.md`, `shared/bug-tracker.md`.
+
+**Limitación conocida:** la plantilla `recordatorio_reserva` de Meta tiene 4 params fijos, así que
+la confirmación por WhatsApp **del dashboard** no menciona la ocasión ni su costo. Requiere aprobar
+una plantilla nueva en WhatsApp Manager — al backlog. El bot sí lo dice (texto libre dentro de la
+ventana de 24h).
+
+**Hallazgos de paso:** (1) **BUG-029** — el bot nunca pudo guardar `notas` en una reserva: el Code
+node del sub lee `input.notas` pero `notas` no está declarado como input ni lo manda el main.
+Registrado, no arreglado (amplía la firma de la tool y el prompt: es otra feature). (2) Drift en
+`dashboard/components.md`: decía que la cancelación va por texto libre "porque no hay plantilla
+aprobada" (usa `cancelacion_reserva` desde 2026-07-29) y que el `reserva_id` manual lo genera el
+front como `RSV-M<timestamp>` (lo genera la BD con `generar_reserva_id()`). Ambos corregidos.
+
+---
+
+### 2026-08-10 — Pizza mitad y mitad (bot + BD + dashboard)
+
+**Contexto:** El negocio vende pizzas con dos sabores, pero el sistema no las modelaba. El bot no
+tenía forma de cotizarlas y en el dashboard había que fingirlas con una pizza normal + una nota,
+así que el precio quedaba a criterio de quien tomara el pedido.
+**Decisión de modelado:** una mitad y mitad es **UNA sola línea** de `detalle_pedidos`, no dos ni
+un producto nuevo del menú: `producto_id` = la mitad **más cara** (fija el precio y mantiene la FK
+válida), `nombre_producto` = `"Mitad X / Mitad Y"`, `variante` = el tamaño, `precio_unitario` = el
+precio de la más cara, y una columna nueva **`mitades jsonb`** con las dos mitades
+(`{producto_id, nombre, variante, precio}` ×2). Al ser una línea normal, el trigger del total, el
+historial, el export y las estadísticas siguen funcionando **sin tocarse**. La alternativa —
+producto de menú por cada combinación— habría hecho explotar el menú (36 pizzas saladas × 2 masas
+→ cientos de filas) y la de dos líneas a mitad de precio habría roto la regla de cobro.
+**Regla de cobro:** se cobra **la mitad más cara** del tamaño pedido. Se decide en la RPC
+`cotizar_mitad_y_mitad`, que es la **única** fuente: la llaman tanto el bot (tool
+`armar_mitad_y_mitad`) como el dashboard (`MenuPicker`). Ni el LLM ni el JS del frontend calculan
+ese precio. Restricciones que valida: misma **masa** (`menu.variante`), tamaño
+`pequena/mediana/grande/familiar` (la **porción no se parte**), solo las 4 categorías de pizza
+salada (las dulces no), ambas disponibles y sabores distintos. Cruzar categorías **sí** se puede
+(media tradicional + media premium → cobra la premium).
+**Defensa en profundidad:** `Sub — Crear_orden_completa` **recalcula** el precio de toda línea con
+`mitades` contra el menú real antes de insertar, así que un `precio_unitario` inventado por el LLM
+nunca llega a la BD. Es la segunda barrera después de la RPC.
+**Efecto colateral corregido:** `editar_pedido` borra y reinserta las líneas copiando solo 6
+campos, así que editar un pedido desde el dashboard **perdía `notas_item`** (ya pasaba antes, sin
+que nadie lo notara) y habría perdido `mitades`, dejando una línea que cobra el precio de una
+pizza cara sin decir de qué era la otra mitad. Ahora arrastra ambos.
+**Verificación:** RPC probada contra los 8 casos (ok tradicional/estofada, masa distinta, porción,
+dulce, tilde en "pequeña", mitades iguales, producto inexistente). Ciclo completo probado en
+transacción con `ROLLBACK`: insert → trigger (`57.000` + `5.000` domicilio = `62.000`) →
+`editar_pedido` a cantidad 2 (`114.000` + `5.000` = `119.000`) con `mitades` y `notas_item`
+intactos. `n8n_validate_workflow`: 0 errores en los dos workflows; `mode:'active'` confirma el
+nodo `armar_mitad_y_mitad` y los prompts en el grafo **publicado**. `npm run build` limpio.
+**Falta probar con un pedido real por WhatsApp y con un pedido manual desde el dashboard.**
+**Impacto:** Supabase — migraciones `mitad_y_mitad_columna_y_cotizador`, `mitad_y_mitad_rpc_cotizar`,
+`editar_pedido_arrastra_mitades_y_notas_item`. n8n — `Pizzeria Vera` (nodo nuevo
+`armar_mitad_y_mitad`, prompts de `AGENTE MENÚ` y `AGENTE PEDIDOS`, descripción de
+`crear_orden_completa`) y `Sub — Crear_orden_completa` (3 Code nodes + el select del HTTP de menú).
+Dashboard — `MenuPicker`, `CreateOrderModal`, `EditOrderModal`, `OrderCard`, `OrderDetailModal`,
+`useOrders`, `useOrderHistory`, `index.css` (`.mm-tag`), `orders.less`. Docs — `database/schema.md`,
+`bot/ai-agents.md`, `bot/agent-prompts.md`, `bot/subworkflows.md`, `dashboard/components.md`,
+`dashboard/design-system.md`.
+
+**Drift heredado detectado en la misma pasada:** al releer los prompts vivos apareció que las
+reglas de BUG-010 (*"modificar/cancelar un pedido YA REGISTRADO" → soporte → handoff*) estaban en
+n8n desde 2026-07-22 pero **nunca se copiaron a `agent-prompts.md`**, que se declara verbatim.
+Ya están sincronizadas (ORQUESTADOR y AGENTE SOPORTE).
+
+---
+
 ### 2026-07-29 — El AGENTE PEDIDOS creaba el pedido sin esperar la confirmación del cliente
 
 **Contexto:** Dos pedidos seguidos salieron mal. En `PED-223` el bot preguntó *"¿Pagas en efectivo o

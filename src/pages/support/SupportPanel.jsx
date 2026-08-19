@@ -2,11 +2,23 @@ import { useRef, useEffect, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useSupportConversations } from '../../hooks/useSupportConversations'
+import { useRespuestasRapidas } from '../../hooks/useRespuestasRapidas'
 import { parseDb } from '../../utils/dateRanges'
+import { aplicarNombre } from '../../utils/quickReplies'
 import ConversationItem from './ConversationItem'
 import ChatBubble from './ChatBubble'
 import ImageLightbox from './ImageLightbox'
 import Icon from '../../components/Icon'
+
+// El textarea crece con el contenido hasta un tope. Se llama tanto desde el
+// `onInput` del usuario como tras insertar una respuesta rápida — asignar
+// `value` por código no dispara `onInput`, así que sin esto la caja se quedaría
+// de una línea con el texto oculto.
+function autoResize(el) {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+}
 
 export default function SupportPanel() {
   const {
@@ -25,17 +37,54 @@ export default function SupportPanel() {
     resolveConversation,
   } = useSupportConversations()
 
+  // Solo lectura aquí: se administran en Configuración › Respuestas rápidas.
+  const { respuestas } = useRespuestasRapidas()
+  const activas = respuestas.filter(r => r.activa)
+
   const [inputText,   setInputText]   = useState('')
   const [lightboxUrl, setLightboxUrl] = useState(null)
   const messagesEndRef = useRef(null)
+  const inputRef       = useRef(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Un solo punto de ajuste del alto, en vez de recalcularlo en cada handler:
+  // corre DESPUÉS de que React pinta, que es la única forma de medir bien el
+  // `scrollHeight` cuando el valor lo cambió el código (insertar una rápida,
+  // limpiar al enviar o al cambiar de conversación) y no el teclado.
+  useEffect(() => { autoResize(inputRef.current) }, [inputText, selectedPhone])
+
   function handleSend() {
     sendMessage(inputText.trim())
     setInputText('')
+  }
+
+  // Escribe la respuesta en el input — nunca la envía. El admin la revisa,
+  // completa lo que falte y presiona Enviar.
+  function insertQuickReply(respuesta) {
+    const el = inputRef.current
+    const texto = aplicarNombre(respuesta.texto, selectedConvo?.nombre)
+
+    const ini = el?.selectionStart ?? inputText.length
+    const fin = el?.selectionEnd   ?? inputText.length
+    const antes   = inputText.slice(0, ini)
+    const despues = inputText.slice(fin)
+
+    // Si ya había algo escrito, separa con un espacio en vez de pegar las
+    // palabras; si el input está vacío, no mete espacios de más.
+    const sep = antes && !/\s$/.test(antes) ? ' ' : ''
+    const siguiente = antes + sep + texto + despues
+
+    setInputText(siguiente)
+
+    // El cursor queda al final de lo insertado, listo para seguir escribiendo.
+    requestAnimationFrame(() => {
+      el?.focus()
+      const pos = (antes + sep + texto).length
+      el?.setSelectionRange(pos, pos)
+    })
   }
 
   function handleKeyDown(e) {
@@ -133,17 +182,32 @@ export default function SupportPanel() {
               </div>
             )}
 
+            {activas.length > 0 && (
+              <div className="quick-replies">
+                <span className="qr-label"><Icon name="reply" size={12} /> Rápidas</span>
+                <div className="qr-chips">
+                  {activas.map(r => (
+                    <button
+                      key={r.respuesta_id}
+                      className="qr-chip"
+                      onClick={() => insertQuickReply(r)}
+                      title={aplicarNombre(r.texto, selectedConvo?.nombre)}
+                    >
+                      {r.atajo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="input-area">
               <textarea
+                ref={inputRef}
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Escribe un mensaje..."
                 rows={1}
-                onInput={e => {
-                  e.target.style.height = 'auto'
-                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
-                }}
               />
               <button
                 className={`send${inputText.trim() ? ' active' : ''}`}

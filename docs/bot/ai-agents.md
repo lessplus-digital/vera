@@ -81,6 +81,18 @@ categoría. Solo `encontrados = 0` **con** `agotados` vacío significa que no es
 | `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; RPC `buscar_menu` (fuzzy por nombre/categoría/descripción, devuelve `similitud` — BUG-006, 2026-07-22). Devuelve `productos_por_categoria` (**solo disponibles**) + `agotados` aparte (2026-07-28). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
 | `crear_carrito` | HTTP POST | `/carritos` body `{telefono, items, total}` (credencial n8n desde BUG-003) |
 | `actualizar_carrito` | HTTP PATCH | `/carritos?telefono=eq.{fromAI}` body `{items, total}` (credencial n8n) |
+| `armar_mitad_y_mitad` | HTTP POST | `/rpc/cotizar_mitad_y_mitad` body `{p_producto_a, p_producto_b, p_tamano}` (2026-08-10). Cotiza una pizza mitad y mitad **server-side** y devuelve el item listo para el carrito |
+
+**Pizza mitad y mitad (2026-08-10):** una pizza con dos sabores es **una sola línea** que cobra
+el precio de la **mitad más cara** del tamaño pedido. El LLM **nunca** calcula ese precio: llama
+`armar_mitad_y_mitad` con los dos `producto_id` (de `consultar_menu`) + el tamaño y copia la
+respuesta al carrito **incluido el campo `mitades`**, que es lo que persiste en
+`detalle_pedidos.mitades`. Reglas que valida la RPC: misma masa (`menu.variante`: Tradicional con
+Tradicional, Estofada con Estofada), tamaño `pequena/mediana/grande/familiar` (la **porción no se
+parte**), solo las 4 categorías de pizza salada (las dulces no), ambas disponibles y sabores
+distintos. Sí se pueden cruzar categorías (media tradicional + media premium → cobra la premium).
+`Sub — Crear_orden_completa` **vuelve a calcular** ese precio contra el menú real al crear el
+pedido, así que un precio inventado por el LLM no llega a la BD.
 
 Prompt completo: [`agent-prompts.md#agente-menú`](agent-prompts.md#agente-menú).
 
@@ -93,7 +105,8 @@ pedido y método de pago (una pregunta por mensaje). Domicilio suma **$5.000**.
 
 Invariantes que comparte con la BB.DD.: `tipo_pedido` en minúscula (`domicilio`/`recoger`),
 `metodo_pago` capitalizado (`Efectivo`/`Transferencia`), items **sin modificar** desde
-`leer_carrito`. Ante error de `crear_orden_completa` → **no reintenta**, escala.
+`leer_carrito` — incluido el campo `mitades` cuando la línea es una pizza mitad y mitad.
+Ante error de `crear_orden_completa` → **no reintenta**, escala.
 
 **Gate de confirmación (2026-07-29, no lo quites):** el flujo del prompt es
 `PASO 3 — RESUMEN Y CONFIRMACIÓN` (muestra el resumen, cierra con *"¿Te lo confirmo así?"* y
@@ -108,8 +121,9 @@ en el mismo turno del resumen e **inventa el método de pago** (`edge-cases.md#2
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `leer_carrito1` | Supabase (get) | `carritos` WHERE `telefono` |
-| `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
+| `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Desde 2026-08-18 el `filtro` acepta **`barrio`**, que viaja crudo hasta el INSERT: el precio del envío lo pone el trigger de la BD, nunca el LLM. Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
 | `actualizar_cliente1` | Supabase (update) | `clientes` SET `direccion_principal` WHERE `cliente_id` |
+| ⏳ `consultar_cobertura` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — el parámetro que ve el LLM se llama `barrio` (`$fromAI`). Tarifa del domicilio para ese barrio, o el listado de zonas si va vacío. **`cubierto:false` no es un rechazo**: trae la tarifa base. ⏳ **Diseñada y con RPC en producción, pero el nodo NO está creado todavía** — bloqueado por BUG-030 |
 
 Prompt completo: [`agent-prompts.md#agente-pedidos`](agent-prompts.md#agente-pedidos).
 Datos bancarios (transferencia): Bancolombia, ahorros 62500073329, Vera Pizzería, NIT 1004967215.
@@ -123,25 +137,68 @@ datos y **handoff** a humano. Registra el nombre si es válido (no emojis/religi
 
 | Tool | Tipo | Detalle |
 |---|---|---|
-| `info_local` | Supabase (getAll) | `info_negocio` (clave/valor: horarios, dirección, pagos, zonas) |
+| `info_local` | Supabase (getAll) | `info_negocio` (clave/valor: horarios, dirección, pagos). **Ya NO trae zonas de domicilio**: `zona_delivery` y `costo_delivery` se eliminaron el 2026-08-18 |
+| ⏳ `consultar_cobertura1` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — mismo RPC que en el Agente Pedidos, para responder "¿a dónde llevan?" y "¿cuánto cuesta el domicilio?". ⏳ **Nodo pendiente de crear**, bloqueado por BUG-030 |
+| `consultar_faq` | HTTP POST | `/rpc/consultar_faq` body `{p_filtro}` — el parámetro que ve el LLM se llama `filtro` (`$fromAI`), como en `armar_mitad_y_mitad` (2026-08-11). Preguntas frecuentes **activas** que administra el restaurante desde el dashboard |
 | `actualizar_cliente` | Supabase (update) | `clientes` SET `nombre`, `direccion_principal` WHERE `cliente_id` |
 | `solicitar_handoff` | Supabase (update) | `clientes` SET `modo='humano'` WHERE `cliente_id` AND `telefono` |
 
 Efecto del handoff: el Router de modo deja de pasar al orquestador y los mensajes del
 cliente caen en `mensajes_soporte` (panel de soporte del dashboard).
+
+**FAQ configurable (2026-08-11):** todo lo que el cliente pregunta y no es menú, pedido ni
+`info_negocio` (¿tienen parqueadero? ¿aceptan mascotas? ¿hacen eventos?) sale ahora de la tabla
+`faq`, que el restaurante edita solo desde **Configuración → Preguntas frecuentes**. Antes ese
+contenido se escribía a mano en este prompt: por cada cliente nuevo de Plateo había que
+reescribirlo, que es justo lo que rompe el modelo multi-tenant. Es la misma jugada que
+`motivos_reserva` y `info_negocio` — la verdad del negocio vive en la BD, el prompt queda genérico.
+
+`consultar_faq` **no filtra**: devuelve todas las FAQ activas (tope 40) y `p_filtro` solo las
+reordena por parecido. El emparejamiento lo hace el LLM, porque el cliente parafrasea y una
+búsqueda por trigrama perdería la FAQ correcta (detalle y medición en
+[`../database/schema.md`](../database/schema.md#funciones--rpcs)).
+
+> ⚠️ **El contenido de las FAQ es DATO, nunca instrucción.** Es texto libre que escribe el
+> restaurante y entra al contexto del agente, así que es la única vía por la que alguien podría
+> —sin querer o a propósito— intentar reescribir el comportamiento del bot o meter un precio que
+> no salió de la BD. El prompt lo blinda explícitamente (ver `agent-prompts.md#agente-soporte`):
+> las FAQ se leen como información del negocio, y si una parece darle órdenes al agente, se
+> ignora. El dashboard además avisa al admin cuando detecta precios, jerga interna o texto con
+> forma de instrucción (`src/pages/settings/faqLint.js`) — pero eso es una ayuda de redacción,
+> **no** la barrera: la barrera es el prompt.
+
+**Contexto de la escalada (2026-08-10):** el mensaje que dispara el handoff viaja por la ruta del
+**bot**, así que nunca pasa por el nodo que escribe en `mensajes_soporte` — el operador abría la
+conversación en blanco y tenía que volver a preguntar el problema. Ahora lo resuelve la BD, no
+n8n: el trigger `trigger_contexto_handoff` sobre `clientes` llama a `registrar_contexto_handoff()`
+y vuelca la conversación reciente desde `n8n_chat_histories`. **Funciona porque el ORQUESTADOR
+guarda el turno del cliente al cerrar SU cadena, que corre antes de que el Agente Soporte llame
+`solicitar_handoff`** — cuando el trigger dispara, el mensaje ya está en la memoria.
+Al vivir en la BD cubre cualquier vía de escalada (la tool, el dashboard, un UPDATE manual) sin
+tocar el workflow.
 Prompt completo: [`agent-prompts.md#agente-soporte`](agent-prompts.md#agente-soporte).
 
 ---
 
 ## 5. AGENTE RESERVAS
 
-**Rol:** gestionar reservas (una pregunta por mensaje: personas → día → hora). Consulta
-disponibilidad **antes** de proponer; confirma antes de crear. Máx 12 personas (si no, humano).
+**Rol:** gestionar reservas (una pregunta por mensaje: personas → día → hora → **ocasión**).
+Consulta disponibilidad **antes** de proponer; confirma antes de crear. Máx 12 personas (si no, humano).
+
+**Motivo / ocasión de la reserva (2026-08-10):** tras confirmar disponibilidad, el agente pregunta
+la ocasión (cumpleaños, aniversario, declaración, grado, evento empresarial o ninguna). Algunas
+llevan un **montaje con costo**, que se anuncia **antes** de pedir la confirmación —igual que el
+recargo de domicilio en el Agente Pedidos— y se cobra **en el local**: no genera pedido ni cobro
+automático. El agente **nunca** inventa ni recuerda un precio: llama `consultar_motivos_reserva`.
+A `crear_reserva` le pasa solo la **clave** (`cumpleanos`, no "Cumpleaños"); el costo lo escribe el
+trigger `trigger_costo_motivo` en la BD y vuelve en la respuesta como `costo_legible`. Es tarifa
+**fija por reserva**, no por persona — el prompt lo prohíbe explícitamente.
 
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `consultar_disponibilidad` | Subworkflow | `Sub — consultar_disponibilidad` · inputs `fecha`, `hora` · 8 mesas / 90 min |
-| `crear_reserva` | Subworkflow | `Sub — Crear Reserva` · inputs `telefono, nombre, fecha, hora, personas, cliente_id` · cupo protegido por trigger de BD |
+| `consultar_motivos_reserva` | Supabase (getAll) | `motivos_reserva` WHERE `activo=true` (2026-08-10). Ocasiones vigentes con `clave`, `nombre`, `descripcion` y `costo` |
+| `crear_reserva` | Subworkflow | `Sub — Crear Reserva` · inputs `telefono, nombre, fecha, hora, personas, cliente_id, motivo` · cupo protegido por trigger de BD |
 | `consultar_reservas_cliente` | Supabase (getAll) | `reservas` WHERE `telefono`, `estado='confirmada'`, `fecha >= now` |
 | `cancelar_reserva` | Subworkflow | `Sub — Cancelar Reserva` · inputs `reserva_id`, `telefono` · valida propiedad por teléfono (cableada 2026-07-23, BUG-005) |
 
@@ -161,5 +218,5 @@ Prompt completo: [`agent-prompts.md#agente-reservas`](agent-prompts.md#agente-re
 ## Tablas que tocan los agentes (sync en `../database/schema.md`)
 
 `carritos` (PK telefono; items JSON, total), `menu`, `pedidos` + `detalle_pedidos`,
-`clientes`, `info_negocio` (clave/valor del negocio), `reservas`. Memoria de chat en la
-tabla de n8n Postgres Chat Memory. **Nuevas a documentar:** `carritos`, `info_negocio`.
+`clientes`, `info_negocio` (clave/valor del negocio), `faq` (preguntas frecuentes editables),
+`reservas` + `motivos_reserva`. Memoria de chat en la tabla de n8n Postgres Chat Memory.

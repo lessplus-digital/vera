@@ -35,21 +35,42 @@ client** (see the WhatsApp token note under Gotchas).
 
 ## Architecture
 
-**No router.** `src/App.jsx` is an auth gate: it shows a splash while the Supabase
-session loads, `LoginPage` if there's no session, otherwise `DashboardShell`.
-`DashboardShell` switches between five tabs via `activeTab` state (not URLs):
-`dashboard` (Kanban), `soporte`, `estadisticas`, `clientes`, `reservas`.
+**No router.** `src/App.jsx` is an auth gate: splash while the Supabase session **and the
+user's profile** load, `LoginPage` if there's no session, a "sin acceso" screen if the user
+has no usable role, otherwise `DashboardShell`. `DashboardShell` switches tabs via
+`activeTab` state (not URLs): `dashboard`, `soporte`, `estadisticas`, `historial`,
+`clientes`, `reservas`, `menu`, `resenas`, `configuracion` — **filtered by role**.
 
 Data hooks that query Supabase live inside `DashboardShell`, **not** `App` — they require
 an authenticated session (RLS blocks everything otherwise), so they must not run on the
-login screen.
+login screen. The **one declared exception** is the profile/role load, which lives in
+`AuthProvider`: the role decides which screens exist, so it must resolve before the shell
+mounts. It still doesn't query anything while there's no session.
 
 **Auth + security model:** `src/hooks/useAuth.jsx` wraps the app in `AuthProvider`
 (mounted in `main.jsx`). Supabase persists the session in localStorage and attaches the
-JWT to every REST/Realtime call. The core tables the dashboard reads (`clientes`, `pedidos`,
-`detalle_pedidos`, `reservas`, `menu`, `mensajes_soporte`) have **RLS enabled**, so the public
-anon key alone returns nothing there — a logged-in session is required. The secret
-`service_role` key is meant to be used **only in n8n**, never here.
+JWT to every REST/Realtime call. Every table has **RLS enabled**, so the public anon key
+alone returns nothing — a logged-in session is required. The secret `service_role` key is
+meant to be used **only in n8n**, never here.
+
+**Roles (2026-08-12): `admin` / `mesero` / `domiciliario`.** The role lives in `perfiles.rol`
+and RLS policies read it via `public.mi_rol()`. Three rules you cannot get wrong:
+
+1. **`src/utils/permisos.js` is NOT the security boundary** — it only hides screens the DB
+   would return empty. The JWT travels on every REST and Realtime call, so filtering in React
+   alone would let a `domiciliario` read the whole restaurant via the API.
+2. **RLS filters ROWS, not COLUMNS.** When the rule is "only this role may touch this
+   *column*", the boundary is a **trigger**, not a policy. Three exist already:
+   `pedidos.domiciliario_id` (admin only), `perfiles.rol`/`activo` (admin only), and the
+   delivery transition (RPC `marcar_entregado`, since the courier has no UPDATE policy).
+3. **A `SECURITY DEFINER` function bypasses RLS**, so it must authorize itself. They all use
+   the `auth.uid() IS NULL → allow` pattern so n8n/service_role keeps working.
+
+Full matrix and the verification runs in `docs/database/schema.md` §Modelo de permisos.
+
+**Creating users requires `service_role`**, which cannot ship in the bundle (same reason as
+the WhatsApp token). Accounts are created in the Supabase dashboard and land as
+`domiciliario` via `trigger_crear_perfil`; the app only assigns roles.
 
 > ✅ **Update (2026-07-22, verified via Supabase MCP):** RLS is now enabled on **every** table
 > (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),

@@ -2,7 +2,7 @@ import React from 'react'
 import OrderCard from './OrderCard'
 import Icon from '../../components/Icon'
 
-export default function Column({ title, icon, cls, orders, newIds, onUpdated, onCreate }) {
+export default function Column({ title, icon, cls, orders, newIds, onUpdated, onCreate, domiciliarios }) {
   return (
     <div className="col">
       <div className="col-head">
@@ -28,6 +28,7 @@ export default function Column({ title, icon, cls, orders, newIds, onUpdated, on
               order={order}
               isNew={newIds.has(order.pedido_id)}
               onUpdated={onUpdated}
+              domiciliarios={domiciliarios}
             />
           ))
         )}

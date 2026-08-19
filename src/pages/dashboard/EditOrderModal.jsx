@@ -19,16 +19,17 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
           variante: item.variante || 'Estándar',
           cantidad: item.cantidad,
           precio_unitario: Number(item.precio_unitario || 0),
+          mitades: item.mitades || null,
         }))
       )
     }
   }, [order])
 
-  const itemsOriginalSum = (order.detalle_pedidos || []).reduce(
-    (sum, item) => sum + item.cantidad * Number(item.precio_unitario || 0),
-    0
-  )
-  const domicilioSurcharge = Number(order.total || 0) - itemsOriginalSum
+  // El envío sale de su columna, no de restar (total − items): con tarifa por
+  // barrio ese despeje daba un número distinto en cada zona. Es el mismo valor
+  // que el RPC `editar_pedido` vuelve a sumar al guardar, así que el preview y
+  // el total real no se pueden separar.
+  const domicilioSurcharge = Number(order.costo_domicilio || 0)
 
   const itemsTotal = items.reduce((sum, item) => sum + item.cantidad * item.precio_unitario, 0)
   const total = itemsTotal + domicilioSurcharge
@@ -72,6 +73,9 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
       variante: item.variante,
       cantidad: item.cantidad,
       precio_unitario: item.precio_unitario,
+      // `editar_pedido` borra y reinserta las líneas: sin esto una pizza mitad y
+      // mitad perdería de qué era cada mitad al editar el pedido.
+      mitades: item.mitades || null,
     }))
 
     const { data, error: rpcError } = await supabase.rpc('editar_pedido', {
@@ -142,7 +146,10 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
             {items.map((item) => (
               <div key={item.key} className="em-item">
                 <div className="info">
-                  <div className="name">{item.nombre_producto}</div>
+                  <div className="name">
+                    {item.mitades && <span className="mm-tag">½+½</span>}
+                    {item.nombre_producto}
+                  </div>
                   {item.variante && item.variante !== 'Estándar' && (
                     <div className="variant">{item.variante}</div>
                   )}

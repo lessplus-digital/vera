@@ -432,17 +432,26 @@ html, body {
   transition: all 0.16s ease;
 }
 .admin-trigger:hover { background: var(--bg-base); border-color: var(--border); }
-.admin-avatar {
-  width: 34px; height: 34px;
+/* Avatar compartido (components/Avatar.jsx). El tamaño lo fija el componente
+   por estilo inline: el mismo avatar aparece a 28, 34, 40 y 72px y una clase
+   por tamaño sería un modificador nuevo cada vez.
+   Sustituye a .admin-avatar, que solo servía a la barra superior. */
+.avatar {
   flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   background: var(--amber);
   color: #fff;
   font-weight: 700;
-  font-size: 14px;
   border-radius: 50%;
+  overflow: hidden;
+  user-select: none;
 }
-.admin-avatar.lg { width: 42px; height: 42px; font-size: 17px; }
+/* La foto tapa el círculo ámbar; `cover` evita que una foto no cuadrada se
+   deforme (las de perfil casi nunca lo son). */
+.avatar.img {
+  object-fit: cover;
+  background: var(--bg-inset);
+}
 .admin-id { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
 .admin-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
 .admin-role { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
@@ -801,6 +810,29 @@ select option { background-color: var(--bg-modal); color: var(--text-primary); }
 
 /* Cifras tabulares con la sans (reemplaza a la mono en casi todo) */
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM — Marca de pizza mitad y mitad
+   Distintivo inline que precede al nombre del producto en
+   cualquier lista de ítems (Kanban, editar/crear pedido,
+   detalle del historial). Solo aparece cuando la línea de
+   `detalle_pedidos` trae `mitades`.
+═══════════════════════════════════════════════════════════ */
+
+.mm-tag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--purple-dim);
+  border: 1px solid var(--purple-border);
+  color: var(--purple);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
 
 /* ═══════════════════════════════════════════════════════════
    DESIGN SYSTEM — Spinner (carga)

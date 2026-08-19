@@ -8,13 +8,22 @@ import { ESTADO_PAGO_LABEL, METODO_LABEL } from '../../utils/constants'
 import EditOrderModal from './EditOrderModal'
 import RejectModal from './RejectModal'
 import OrderActions from './OrderActions'
+import AssignCourier from './AssignCourier'
 import Icon from '../../components/Icon'
+import { useAuth } from '../../hooks/useAuth'
+import { puede } from '../../utils/permisos'
 
-export default function OrderCard({ order, isNew, onUpdated }) {
+export default function OrderCard({ order, isNew, onUpdated, domiciliarios = [] }) {
+  const { rol } = useAuth()
   const [loading, setLoading] = useState(false)
   const [showComprobante, setShowComprobante] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [errorAccion, setErrorAccion] = useState(null)
+
+  const puedeAsignar = puede(rol, 'asignarDomiciliario')
+  const puedeEditar  = puede(rol, 'editarPedido')
+  const puedeAprobar = puede(rol, 'cambiarEstadoPedido')
 
   const timeAgo = formatDistanceToNow(parseDb(order.fecha_pedido), {
     addSuffix: true,
@@ -23,15 +32,45 @@ export default function OrderCard({ order, isNew, onUpdated }) {
 
   async function updateEstado(estado, estadoPago = null) {
     setLoading(true)
+    setErrorAccion(null)
     const updates = { estado }
     if (estadoPago) updates.estado_pago = estadoPago
-    if (estado === 'entregado') updates.fecha_entrega = new Date().toISOString()
     const { error } = await supabase
       .from('pedidos')
       .update(updates)
       .eq('pedido_id', order.pedido_id)
     setLoading(false)
-    if (!error) onUpdated()
+    if (error) setErrorAccion('No se pudo actualizar el pedido.')
+    else onUpdated()
+  }
+
+  /*
+   * La entrega va SIEMPRE por el RPC, sea quien sea el que la marca.
+   *
+   * Para el domiciliario es obligatorio: no tiene política de UPDATE sobre
+   * `pedidos` (RLS no puede limitar columnas, así que un UPDATE suyo le dejaría
+   * tocar también `total` o `estado_pago`). Para admin y mesero, que sí podrían
+   * hacerlo directo, se usa igual para no tener dos caminos que puedan
+   * divergir — y porque el RPC ya valida que el pedido no esté cerrado.
+   *
+   * `fecha_entrega` la pone `trigger_fecha_entrega` en la BD; antes también se
+   * mandaba desde JS, que era la misma verdad escrita dos veces.
+   */
+  async function marcarEntregado() {
+    setLoading(true)
+    setErrorAccion(null)
+    const { error } = await supabase.rpc('marcar_entregado', { p_pedido_id: order.pedido_id })
+    setLoading(false)
+    if (error) {
+      console.error('Error marcando entregado:', error)
+      setErrorAccion(
+        error.message?.includes('no está asignado')
+          ? 'Ese pedido ya no está asignado a ti.'
+          : 'No se pudo marcar como entregado.'
+      )
+      return
+    }
+    onUpdated()
   }
 
   async function handleReject(motivo) {
@@ -89,25 +128,41 @@ export default function OrderCard({ order, isNew, onUpdated }) {
         {order.tipo_pedido === 'domicilio' && order.direccion_entrega && (
           <div className="addr">
             <span style={{ color: 'var(--text-muted)', display: 'inline-flex' }}><Icon name="pin" size={13} /></span>
-            <span>{order.direccion_entrega}</span>
+            <span>
+              {order.direccion_entrega}
+              {/* El barrio decide la tarifa: sin zona, se cobró la base. */}
+              {order.barrio && (
+                <span className={`oc-barrio${order.zona ? '' : ' sin-zona'}`}>
+                  {order.barrio}
+                </span>
+              )}
+            </span>
           </div>
         )}
 
         {/* Items */}
         {order.detalle_pedidos?.length > 0 && (
           <div className="items-box">
-            {order.detalle_pedidos.map((item, i) => (
-              <div key={i} className="item">
-                <span>
-                  <span className="qty">{item.cantidad}x</span>
-                  {' '}{item.nombre_producto}
-                  {item.variante && item.variante !== 'Estándar' && (
-                    <span className="variant"> · {item.variante}</span>
-                  )}
-                </span>
-                <span className="price">${Number(item.precio_unitario || 0).toLocaleString('es-CO')}</span>
-              </div>
-            ))}
+            {order.detalle_pedidos.map((item, i) => {
+              // `mitades` solo viene en pizzas mitad y mitad. `nombre_producto` ya dice
+              // "Mitad X / Mitad Y", pero la masa vive únicamente aquí y la cocina la necesita.
+              const masa = item.mitades?.[0]?.variante
+              return (
+                <div key={i} className="item">
+                  <span>
+                    <span className="qty">{item.cantidad}x</span>
+                    {' '}
+                    {item.mitades && <span className="mm-tag">½+½</span>}
+                    {item.nombre_producto}
+                    {item.variante && item.variante !== 'Estándar' && (
+                      <span className="variant"> · {item.variante}</span>
+                    )}
+                    {masa && <span className="variant"> · {masa}</span>}
+                  </span>
+                  <span className="price">${Number(item.precio_unitario || 0).toLocaleString('es-CO')}</span>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -133,18 +188,30 @@ export default function OrderCard({ order, isNew, onUpdated }) {
         )}
 
         {/* Editar pedido */}
-        {order.estado === 'pendiente' && (
+        {order.estado === 'pendiente' && puedeEditar && (
           <button className="oc-btn edit" onClick={() => setShowEdit(true)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <Icon name="edit" size={14} /> Editar pedido
           </button>
+        )}
+
+        {/* Asignación de domiciliario — solo admin, y solo si el pedido sigue vivo */}
+        {puedeAsignar && order.tipo_pedido === 'domicilio' && (
+          <AssignCourier
+            order={order}
+            domiciliarios={domiciliarios}
+            onUpdated={onUpdated}
+          />
         )}
 
         <OrderActions
           order={order}
           loading={loading}
           onUpdate={updateEstado}
+          onEntregar={marcarEntregado}
           onRejectClick={() => setShowRejectModal(true)}
         />
+
+        {errorAccion && <div className="oc-error">{errorAccion}</div>}
 
       </div>
 
@@ -165,10 +232,10 @@ export default function OrderCard({ order, isNew, onUpdated }) {
             <img
               src={order.comprobante_url}
               alt="Comprobante de pago"
-              className={order.estado === 'pendiente' ? 'has-actions' : ''}
+              className={order.estado === 'pendiente' && puedeAprobar ? 'has-actions' : ''}
             />
 
-            {order.estado === 'pendiente' && (
+            {order.estado === 'pendiente' && puedeAprobar && (
               <div className="vp-actions">
                 <button
                   className="act-btn red"

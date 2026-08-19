@@ -21,6 +21,61 @@
   `Crear_orden_completa` y devolver `{ ok: false, error: 'agotado', items: [...] }` para que el
   Agente Pedidos avise y devuelva al cliente al Agente Menú a sustituir el item.
 
+## Housekeeping
+
+- **Datos de prueba de roles en la BD de PRODUCCIÓN** `[S]` — sembrados el **2026-08-12** para
+  validar los tres roles en el navegador. **Se dejan a propósito** hasta terminar las pruebas
+  exhaustivas; bórralos cuando ya no hagan falta.
+
+  | Qué | Cuánto | Identificador |
+  |---|---|---|
+  | Usuarios de Auth + su perfil | 3 | `mesero.prueba@vera.test` · `domi.prueba@vera.test` · `domi2.prueba@vera.test` |
+  | Pedidos ficticios de hoy | 4 | `PED-234`…`PED-237` (`notas = 'PRUEBA ROLES — borrar'`) |
+  | Cliente ficticio | 1 | `ZZ Cliente Prueba Roles` (`573000000099`) |
+  | Pedidos históricos con `domiciliario_id` puesto | 61 | pedidos **reales/sembrados** a los que se asignó repartidor para poblar el historial |
+
+  ⚠️ **Los 4 pedidos ficticios cuentan en las estadísticas del día** mientras existan.
+
+  El teléfono `573000000099` es falso **a propósito**: marcar entregado dispara
+  `notificar-estado-pedido`, que hace POST a n8n y este le escribe por WhatsApp al número del
+  pedido. Con un cliente real le llegaría un mensaje sobre un pedido que nunca hizo. **No
+  reasignes esos pedidos a un cliente real para probar.**
+
+  Limpieza (el primer UPDATE deshace la asignación de los 61 históricos):
+
+  ```sql
+  update public.pedidos set domiciliario_id = null where domiciliario_id is not null;
+  delete from auth.users where email like '%.prueba@vera.test';
+  delete from public.pedidos where notas = 'PRUEBA ROLES — borrar';
+  delete from public.clientes where telefono = '573000000099';
+  ```
+
+  Si para entonces se hubieran subido fotos de perfil, además:
+  `delete from storage.objects where bucket_id='avatares';` y borrar los archivos desde el panel
+  de Supabase (quitar solo la fila deja el objeto colgado en S3 — misma trampa que el blob de
+  `comprobantes` de abajo).
+
+- **Borrar `comprobantes/PED-109.jpg` de Storage** — blob huérfano que dejó el bug del `.first()`
+  (era una copia del comprobante de `PED-223` guardada con el nombre equivocado). Desde el fix de
+  BUG-028 **ya no hay ninguna referencia en la BD** (`PED-109.comprobante_url` es `NULL`), así que
+  es inofensivo. No se puede borrar por SQL: quitar la fila de `storage.objects` dejaría el archivo
+  real colgado en S3. Hay que hacerlo desde el dashboard de Supabase (Storage → comprobantes) o con
+  la Storage API usando la `service_role`.
+
+## Reservas
+
+- **Plantilla de WhatsApp con el costo del montaje** — la confirmación que manda el **dashboard**
+  usa `recordatorio_reserva` (Meta, 4 params: nombre, fecha, hora, personas), así que **no incluye
+  la ocasión ni su costo**: el cliente recibe la confirmación sin ver los $80.000 del cumpleaños.
+  El bot sí se lo dice, porque su respuesta es texto libre dentro de la ventana de 24h. Fix: crear
+  y aprobar en WhatsApp Manager una plantilla de 6 params (+ ocasión, + costo) y agregarla a
+  `WA_TEMPLATES`. No se puede resolver desde el código: hay que aprobarla en Meta primero.
+- **Editar una reserva ya creada** — hoy `ReservationDetail` solo permite eliminar. Con los
+  motivos, cambiar la ocasión de una reserva existente obliga a borrarla y recrearla (lo que
+  dispara dos WhatsApps al cliente). El trigger `trigger_costo_motivo` ya soporta el UPDATE.
+- **Ocasiones editables desde la tab Configuración** — `motivos_reserva` (nombre, costo, activo)
+  se cambia hoy con un `UPDATE` a mano. Los precios sembrados el 2026-08-10 son **placeholder**.
+
 ## Dashboard
 
 - **`useOrders`: exponer estado `error` en el UI** — hoy un fallo de fetch solo hace
@@ -30,6 +85,9 @@
   sistema (ver `docs/dashboard/design-system.md`); faltan los modales/botones de
   `orders.less`, `reservations.less` y `support.less`: llevar CTAs a `.btn primary` (1 por
   pantalla), formularios al patrón `.field` (helpers debajo), y purgar `--font-mono` restante.
+  Incluye `.quick-replies` / `.qr-chip` (2026-08-12): se escribió con px crudos para no
+  desentonar con el resto de `support.less`, y debe pasar a tokens (`--fs-caption`, etc.) en la
+  misma tanda. El lado de Configuración (`rr-*`) ya nace con tokens.
 - **`SalesChart`: eliminar el eje dual** — pedidos (barras) + ingresos (línea) comparten
   gráfica con dos escalas Y; la buena práctica de dataviz es separarlos en dos charts o
   indexarlos a una base común.
@@ -85,8 +143,10 @@
   conteo declarado vs. esperado) y `movimientos_caja` (gastos, retiros, propinas). El esperado
   en efectivo se agrega desde `pedidos`. **Tres trampas del esquema:** `fecha_pedido` es
   `timestamp` sin zona con valor UTC (usar `parseDb()`), el día de negocio arranca 05:00 UTC,
-  y `pedidos.total` **ya incluye los $5.000 de domicilio** que mete el trigger — si no se
-  separan, el arqueo cuadra mal cuando el domicilio lo cobra el repartidor.
+  y `pedidos.total` **ya incluye el domicilio** — si no se separan, el arqueo cuadra mal cuando
+  el domicilio lo cobra el repartidor. ✅ **Esta última dejó de ser una trampa el 2026-08-18:**
+  el envío vive en `pedidos.costo_domicilio` y ya no hay que despejarlo restando; el efectivo
+  de producto es `total − costo_domicilio`. Ojo: **ya no es una constante**, varía por zona.
 - **Venta en mostrador** `[M — cross-layer, riesgo]` — `CreateOrderModal` ya es el 80%, pero
   faltan dos cosas: el cliente es obligatorio (en mostrador nadie da el teléfono → cliente
   genérico o `cliente_id` nullable, **verificar si hoy lo es**) y `tipo_pedido` tiene un CHECK
@@ -145,8 +205,29 @@
   `docs/bot/n8n-workflow.md`. **Pendiente: probar los 4 taps en real** — el fix se verificó
   contra el payload de una ejecución real y contra los labels que devuelve Graph API, pero
   todavía no se ha tapeado ningún botón desde WhatsApp después del cambio.
-- **Roles de usuario** `[L]` — admin total vs. "cocina" (solo kanban) vs. "marketing".
-  Relevante cuando el restaurante tenga varios empleados usando el dashboard.
+- ~~**Roles de usuario**~~ ✅ **Etapa 1 hecha (2026-08-12)** — `perfiles` + RLS por rol
+  (`admin`/`mesero`/`domiciliario`), verificada con suplantación por API. Ver `changelog.md`
+  y `docs/database/schema.md` §Modelo de permisos. **Falta:**
+  - ~~**Etapa 2**~~ ✅ **hecha (2026-08-12)** — `AssignCourier` en el kanban, `DeliveriesPage`
+    para el repartidor y entrega por RPC. Incluyó cerrar un hueco: el mesero podía asignar
+    domiciliarios por API porque la RLS no limita columnas.
+  - ~~**Etapa 3**~~ ✅ **hecha (2026-08-12)** — bucket `avatares` con políticas por carpeta,
+    "Mi perfil" en el menú superior (todos los roles) y Configuración → Usuarios para asignar
+    rol y activar/desactivar.
+  - **Rol mesero: parte de salón** — bloqueado por PLATEO-52. Hoy el mesero tiene pedidos,
+    historial, clientes, reservas y menú (lectura); le falta mesas, que exige ampliar el CHECK
+    de `tipo_pedido` — ver "Venta en mostrador" arriba, mismo riesgo cross-layer.
+  - **Limpiar `pedidos.repartidor`** `[S]` — columna muerta (NULL en los 105 pedidos) que
+    quedó sustituida por `domiciliario_id`. Solo la lee `OrderDetailModal`; eliminarla exige
+    tocar esa lectura.
+  - **Invitar usuarios desde la UI** `[M]` — hoy se crean a mano en Supabase porque la admin
+    API exige `service_role`, que no puede ir en el bundle. Si se quiere en el dashboard: Edge
+    Function o webhook en n8n, nunca desde React. La pantalla de Usuarios ya explica el flujo
+    manual, así que esto es comodidad, no un bloqueo.
+  - **Avatares huérfanos en Storage** `[S]` — al cambiar de foto se borra la anterior en
+    best-effort; si ese borrado falla queda el archivo suelto (se prefirió eso a arriesgar que
+    un usuario se quede sin foto). Si el bucket crece, un barrido que compare
+    `storage.objects` contra `perfiles.avatar_url` lo limpia.
 
 ## Bot
 

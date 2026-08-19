@@ -4,10 +4,13 @@ import { sendWhatsAppTemplate } from '../../lib/whatsapp'
 import { WA_TEMPLATES } from '../../utils/constants'
 import Icon from '../../components/Icon'
 import MenuPicker from './MenuPicker'
+import { useBarrioOptions } from '../../hooks/useDeliveryZones'
 
-// Debe coincidir con costo_domicilio del trigger actualizar_total_pedido (solo preview;
-// el total real siempre lo escribe el trigger)
-const COSTO_DOMICILIO = 5000
+// El costo del domicilio ya no es una constante: sale de la zona del barrio
+// (`zonas_entrega.costo`). Lo que se calcula aquí es SOLO el preview — el total
+// real lo sigue escribiendo el trigger, y el barrio lo resuelve la BD, así que
+// un barrio escrito a mano que no esté en el catálogo cae en la tarifa base.
+const OTRO_BARRIO = '__otro__'
 
 export default function CreateOrderModal({ onClose, onUpdated }) {
   // Cliente
@@ -20,8 +23,12 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
   const [tipoPedido, setTipoPedido] = useState('domicilio')
   const [metodoPago, setMetodoPago] = useState('Efectivo')
   const [direccion, setDireccion] = useState('')
+  const [barrioClave, setBarrioClave] = useState('')   // '' | clave | OTRO_BARRIO
+  const [barrioLibre, setBarrioLibre] = useState('')
   const [notas, setNotas] = useState('')
   const [items, setItems] = useState([])
+
+  const { barrios, tarifaBase, loading: barriosLoading } = useBarrioOptions()
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -31,7 +38,7 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
     async function fetchClients() {
       const { data, error: clientsError } = await supabase
         .from('clientes')
-        .select('cliente_id, nombre, telefono, direccion_principal')
+        .select('cliente_id, nombre, telefono, direccion_principal, barrio')
         .order('nombre')
       if (clientsError) console.error('Error cargando clientes:', clientsError)
       else setClients(data || [])
@@ -41,13 +48,34 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
   }, [])
 
   const itemsTotal = items.reduce((sum, item) => sum + item.cantidad * item.precio_unitario, 0)
-  const domicilioFee = tipoPedido === 'domicilio' ? COSTO_DOMICILIO : 0
+
+  // Barrio elegido del catálogo → tarifa de su zona. Cualquier otra cosa
+  // (escrito a mano, o todavía sin elegir) → tarifa base, que es exactamente
+  // lo que hará el trigger.
+  const barrioSel = barrios.find(b => b.clave === barrioClave) || null
+  // El nombre que se manda a la BD: el canónico si vino del catálogo.
+  const barrioTexto = barrioSel ? barrioSel.nombre : barrioLibre.trim()
+  const domicilioFee = tipoPedido !== 'domicilio'
+    ? 0
+    : barrioSel ? barrioSel.costo : (tarifaBase ?? 0)
   const total = itemsTotal + domicilioFee
 
   function selectClient(client) {
     setSelectedClient(client)
     setClientSearch('')
     if (client.direccion_principal && !direccion) setDireccion(client.direccion_principal)
+
+    // El barrio guardado del cliente se preselecciona si está en el catálogo;
+    // si no, entra como texto libre para no perderlo.
+    if (client.barrio && !barrioClave) {
+      const match = barrios.find(b => b.nombre.toLowerCase() === String(client.barrio).toLowerCase())
+      if (match) {
+        setBarrioClave(match.clave)
+      } else {
+        setBarrioClave(OTRO_BARRIO)
+        setBarrioLibre(client.barrio)
+      }
+    }
   }
 
   const updateItemQty = useCallback((key, delta) => {
@@ -118,6 +146,8 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
         tipo_pedido: tipoPedido,
         metodo_pago: metodoPago,
         direccion_entrega: tipoPedido === 'domicilio' ? direccion.trim() : null,
+        // La BD lo normaliza contra el catálogo y de ahí saca costo_domicilio.
+        barrio: tipoPedido === 'domicilio' ? (barrioTexto || null) : null,
         estado: 'pendiente',
         estado_pago: 'pendiente',
         notas: notas.trim() || null,
@@ -142,6 +172,8 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
       variante: item.variante,
       cantidad: item.cantidad,
       precio_unitario: item.precio_unitario,
+      // null en productos normales; las 2 mitades en una pizza mitad y mitad
+      mitades: item.mitades || null,
     }))
 
     const { error: detalleError } = await supabase.from('detalle_pedidos').insert(detalles)
@@ -155,15 +187,27 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
       return
     }
 
-    // El total real lo escribió el trigger — leerlo para el resumen de WhatsApp
+    // El total y el costo de envío reales los escribieron los triggers — se
+    // releen para que el resumen de WhatsApp diga lo mismo que la BD, aunque el
+    // barrio se haya resuelto a una zona distinta de la del preview.
     const { data: pedidoFinal } = await supabase
       .from('pedidos')
-      .select('total')
+      .select('total, costo_domicilio')
       .eq('pedido_id', pedido.pedido_id)
       .single()
 
     const totalFinal = Number(pedidoFinal?.total ?? total)
-    const feeFinal = totalFinal - itemsTotal
+    const feeFinal = Number(pedidoFinal?.costo_domicilio ?? domicilioFee)
+
+    // Best-effort, igual que el envío de WhatsApp: si falla, el pedido ya está
+    // hecho y no vale la pena frenar al cajero por la ficha del cliente.
+    if (tipoPedido === 'domicilio' && barrioTexto && barrioTexto !== selectedClient.barrio) {
+      const { error: clienteError } = await supabase
+        .from('clientes')
+        .update({ barrio: barrioTexto })
+        .eq('cliente_id', selectedClient.cliente_id)
+      if (clienteError) console.error('No se pudo guardar el barrio del cliente:', clienteError)
+    }
 
     onUpdated()
 
@@ -285,17 +329,62 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
             </div>
           </div>
 
-          {/* Dirección (solo domicilio) */}
+          {/* Dirección y barrio (solo domicilio). El barrio es lo que fija la
+              tarifa, así que va al lado de la dirección y no escondido en ella. */}
           {tipoPedido === 'domicilio' && (
-            <div className="co-field co-address">
-              <div className="em-label">Dirección de entrega</div>
-              <input
-                type="text"
-                value={direccion}
-                onChange={e => setDireccion(e.target.value)}
-                placeholder="Ej: Calle 10 # 5-23, Barrio Centro"
-              />
-            </div>
+            <>
+              <div className="co-field co-address">
+                <div className="em-label">Dirección de entrega</div>
+                <input
+                  type="text"
+                  value={direccion}
+                  onChange={e => setDireccion(e.target.value)}
+                  placeholder="Ej: Calle 10 # 5-23"
+                />
+              </div>
+
+              <div className="co-field co-address">
+                <div className="em-label">Barrio</div>
+                <select
+                  className="co-barrio-select"
+                  value={barrioClave}
+                  onChange={e => setBarrioClave(e.target.value)}
+                  disabled={barriosLoading}
+                >
+                  <option value="">
+                    {barriosLoading
+                      ? 'Cargando barrios…'
+                      : barrios.length === 0
+                        ? 'Sin barrios configurados — tarifa base'
+                        : 'Sin especificar — tarifa base'}
+                  </option>
+                  {barrios.map(b => (
+                    <option key={b.clave} value={b.clave}>
+                      {b.nombre} · {b.zona} · ${b.costo.toLocaleString('es-CO')}
+                    </option>
+                  ))}
+                  <option value={OTRO_BARRIO}>Otro barrio…</option>
+                </select>
+
+                {barrioClave === OTRO_BARRIO && (
+                  <input
+                    type="text"
+                    style={{ marginTop: 8 }}
+                    value={barrioLibre}
+                    onChange={e => setBarrioLibre(e.target.value)}
+                    placeholder="Nombre del barrio"
+                  />
+                )}
+
+                {!barrioSel && (
+                  <div className="co-barrio-hint">
+                    Sin un barrio del catálogo se cobra la tarifa base
+                    {tarifaBase !== null && <> de <strong>${tarifaBase.toLocaleString('es-CO')}</strong></>}.
+                    Agrégalo en Configuración → Zonas de domicilio para cobrar lo que corresponde.
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {/* Items */}
@@ -307,7 +396,10 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
               {items.map((item) => (
                 <div key={item.key} className="em-item">
                   <div className="info">
-                    <div className="name">{item.nombre_producto}</div>
+                    <div className="name">
+                      {item.mitades && <span className="mm-tag">½+½</span>}
+                      {item.nombre_producto}
+                    </div>
                     {item.variante && item.variante !== 'Estándar' && (
                       <div className="variant">{item.variante}</div>
                     )}
@@ -349,9 +441,10 @@ export default function CreateOrderModal({ onClose, onUpdated }) {
           <div className="total">
             <div className="lbl">Total estimado</div>
             <div className="amount">${total.toLocaleString('es-CO')}</div>
-            {domicilioFee > 0 && (
+            {tipoPedido === 'domicilio' && (
               <div className="breakdown">
                 Items: ${itemsTotal.toLocaleString('es-CO')} + Domicilio: ${domicilioFee.toLocaleString('es-CO')}
+                {barrioSel ? ` (${barrioSel.zona})` : ' (tarifa base)'}
               </div>
             )}
           </div>

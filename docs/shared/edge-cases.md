@@ -158,3 +158,57 @@ la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el 
 **Causa:** el `systemMessage` de `AGENTE PEDIDOS` había perdido el **PASO 4** — la numeración saltaba de PASO 3 a PASO 5. El PASO 3 decía *"crea el pedido … y muestra el resumen"*: crear y resumir en el **mismo turno**, sin ningún turno donde parar y esperar. Mientras tanto la sección de reglas seguía exigiendo `✓ El cliente confirmó explícitamente`, un check imposible de cumplir con ese flujo. Las plantillas del resumen empujaban en la misma dirección: cada una fija una línea `💳 [pago]` y cierra con *"Lo mando a cocina 🍕"*, una afirmación, no una pregunta.
 **Solución:** PASO 3 pasa a ser *"RESUMEN Y CONFIRMACIÓN (NO crea el pedido)"* con las plantillas cerrando en *"¿Te lo confirmo así?"*, y vuelve el PASO 4 que dispara la tool solo tras un "sí"/"dale"/"confirmo". Dos reglas duras nuevas: **"nunca preguntes y crees en el mismo mensaje"** y **"prohibido asumir `metodo_pago`; 'Efectivo' no es el valor por defecto"**. La misma condición se duplica en el `toolDescription` de `crear_orden_completa` — el prompt del agente y la descripción de la tool son **dos superficies distintas** y el modelo lee la segunda justo cuando decide llamarla.
 **Lección general:** cuando un LLM tiene un dato obligatorio que no posee y ninguna instrucción que lo obligue a **detenerse**, no pregunta: **inventa un valor plausible**. Un prompt no falla ruidosamente como el código — el hueco se rellena solo. Dos corolarios prácticos: (1) una **numeración rota** (PASO 3 → PASO 5) es una señal barata y fiable de que alguien borró o fusionó un paso en una edición anterior — vale la pena revisarla antes de dar por bueno un prompt; (2) si una checklist exige una condición ("el cliente confirmó") que el flujo narrado nunca produce, el modelo resuelve la contradicción a favor de **actuar**, no de esperar. La instrucción de parar tiene que estar en el flujo, no solo en la lista de reglas.
+
+## 21. Lo que dispara un handoff nunca queda registrado, porque viaja por el camino que se acaba de apagar (2026-08-10)
+
+**Síntoma:** el cliente escribe *"tengo un problema con el pedido, necesito hablar con un humano"*, el bot escala y la conversación aparece en el dashboard **vacía**. El operador no tiene más remedio que preguntar otra vez lo que el cliente ya explicó — la peor primera impresión posible justo cuando el cliente ya venía molesto.
+**Causa:** el `Router de modo` lee `clientes.modo` **al entrar** el mensaje. Ese mensaje entra todavía como `bot`, se procesa por la ruta de agentes y es el Agente Soporte quien, a mitad de camino, llama `solicitar_handoff` y pone `modo='humano'`. El nodo que escribe en `mensajes_soporte` está en la **otra** rama del router, así que solo captura los mensajes **siguientes**. El mensaje que causó la escalada —el único que importa— es precisamente el que nunca se guarda.
+**Solución:** no reconstruirlo en n8n, sino recuperarlo de donde ya estaba: `n8n_chat_histories` (la memoria de los agentes, `session_id = telefono`). Un trigger sobre `clientes` que dispara al pasar a `humano` llama a `registrar_contexto_handoff()`, que vuelca los turnos recientes a `mensajes_soporte` (`human`→`cliente`, `ai`→`bot`).
+**Lo que hace que funcione (no es obvio):** el turno del cliente **ya está en la memoria** cuando el trigger dispara, porque el **ORQUESTADOR** corre primero y guarda al cerrar su cadena, antes de que el agente especializado siquiera arranque. Si solo hubiera un agente, el mensaje aún no estaría escrito y el backfill llegaría vacío.
+**Tres trampas de esa memoria compartida:**
+- Es **una sola sesión por teléfono para todos los agentes**, así que el mismo mensaje del cliente aparece **una vez por cadena que corre** en el turno (orquestador + agente). Hay que deduplicar consecutivos, no todas las repeticiones: un "sí" dicho dos veces en momentos distintos es información real.
+- El ORQUESTADOR guarda su clasificación (`{"agente":"soporte","razon":"..."}`) como un mensaje `ai` normal. Es ruido interno que **no** puede acabar en el chat del cliente.
+- Los `content` no siempre son texto: en una llamada a tool es un array vacío, y hay filas `type: 'tool'` con el resultado crudo. Filtrar por `jsonb_typeof(content) = 'string'`.
+**Y una del lado del dashboard:** varios turnos del mismo intercambio comparten `created_at` (se escriben juntos al cerrar la cadena). Como el chat ordena por esa columna, con empates el planner decide y **la respuesta del bot puede pintarse antes de la pregunta del cliente**. Se desempata sumando microsegundos según el `id` de la memoria, que sí es secuencial.
+**Lección general:** cuando un evento **cambia la ruta por la que viajan los mensajes**, el mensaje que provocó el cambio se procesa por la ruta vieja y cae en el hueco entre las dos. Ese hueco no se ve en los logs (todo queda `success`), solo en la experiencia. Y si el dato existe en algún lado (aquí, la memoria conversacional), **el arreglo correcto es un trigger en la BD y no un nodo más en el workflow**: cubre todas las vías de escalada —la tool, el dashboard, un UPDATE manual— en vez de solo la que recordaste cablear.
+
+## 22. `NEW` en un trigger de DELETE no explota: devuelve NULL, y el `WHERE` no encuentra nada (2026-08-18)
+
+**Síntoma:** borrar un ítem de un pedido dejaba `pedidos.total` clavado en el valor anterior.
+Verificado en producción antes del fix: al borrar una de las 2 líneas de `PED-102`, el total
+seguía en $332.300.
+
+**Causa:** `actualizar_total_pedido()` estaba declarado `AFTER INSERT OR DELETE OR UPDATE` pero
+por dentro usaba `NEW.pedido_id`. En un trigger de DELETE, PL/pgSQL deja `NEW` como un **registro
+nulo**: acceder a `NEW.pedido_id` no lanza error, **devuelve NULL**. El `UPDATE ... WHERE
+pedido_id = NULL` no matchea ninguna fila y el trigger termina "bien". Ningún log, ningún fallo.
+
+**Por qué nadie lo notó:** estaba enmascarado. La única ruta que borra ítems es `editar_pedido`,
+que hace DELETE + INSERT y además escribe `total` a mano al final — el INSERT sí trae `NEW`, y el
+`UPDATE` explícito tapaba cualquier diferencia.
+
+**Solución:** `v_pedido_id := COALESCE(NEW.pedido_id, OLD.pedido_id)` y `RETURN COALESCE(NEW, OLD)`.
+
+**Lección:** en un trigger que cubre INSERT **y** DELETE, `NEW`/`OLD` son la mitad del contrato.
+Un `WHERE pk = NULL` es la forma más silenciosa de no hacer nada en SQL: no falla, no avisa, y el
+dato queda viejo. Si el trigger va a correr en DELETE, hay que probarlo **en DELETE** — un
+`DO $$ ... RAISE EXCEPTION $$` que compara el antes y el después y revierte cuesta 30 segundos.
+
+## 23. Recalcular un total desde cero destruye las filas que ya estaban mal (2026-08-18)
+
+**Síntoma (evitado, no sufrido):** al rehacer el trigger de totales para tarifa variable, la
+versión obvia era `total = suma de ítems + costo_domicilio`. Aplicada a los pedidos existentes en
+un UPDATE de barrio, habría convertido un pedido de $3.365.000 en $3.000.
+
+**Causa:** en producción había **8 pedidos con cero líneas en `detalle_pedidos`** y un `total`
+escrito a mano (entre $29.000 y $3.365.000; seed antiguo o pruebas). Para esas filas "suma de
+ítems" es 0, y cualquier recálculo completo las aplana.
+
+**Solución:** el trigger sobre `pedidos` ajusta **por delta** (`total − OLD.costo + NEW.costo`) en
+vez de recalcular. El recálculo completo se queda solo en el trigger de `detalle_pedidos`, que
+por definición corre cuando el pedido **sí** tiene líneas.
+
+**Lección:** antes de escribir un trigger que recalcula un agregado sobre una tabla viva, medir
+primero cuántas filas **ya** violan el invariante que vas a asumir. Un `GROUP BY (total − suma)`
+tarda un segundo y aquí cambió el diseño: delta en vez de recálculo. Un trigger correcto sobre
+datos incorrectos sigue destruyendo datos.

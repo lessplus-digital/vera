@@ -225,8 +225,8 @@ Tras `Edit Fields`, un Switch enruta el mensaje según el modo del cliente.
        │                                      crear_carrito, actualizar_carrito
        ├─ pedidos  → AGENTE PEDIDOS  · tools: leer_carrito1, crear_orden_completa,
        │                                      actualizar_cliente1
-       ├─ soporte  → AGENTE SOPORTE  · tools: info_local, actualizar_cliente,
-       │                                      solicitar_handoff
+       ├─ soporte  → AGENTE SOPORTE  · tools: info_local, consultar_faq,
+       │                                      actualizar_cliente, solicitar_handoff
        └─ reservas → AGENTE RESERVAS · tools: consultar_disponibilidad,
                                               crear_reserva, consultar_reservas_cliente,
                                               cancelar_reserva

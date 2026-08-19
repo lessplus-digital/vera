@@ -14,7 +14,7 @@ export function useClients() {
   const fetchClients = useCallback(async () => {
     const { data, error: fetchError } = await supabase
       .from('clientes')
-      .select('cliente_id, nombre, telefono, direccion_principal, modo, fecha_registro')
+      .select('cliente_id, nombre, telefono, direccion_principal, barrio, modo, fecha_registro')
       .order('nombre', { ascending: true })
       .limit(CLIENTS_FETCH_CAP)
 
@@ -44,11 +44,15 @@ export function useClients() {
     return () => supabase.removeChannel(channel)
   }, [fetchClients])
 
-  async function saveClient({ cliente_id, nombre, telefono, direccion, modo }) {
+  async function saveClient({ cliente_id, nombre, telefono, direccion, barrio, modo }) {
     const payload = {
       nombre:              nombre.trim(),
       telefono:            telefono.trim(),
       direccion_principal: direccion.trim() || null,
+      // Texto libre a propósito: se resuelve contra el catálogo de `barrios`
+      // recién al crear el pedido, igual que cuando lo dicta el cliente por
+      // WhatsApp. Guardarlo como FK obligaría a rechazar barrios nuevos aquí.
+      barrio:              (barrio || '').trim() || null,
       modo,
     }
 

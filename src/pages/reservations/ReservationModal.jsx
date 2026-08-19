@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
 import { useClients } from '../../hooks/useClients'
-import { RESERVATION_STATES } from '../../utils/constants'
+import { useReservationReasons } from '../../hooks/useReservationReasons'
+import { RESERVATION_STATES, MOTIVO_DEFECTO } from '../../utils/constants'
 import Icon from '../../components/Icon'
 
 export default function ReservationModal({ initial, onSave, onClose }) {
   const { clients, loading: clientsLoading } = useClients()
+  const { reasons, loading: reasonsLoading } = useReservationReasons()
   const [clientSearch, setClientSearch] = useState('')
   const [selectedClient, setSelectedClient] = useState(null)
 
@@ -12,9 +14,15 @@ export default function ReservationModal({ initial, onSave, onClose }) {
   const [hora,     setHora]     = useState(initial?.hora || '')
   const [personas, setPersonas] = useState(2)
   const [estado,   setEstado]   = useState('confirmada')
+  const [motivo,   setMotivo]   = useState(MOTIVO_DEFECTO)
   const [notas,    setNotas]    = useState('')
   const [saving,   setSaving]   = useState(false)
   const [error,    setError]    = useState(null)
+
+  // El costo mostrado es informativo: el que se guarda lo escribe el trigger
+  // `trigger_costo_motivo` en la BD a partir de la clave del motivo.
+  const selectedReason = reasons.find(r => r.clave === motivo) || null
+  const costo = Number(selectedReason?.costo || 0)
 
   const MAX_RESULTS = 8
   const clientQuery = clientSearch.trim().toLowerCase()
@@ -54,6 +62,7 @@ export default function ReservationModal({ initial, onSave, onClose }) {
       hora,
       personas,
       estado,
+      motivo,
       notas,
     })
 
@@ -158,6 +167,28 @@ export default function ReservationModal({ initial, onSave, onClose }) {
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
+          </label>
+
+          <label className="rm-field">
+            <span className="rm-label">Ocasión</span>
+            <select value={motivo} onChange={e => setMotivo(e.target.value)} disabled={reasonsLoading}>
+              {reasonsLoading ? (
+                <option value={MOTIVO_DEFECTO}>Cargando ocasiones…</option>
+              ) : (
+                reasons.map(r => (
+                  <option key={r.clave} value={r.clave}>
+                    {r.nombre}{Number(r.costo) > 0 ? ` — $${Number(r.costo).toLocaleString('es-CO')}` : ''}
+                  </option>
+                ))
+              )}
+            </select>
+            <span className="rm-hint">
+              {selectedReason?.descripcion
+                ? `${selectedReason.descripcion}. ${costo > 0
+                    ? `Tarifa fija de $${costo.toLocaleString('es-CO')} por reserva (no por persona), se cobra en el local.`
+                    : 'Sin costo adicional.'}`
+                : 'El montaje se cobra en el local; no genera un pedido.'}
+            </span>
           </label>
 
           <label className="rm-field">

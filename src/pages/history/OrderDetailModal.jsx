@@ -60,7 +60,10 @@ export default function OrderDetailModal({ order, onMarkDelivered, onCancelOrder
   const metodo = METODO_LABEL[order.metodo_pago]
   const items = order.detalle_pedidos || []
   const itemsTotal = items.reduce((sum, it) => sum + Number(it.subtotal || 0), 0)
-  const recargo = Number(order.total || 0) - itemsTotal
+  // El envío es una columna propia desde que hay tarifa por barrio. Antes se
+  // deducía restando (total − items), que mentía en cuanto el pedido tenía
+  // cualquier otro ajuste.
+  const recargo = Number(order.costo_domicilio || 0)
   const mins = deliveryMinutes(order)
 
   return (
@@ -118,6 +121,15 @@ export default function OrderDetailModal({ order, onMarkDelivered, onCancelOrder
                 <span className="od-value">{order.direccion_entrega || '—'}</span>
               </div>
             )}
+            {order.tipo_pedido === 'domicilio' && order.barrio && (
+              <div className="od-item">
+                <span className="od-label">Barrio</span>
+                <span className="od-value">
+                  {order.barrio}
+                  {!order.zona && <span className="od-duration"> · sin zona, tarifa base</span>}
+                </span>
+              </div>
+            )}
             {order.repartidor && (
               <div className="od-item">
                 <span className="od-label">Repartidor</span>
@@ -156,8 +168,11 @@ export default function OrderDetailModal({ order, onMarkDelivered, onCancelOrder
                   <div className="od-item-row" key={it.detalle_id}>
                     <span className="qty tnum">{it.cantidad}×</span>
                     <span className="name">
+                      {it.mitades && <span className="mm-tag">½+½</span>}
                       {it.nombre_producto}
                       {it.variante && it.variante !== 'Estándar' && <span className="variant"> · {it.variante}</span>}
+                      {/* La masa (Tradicional/Estofada) solo se conserva dentro de `mitades` */}
+                      {it.mitades?.[0]?.variante && <span className="variant"> · {it.mitades[0].variante}</span>}
                       {it.notas_item && <span className="inote">“{it.notas_item}”</span>}
                     </span>
                     <span className="sub tnum">{formatPrice(it.subtotal)}</span>

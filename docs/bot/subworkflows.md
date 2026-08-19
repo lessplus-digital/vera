@@ -52,12 +52,15 @@ en que el producto realmente no está en la carta.
 When Executed (cliente_id, telefono, filtro)
   └─ Validar payload (Code) — parsea filtro; valida tipo_pedido (domicilio/recoger),
   │    metodo_pago (Transferencia/Efectivo), dirección si domicilio, items
-  │    (producto_id/cantidad/precio_unitario); calcula total SERVER-SIDE; expone productoIds
+  │    (producto_id/cantidad/precio_unitario) y la forma de `mitades` (array de 2 con
+  │    producto_id); total preliminar; expone productoIds INCLUYENDO los de cada mitad
   └─ Validar productos menu (HTTP GET /menu?producto_id=in(...)&disponible=eq.true — credencial `Supabase account`)
+  │    select: producto_id, nombre, disponible, variante, categoria, tamaño
   └─ Construir pedido (Code) — verifica que todos los productoIds existan/disponibles
-  │    (faltan → error PRODUCT_NOT_FOUND); arma pedidoObj (estado/estado_pago='pendiente')
+  │    (faltan → error PRODUCT_NOT_FOUND); RECALCULA las líneas mitad y mitad contra el
+  │    menú real; recalcula el total; arma pedidoObj (estado/estado_pago='pendiente')
   └─ If (¿error?) → Stop and Error  |  INSERT pedido (Supabase, credencial) → tabla pedidos
-       └─ Code in JavaScript — arma `detalles` con el pedido_id devuelto
+       └─ Code in JavaScript — arma `detalles` con el pedido_id devuelto (+ `mitades`)
        └─ INSERT detalle_pedidos (HTTP POST — credencial `Supabase account`)
        └─ Limpiar carrito (HTTP DELETE /carritos?telefono — credencial `Supabase account`)
        └─ Respuesta de salida → { ok: true }
@@ -69,6 +72,13 @@ When Executed (cliente_id, telefono, filtro)
 - **BUG-007 resuelto:** todos los nodos HTTP del sub usan la credencial `Supabase account`
   (`sb_secret_`, salta RLS) — verificado vía MCP 2026-07-22. El INSERT de `detalle_pedidos`
   ya no choca con la política `authenticated` de RLS.
+- **Pizza mitad y mitad (2026-08-10):** si un item trae `mitades`, `Construir pedido` **no
+  confía** en el `precio_unitario` que mandó el LLM: lee las dos mitades del menú que acaba de
+  traer, exige misma masa y tamaño válido (`pequena/mediana/grande/familiar` — la porción no),
+  y reescribe `producto_id` (la mitad más cara), `nombre_producto` (`"Mitad X / Mitad Y"`) y
+  `precio_unitario` (el de la más cara). Errores: `MITAD_TAMANO_INVALIDO`, `MITAD_NO_ENCONTRADA`,
+  `MITAD_SIN_PRECIO`, `MITAD_MASA_DISTINTA`, `MITADES_IGUALES`. Es la **segunda** barrera: la
+  primera es la RPC `cotizar_mitad_y_mitad` que llamó el Agente Menú al armar el carrito.
 
 ---
 
@@ -96,12 +106,23 @@ las 22:30 (pasa el cierre de 9 PM) — revisar si es intencional.
 
 - **ID:** `xyb9zB6nz6OmmboX` · **Tool:** `crear_reserva` (Agente Reservas)
 - **Inputs:** `telefono`, `nombre`, `fecha`, `hora`, `personas`, `cliente_id` (sin espacio desde
-  el fix de BUG-004, 2026-07-23)
-- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas }` o `{ ok:false, error }`
+  el fix de BUG-004, 2026-07-23), **`motivo`** (2026-08-10)
+- **Salida:** `{ ok, reserva_id, fecha/hora legibles, personas, motivo, costo_motivo, costo_legible }`
+  o `{ ok:false, error }`
 
 ```
 When Executed → Validar y verificar cupo (Code, solo prepara la fila) → INSERT (reservas) → Formatear respuesta
 ```
+
+- **Motivo de la reserva (2026-08-10):** el sub recibe solo la **clave** del motivo y la normaliza
+  (`trim().toLowerCase()`, vacío → `sin_ocasion`). **No manda el costo**: lo escribe el trigger
+  `trigger_costo_motivo` desde `motivos_reserva`, así que un precio inventado por el LLM no puede
+  llegar a la fila. `Formatear respuesta` devuelve `costo_motivo` y `costo_legible` (ya formateado)
+  para que el agente confirme el valor sin recalcularlo.
+- ⚠️ **Latente:** `Validar y verificar cupo` lee `input.notas`, pero `notas` **nunca se declaró**
+  como input del trigger ni lo pasa el nodo `crear_reserva` del main → siempre entra `null`. El bot
+  no puede guardar notas en una reserva. No lo arreglé aquí porque implica ampliar la firma de la
+  tool y el prompt; registrado en el bug-tracker.
 
 - **BUG-004 (✅ 2026-07-23):** la key `cliente_id ` (con espacio) se renombró a `cliente_id` en
   todo el camino (schema de la tool en el main, trigger e INSERT del subworkflow).

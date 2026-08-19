@@ -9,9 +9,10 @@
 - **react-big-calendar + date-fns** (calendario de la tab Reservas, locale es)
 - **WhatsApp Cloud API** (envío directo vía `src/lib/whatsapp.js`, Meta Graph API)
 - **Supabase Auth** (login email+password, sesión persistida)
-- **Estilos:** `index.css` (tokens/base) + un `.less` por feature (auth, orders, support, statistics, clients, reservations, menu), importados en `main.jsx`
+- **Estilos:** `index.css` (tokens/base) + un `.less` por feature (auth, orders, support, statistics, clients, reservations, menu, settings, history, reviews, deliveries), importados en `main.jsx`
 - **Responsive:** `useMediaQuery` — el Sidebar colapsa a solo-iconos ≤1024px y a cajón (drawer) ≤768px
 - **Sin router** — navegación por tabs internas vía estado `activeTab`; la app se separa en gate de auth (`App`) + shell autenticado (`DashboardShell`, dentro de `App.jsx`). La navegación es un **Sidebar** colapsable, no el Header
+- **Roles** — `admin` / `mesero` / `domiciliario`. La UI se adapta (ver §0), pero **la frontera es la RLS de Supabase**, no React
 
 ## Estructura de archivos
 
@@ -23,6 +24,8 @@ src/
 │
 ├── components/
 │   ├── Icon.jsx                  ← Set de iconos SVG (name → path)
+│   ├── Avatar.jsx                ← Foto de perfil con fallback a la inicial
+│   ├── ProfileModal.jsx          ← "Mi perfil" (nombre, teléfono, foto) — para TODOS los roles
 │   ├── Toast.jsx                 ← Toast global del DS (con useToast; patrón .toast en index.css)
 │   ├── SortHeader.jsx            ← Encabezado de columna ordenable (patrón .sortable en index.css)
 │   └── layout/
@@ -32,8 +35,9 @@ src/
 ├── pages/
 │   ├── auth/LoginPage.jsx        ← Login email+password (Supabase Auth)
 │   ├── dashboard/                ← Kanban de pedidos
-│   │   ├── DashboardPage · Column · OrderCard · OrderActions
+│   │   ├── DashboardPage · Column · OrderCard · OrderActions · AssignCourier
 │   │   └── CreateOrderModal · EditOrderModal · RejectModal
+│   ├── deliveries/               ← DeliveriesPage + DeliveryHistory (rol domiciliario)
 │   ├── support/                  ← Chat de soporte
 │   │   └── SupportPanel · ConversationItem · ChatBubble · ImageLightbox
 │   ├── statistics/               ← StatisticsPage + KPIs + ~10 componentes Recharts
@@ -42,27 +46,41 @@ src/
 │   ├── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
 │   ├── menu/                     ← MenuPage + ProductModal (disponibilidad del catálogo)
 │   ├── reviews/                  ← ReviewsPage + SatisfactionSummary + ReviewCard + ReplyModal + Stars + sentiment.js
-│   └── settings/                 ← SettingsPage (edita info_negocio — lo que responde el bot)
+│   └── settings/                 ← SettingsPage (shell de 5 sub-vistas) + BusinessInfoSection
+│                                    (info_negocio) + DeliveryZonesSection + ZoneModal
+│                                    (zonas_entrega + barrios)
+│                                    + FaqSection + FaqModal + faqLint.js (faq)
+│                                    + QuickRepliesSection + QuickReplyModal (respuestas_rapidas)
+│                                    + UsersSection (perfiles)
 │
 ├── hooks/
-│   ├── useAuth.jsx               ← AuthProvider + useAuth (sesión Supabase, signIn/signOut)
+│   ├── useAuth.jsx               ← AuthProvider + useAuth (sesión + PERFIL/ROL, signIn/signOut)
 │   ├── useOrders.js              ← Pedidos del día + realtime + newIds + stats
 │   ├── useStatistics.js          ← Filtros + fetch por rango + agregados
 │   ├── useSupportCount.js        ← Badge de conversaciones (modo=humano)
 │   ├── useSupportConversations.js← Conversaciones + mensajes del panel de soporte
 │   ├── useClients.js             ← Clientes + realtime UPDATE + saveClient
 │   ├── useReservations.js        ← Reservas + realtime * + create/deleteReservation
+│   ├── useReservationReasons.js  ← `motivos_reserva` activos (ocasión + costo), solo lectura
 │   ├── useMenu.js                ← Catálogo `menu` + realtime * + setDisponible (optimista)
 │   ├── useReviews.js             ← `feedback` + clientes/pedidos embebidos + realtime * (canal feedback-rt)
 │   ├── useBusinessInfo.js        ← `info_negocio` clave/valor + saveInfo (sin realtime, adrede)
+│   ├── useDeliveryZones.js       ← `zonas_entrega` + `barrios` CRUD + barrios sin zona · useBarrioOptions
+│   ├── useFaq.js                 ← `faq` CRUD + toggle activa (optimista) + reordenar (sin realtime)
+│   ├── useRespuestasRapidas.js   ← `respuestas_rapidas` CRUD + toggle + reordenar (sin realtime)
+│   ├── useDomiciliarios.js       ← Domiciliarios activos + asignarDomiciliario (solo admin)
+│   ├── useUsuarios.js            ← RPC listar_usuarios + cambiar rol / activar (solo admin)
+│   ├── useDeliveryHistory.js     ← Entregas pasadas de un domiciliario (período + paginado)
 │   ├── useOrderHistory.js        ← Pedidos server-side (rango+filtros+orden+página) + realtime *
 │   ├── useTheme.js               ← Toggle dark/light (localStorage)
 │   ├── useToast.js               ← Estado + timer del toast global (con components/Toast.jsx)
 │   └── useMediaQuery.js          ← Media queries (sidebar colapsado / móvil)
 │
 ├── utils/
-│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*, CATEGORY_LABELS/categoryLabel, ORDER_STATES
+│   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*, MOTIVO_DEFECTO, CATEGORY_LABELS/categoryLabel, ORDER_STATES
 │   ├── formatters.js             ← timeAgoShort, timeAgo, formatPrice, formatPriceShort, formatPhone
+│   ├── quickReplies.js           ← Marcador {nombre} de las respuestas rápidas: aplicarNombre, usaNombre
+│   ├── permisos.js               ← Mapa rol→tabs/capacidades (UI). La frontera real es la RLS
 │   ├── exportHistory.js          ← Export del historial: CSV (BOM) + Excel con formato (exceljs lazy)
 │   ├── dateRanges.js             ← parseDb + rangos con día de negocio Colombia (UTC-5)
 │   ├── statsAggregations.js      ← Agregaciones puras de Estadísticas
@@ -70,18 +88,19 @@ src/
 │
 ├── lib/
 │   ├── supabase.js               ← Cliente Supabase (throws si faltan las VITE_SUPABASE_*)
+│   ├── avatares.js               ← Subida al bucket `avatares` + validación + limpieza
 │   └── whatsapp.js               ← sendWhatsAppMessage (texto) + sendWhatsAppTemplate (plantillas, fuera de 24h)
 │
 └── styles/
     ├── index.css                 ← Tokens CSS, base, animaciones, layout, tema
-    └── {auth,orders,support,statistics,clients,reservations,menu,settings,history}.less
+    └── {auth,orders,support,statistics,clients,reservations,menu,settings,history,reviews,deliveries}.less
 ```
 
 ## Layout y navegación
 
 `DashboardShell` (dentro de `App.jsx`) arma `Sidebar` + `Header` + la tab activa:
 
-- **`Sidebar`** — nav principal (`NAV_ITEMS`: Pedidos / Soporte / Estadísticas / Historial /
+- **`Sidebar`** — nav principal **filtrada por rol** (§0; `NAV_ITEMS`: Pedidos / Soporte / Estadísticas / Historial /
   Clientes / Reservas / Menú / Reseñas / Configuración), badge de soporte, toggle de tema en el pie. `collapsed` (solo iconos) en tablet
   (≤1024px) y `mobile-open` (cajón con backdrop) en móvil (≤768px), vía `useMediaQuery`.
 - **`Header`** — muestra `stats` del día y `lastUpdate`; en móvil enseña la hamburguesa que
@@ -89,6 +108,44 @@ src/
 - El tema (`useTheme`) vive en `App` para aplicar también en el login.
 
 ## Tabs principales
+
+### 0. Autenticación y roles
+
+**Archivos:** `src/App.jsx` (gate) · `src/hooks/useAuth.jsx` · `src/utils/permisos.js` ·
+`src/components/layout/Sidebar.jsx`
+
+`App` es un gate de tres pasos: splash mientras cargan **sesión y perfil**, `LoginPage` si no hay
+sesión, y pantalla **"sin acceso"** si hay sesión pero no rol utilizable (cuenta desactivada, o
+recién creada en Supabase y todavía sin rol asignado). Solo entonces monta `DashboardShell`.
+
+**El rol vive en `AuthProvider`, no en `DashboardShell`.** Es la excepción declarada a la regla de
+CLAUDE.md ("los hooks de datos van en el shell"): el rol no es dato de dominio, decide **qué
+pantallas existen**, así que tiene que estar resuelto antes de montar el shell. El motivo de la
+regla se respeta igual — el efecto no consulta nada mientras no haya sesión.
+
+- Se lee de `perfiles` en cada arranque. **Nunca de localStorage ni del JWT:** aunque la RLS no se
+  dejaría engañar por un valor manipulado, la UI mostraría pantallas que luego llegan vacías
+- Realtime sobre la **propia** fila de `perfiles`: si un admin te degrada o te desactiva, se
+  aplica sin recargar. Sin esto la UI seguiría intacta con todas las consultas llegando vacías
+- `perfil.activo === false` ⇒ `rol = null`, igual que `mi_rol()` en la BD
+
+**`utils/permisos.js` — conveniencia, no seguridad.** Mapea rol → tabs visibles y capacidades
+(`asignarDomiciliario`, `editarPedido`, `marcarEntregado`…). Existe para no mostrarle a un mesero
+una tab Soporte que la BD le devuelve vacía y parece rota. **La frontera es la RLS** (ver
+`../database/schema.md` §Modelo de permisos): el JWT viaja en cada llamada REST y de realtime, así
+que lo que un rol no debe ver se corta en Postgres, lo diga o no este archivo.
+
+> Al tocarlo: cada entrada debe corresponder a una política real. Aflojar aquí sin aflojar la RLS
+> da una pantalla que llega vacía; aflojar la RLS sin actualizar aquí abre un agujero de verdad.
+
+El sidebar **oculta** lo que el rol no tiene en vez de deshabilitarlo (una opción deshabilitada
+invita a pedir el permiso; una ausente no forma parte del trabajo del rol) y muestra el rol activo
+donde antes decía "Admin" fijo. `DashboardShell` comprueba el permiso **al renderizar cada tab**,
+no solo al pintar el sidebar, y reencamina si el rol cambia en vivo y la tab abierta deja de
+existir.
+
+**Alcance por rol hoy:** admin todas las tabs · mesero pedidos, historial, clientes, reservas y
+menú · domiciliario solo pedidos, donde ve **su propia pantalla** (§2b), no el kanban.
 
 ### 1. Pedidos (Kanban)
 
@@ -99,7 +156,8 @@ src/
 **Cada OrderCard muestra:**
 - Número de pedido (truncado a 8 chars)
 - Teléfono, tipo (domicilio/recoger), método de pago
-- Items con precio unitario (`detalle_pedidos`)
+- Items con precio unitario (`detalle_pedidos`); las pizzas **mitad y mitad** llevan el
+  distintivo `.mm-tag` (`½+½`) y muestran además la **masa**, que solo vive en `mitades[0].variante`
 - Total, notas del cliente
 - Estado del comprobante (transferencia pendiente / botón ver)
 - Botones de acción según estado (`OrderActions`)
@@ -119,6 +177,29 @@ src/
 - Insert directo: `pedidos` (`estado: 'pendiente'`, `total: 0`) → `detalle_pedidos` (ids `DET-M<uuid>-N`); el trigger calcula el total. Si fallan los items, borra el pedido (rollback best-effort)
 - Lee el total final de la BD y notifica al cliente por WhatsApp con el resumen; si WA falla, el pedido queda creado y se muestra advertencia en el modal
 
+#### 1b. El kanban según el rol (2026-08-12)
+
+El kanban lo ven **admin y mesero**. El domiciliario recibe otra pantalla en la misma tab (§2b).
+
+- **`AssignCourier`** — selector de domiciliario dentro de la tarjeta, en pedidos a domicilio.
+  Solo lo monta `OrderCard` si `puede(rol, 'asignarDomiciliario')`. Escribir `domiciliario_id`
+  **es** lo que hace aparecer el pedido en la pantalla del repartidor: la política RLS filtra por
+  esa columna, así que asignar y "dar acceso" son el mismo acto
+- **La lista de domiciliarios se carga una vez en `DashboardPage`** y baja a las tarjetas. Si cada
+  `OrderCard` la pidiera, serían N consultas idénticas en el rush
+- **`OrderActions` lee el rol del contexto**, no por props: son cuatro niveles (App → DashboardPage
+  → Column → OrderCard) y solo lo necesitan las hojas
+- **La entrega va SIEMPRE por el RPC `marcar_entregado`**, para todos los roles. Para el
+  domiciliario es obligatorio (no tiene política de UPDATE); para admin y mesero se usa igual para
+  no tener dos caminos que puedan divergir. De paso desapareció el `fecha_entrega` que el JS
+  mandaba a mano: lo pone `trigger_fecha_entrega`, y era la misma verdad escrita dos veces
+
+> **Ocultar un botón no es un permiso.** Todo lo de arriba lo respalda la BD: aprobar y cancelar
+> son UPDATE (el domiciliario no tiene esa política), y **asignar está limitado a admin por
+> `trigger_validar_asignacion`, no por RLS** — el mesero necesita UPDATE sobre `pedidos` para el
+> flujo de cocina, y una política no puede limitar una sola columna. Sin ese trigger podía
+> reasignar el reparto por API aunque la UI no se lo ofreciera (se encontró probándolo).
+
 ### 2. Soporte (Chat)
 
 **Vista:** Sidebar de conversaciones activas + panel de chat
@@ -131,6 +212,79 @@ src/
 - Ver imágenes en lightbox
 - Resolver conversación → cambia `modo` a `'bot'` + notifica al cliente
 - Badge en el tab muestra cantidad de conversaciones activas (`useSupportCount`)
+- **Respuestas rápidas** (2026-08-12): chips sobre el input con el texto enlatado de
+  `respuestas_rapidas` (`useRespuestasRapidas`, solo lectura aquí)
+
+**Respuestas rápidas — un clic ESCRIBE, nunca envía.** El chip inserta el texto en el textarea
+**en la posición del cursor** y el operador lo revisa, lo completa y presiona Enviar. Enviar de
+golpe se descartó a propósito: un clic accidental sale a WhatsApp sin vuelta atrás. Detalles:
+- El marcador `{nombre}` se resuelve al insertar, con `aplicarNombre()` de
+  `src/utils/quickReplies.js` y el nombre de `conversaciones_soporte` (ver §8c)
+- Si ya había texto escrito, se separa con un espacio en vez de pegar las palabras
+- Solo se pintan las `activa`; sin respuestas configuradas la barra **no se renderiza** (y su
+  `border-top` desaparece con ella — de ahí la regla `.quick-replies + .input-area`)
+- Con muchas respuestas la fila hace **scroll lateral**, no crece hacia arriba comiéndose el
+  historial
+- El alto del textarea lo ajusta **un solo `useEffect` sobre `inputText`**, no cada handler:
+  asignar `value` por código no dispara `onInput`, y medir `scrollHeight` antes de que React
+  pinte da el alto viejo (la caja no se encogía al enviar)
+
+**Contexto al recibir una escalada (2026-08-10):** al pasar un cliente a `modo='humano'`, el
+trigger `trigger_contexto_handoff` vuelca la conversación reciente con el bot a
+`mensajes_soporte` y deja una nota de sistema. El operador abre la conversación y **ya ve el
+problema que el cliente explicó** en vez de una pantalla vacía. Los 4 valores de `origen`
+que renderiza `ChatBubble` (mapa `ROLES`):
+
+| `origen` | Lado | Etiqueta | Aspecto |
+|---|---|---|---|
+| `admin` | derecha | Tú | `--blue-dim`, es lo que escribió el operador |
+| `cliente` | izquierda | Cliente | `--bg-card`, burbuja normal |
+| `bot` | izquierda | Bot | `--bg-inset` + borde **punteado** y texto atenuado — es contexto pasado recuperado del historial, no algo que responder. Sin color nuevo, a propósito |
+| `sistema` | centrado | — | Píldora gris (`.bubble-system`): escalada y resolución |
+
+Un `origen` desconocido cae en `cliente` (fallback del mapa), no rompe el render.
+
+### 2b. Mis entregas (rol domiciliario)
+
+**Vista:** dos sub-vistas — **Activas** (resumen de la ronda + tarjetas) e **Historial**
+**Datos:** `useOrders` para las activas · `useDeliveryHistory` para el historial
+**Archivos:** `src/pages/deliveries/DeliveriesPage.jsx` + `DeliveryHistory.jsx` +
+`src/hooks/useDeliveryHistory.js` + `src/styles/deliveries.less`
+
+Ocupa la tab Pedidos cuando el rol es `domiciliario` (el sidebar la renombra a **Mis entregas**).
+Las cuatro columnas del kanban son flujo de cocina, no su trabajo: él necesita a dónde va, cuánto
+cobra y un botón.
+
+**No filtra por `domiciliario_id` en JS, a propósito:** `useOrders` ya llega filtrado por la
+política `pedidos_select`. Si esta pantalla mostrara de más, el fallo estaría en la RLS, no aquí.
+
+- Resumen: entregas en camino, en preparación y **cuánto efectivo lleva por cobrar** — lo que va a
+  tener en el bolsillo al terminar la ronda
+- Tarjeta pensada para un móvil en la calle: la **dirección** es el elemento más grande, el
+  teléfono es un `tel:` (un toque, no copiar y pegar), y el cobro se resalta en ámbar **solo si es
+  efectivo**, que es el único dato que si se lee mal cuesta dinero
+- **Confirmación en dos pasos** para entregar, y el texto pregunta por el monto cuando es efectivo
+  (*"¿Recibiste $48.000 en efectivo?"*): el botón vive en un bolsillo, en una moto, y marcar
+  entregado no tiene deshacer
+- El Header le oculta las stats del día: `useOrders` le llega filtrado, así que "Pedidos hoy" e
+  "Ingresos" serían sus propios números con una etiqueta que sugiere las del restaurante
+
+**Historial de entregas (`DeliveryHistory`).** Un solo componente para **dos** pantallas: el
+repartidor viendo lo suyo en la sub-vista Historial, y el admin abriéndolo desde Configuración →
+Usuarios (botón *Ver entregas*, solo en filas de rol domiciliario). La diferencia la hace el prop
+`domiciliarioId`; **no hay ni una comprobación de rol en el componente** porque `pedidos_select` ya
+decide qué filas existen para quien mira — si un domiciliario pasara el id de otro vería una lista
+vacía, no un error.
+
+- Período **Hoy / 7 días / 30 días / Todo** con `getRange` de `dateRanges.js` (día de negocio
+  Colombia, UTC-5). `todo` no pasa por `getRange`: es la ausencia de filtro
+- Filtra y ordena por **`fecha_entrega`** (timestamptz), no por `fecha_pedido` (timestamp sin tz
+  con valor UTC): lo que se mide es cuándo se entregó
+- **El resumen viene del RPC `resumen_entregas`, no de sumar la lista**: está paginada de 20 en 20
+  y sumar lo cargado daría una cifra que crece al hacer scroll
+- Un `useRef` de nº de petición descarta respuestas que llegan tarde, para que al cambiar rápido de
+  período una consulta vieja no pise a la actual
+- La variante `compacto` es la del modal del admin, donde hay menos ancho
 
 ### 3. Estadísticas (Recharts)
 
@@ -183,21 +337,37 @@ src/
 ### 5. Reservas (Calendario)
 
 **Vista:** Calendario react-big-calendar con vistas Día / Semana / Mes, tematizado con las CSS vars del dashboard (dark/light)
-**Datos:** `useReservations` hook — fetch completo de `reservas` + realtime `*` (el bot también crea reservas)
-**Archivos:** `src/pages/reservations/` + `src/hooks/useReservations.js` + `src/styles/reservations.less`
+**Datos:** `useReservations` hook — fetch completo de `reservas` + realtime `*` (el bot también crea reservas). `useReservationReasons` trae el catálogo de ocasiones
+**Archivos:** `src/pages/reservations/` + `src/hooks/useReservations.js` + `src/hooks/useReservationReasons.js` + `src/styles/reservations.less`
 
 **Funcionalidad:**
 - Toolbar custom (`CalToolbar`): Hoy / ‹ › / label del periodo / leyenda de estados / switch de vista / botón "+ Nueva reserva"
-- Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
+- Crear reserva manual (`ReservationModal`): el cliente **se elige de la tabla `clientes`** con buscador por nombre/teléfono (reutiliza `useClients`) — **el cliente debe existir para reservar** (se crea en la tab Clientes). El dropdown solo aparece al escribir (escala a cientos de clientes): muestra máx. 8 resultados + "+N más — sigue escribiendo". Luego fecha, hora, personas, estado, **ocasión** y notas. Click/arrastre en un slot del calendario prellena fecha y hora (en Mes solo fecha)
 - Click en una reserva abre `ReservationDetail` (datos completos + link wa.me) con eliminación en dos pasos (confirmación inline)
-- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte). Las dos vías son **distintas a propósito**:
-  - **Crear** (`notifyCreated`) → **plantilla** `recordatorio_reserva` (params: nombre, fecha legible, hora, personas). Es la única forma de que llegue a un cliente creado a mano que nunca le escribió al bot (fuera de la ventana de 24h el texto libre se acepta con 200 y **no** se entrega — edge-case #16)
-  - **Eliminar** (`notifyDeleted`) → **texto libre**, porque **no hay plantilla aprobada para cancelación**. Solo se entrega si el cliente escribió en las últimas 24h, así que el toast dice "aviso enviado (solo llega si el cliente escribió en las últimas 24h)" en vez de afirmar que se notificó
+- **Siempre se notifica al cliente por WhatsApp** al crear y al eliminar (best-effort: si WA falla, la operación queda hecha y el toast lo advierte). Ambas van por **plantilla aprobada**, no por texto libre: fuera de la ventana de 24h Meta acepta el texto libre con 200 pero **no lo entrega** (edge-case #16), y una reserva creada a mano es justo el caso de un cliente que nunca le escribió al bot
+  - **Crear** (`notifyCreated`) → `recordatorio_reserva` (params: nombre, fecha legible, hora, personas)
+  - **Eliminar** (`notifyDeleted`) → `cancelacion_reserva` (params: nombre, fecha legible, hora) — Utility, desde 2026-07-29
 - Feedback con el toast global del DS (`useToast` + `<Toast>`; antes era un toast propio de esta página)
 - Eventos coloreados por `estado` (`RESERVATION_STATES`): pendiente=amber, confirmada=green, cancelada=red tachada
 - Duración visual del evento: `RESERVATION_DURATION_MIN` (90 min) — la BD solo guarda `hora` de inicio
-- `reserva_id` manual: `RSV-M<timestamp>` (M = manual, mismo patrón que `DET-M`); `origen: 'dashboard'`
+- `reserva_id` lo genera la **BD** (`generar_reserva_id()` como default): el hook no lo envía, para evitar colisiones, y lee la fila de vuelta con `.select().single()`. `origen: 'dashboard'`
 - `cliente_id`, `nombre_cliente` y `telefono` salen del cliente seleccionado (desnormalizados en `reservas`); valida que la fecha/hora no haya pasado
+
+**Ocasión / motivo de la reserva (2026-08-10):**
+- El selector se llena desde `motivos_reserva` (hook `useReservationReasons`, solo `activo=true`,
+  ordenado por `orden`) — la **misma tabla** que lee el bot. No hay lista de motivos ni precios
+  hardcodeados en el front: la única clave que el código conoce por nombre es `MOTIVO_DEFECTO`
+  (`'sin_ocasion'`), en `constants.js`
+- `createReservation` manda **solo la clave**; `costo_motivo` lo escribe el trigger
+  `trigger_costo_motivo` en la BD, así que el precio nunca depende del frontend
+- `ReservationDetail` muestra el nombre visible desde el catálogo pero **el costo desde la reserva**
+  (`costo_motivo` es la foto del precio al crearla; el catálogo pudo cambiar después)
+- En el calendario, las reservas con montaje (costo > 0) llevan **🎉** en el título: son las que la
+  sala tiene que preparar antes, y así se ven sin abrir el detalle
+- ⚠️ La plantilla `recordatorio_reserva` tiene 4 params fijos, así que **la confirmación por
+  WhatsApp del dashboard no incluye la ocasión ni su costo**. Requiere aprobar una plantilla nueva
+  en Meta — anotado en el backlog. El bot sí lo dice, porque su respuesta es texto libre dentro de
+  la ventana de 24h
 - Vistas de tiempo limitadas a 10:00–23:30, scroll inicial a las 17:00
 
 ### 6. Menú (Disponibilidad del catálogo)
@@ -283,12 +453,51 @@ más de una página** a memoria.
   motivo de cancelación (bloque rojo)
 - Responsive: se ocultan tipo (≤940px), total (≤720px) y fecha (≤540px)
 
-### 8. Configuración (info del negocio)
+### 8. Configuración (info del negocio + zonas + FAQ + respuestas rápidas)
 
-**Vista:** Formulario agrupado en cards por categoría (Identidad / Contacto y ubicación /
-Horarios / Operación y domicilios)
-**Datos:** `useBusinessInfo` hook — fetch completo de `info_negocio` (clave/valor/categoria)
-**Archivos:** `src/pages/settings/` + `src/hooks/useBusinessInfo.js` + `src/styles/settings.less`
+**Vista:** cinco sub-vistas en un control segmentado (`.settings-segmented`) — **Información del
+negocio**, **Zonas de domicilio**, **Preguntas frecuentes**, **Respuestas rápidas** y **Usuarios**
+**Datos:** `useBusinessInfo` (`info_negocio`) · `useDeliveryZones` (`zonas_entrega` + `barrios`) ·
+`useFaq` (`faq`) · `useRespuestasRapidas` (`respuestas_rapidas`)
+**Archivos:** `src/pages/settings/` (`SettingsPage` shell + `BusinessInfoSection` +
+`DeliveryZonesSection` + `ZoneModal` + `FaqSection` + `FaqModal` + `faqLint.js` +
+`QuickRepliesSection` + `QuickReplyModal`) + `src/hooks/useBusinessInfo.js` +
+`src/hooks/useDeliveryZones.js` + `src/hooks/useFaq.js` + `src/hooks/useRespuestasRapidas.js` +
+`src/utils/quickReplies.js` + `src/styles/settings.less`
+
+**Propósito de la tab:** todo lo que el restaurante administra **sin depender de nosotros**. Para
+el restaurante las cinco sub-vistas son la misma tarea (administrar lo suyo),
+y por eso van juntas en vez de en tabs del sidebar. La otra razón es de diseño: cada
+sub-vista tiene **su** único botón `primary` (Guardar cambios / Nueva zona / Nueva pregunta /
+Nueva respuesta), que es precisamente lo que impide meterlas en una sola pantalla (DS §3).
+
+**8b. Zonas de domicilio** (2026-08-18) es la única sub-vista que mueve **dinero**: su tarifa
+entra en `pedidos.total` vía trigger. Por eso salió de "Información del negocio", donde vivía
+como dos campos de texto (`zona_delivery` / `costo_delivery`) que el bot solo podía recitar;
+ahí quedó un puntero (`.settings-nota`) hacia acá.
+
+- Una card por zona con su tarifa, tiempo estimado y los barrios como chips; el input de
+  "Agregar barrio…" es un `<form>` por zona (submit icon-only, para no competir con el único
+  `primary` de la pantalla).
+- **La clave del barrio no se calcula en JS**: se manda solo `nombre` y la deriva
+  `trigger_normalizar_barrio`. Es la clave con la que la BD hace match contra lo que escribe el
+  cliente por WhatsApp, así que normalizarla en dos capas sería la forma segura de que se
+  desincronicen.
+- **"Barrios sin zona"**: bloque ámbar con los barrios que llegaron por WhatsApp y no están en
+  el catálogo (`pedidos` con `zona IS NULL`), agrupados en JS porque PostgREST no expone
+  `GROUP BY`. Un `<select>` + Asignar los crea directamente en la zona elegida. Es la lista de
+  trabajo pendiente del admin, y sale gratis de haber guardado el texto crudo del cliente.
+- La **zona base** se pinta aparte al final, con borde punteado y sin switch: la BD impide
+  borrarla o desactivarla (`proteger_zona_base`), así que la UI ni lo ofrece.
+
+> **Ojo con la asimetría:** 8a y 8b alimentan al **bot** (el prompt las lee vía tools). 8c **no** —
+> es texto que envía una persona desde el chat de soporte. Es la razón por la que las respuestas
+> rápidas no pasan por `faqLint`.
+
+`SettingsPage` es solo el shell: mantiene la sub-vista activa y el único `<Toast>` de la tab, que
+pasa a las secciones como `showToast`.
+
+#### 8a. Información del negocio
 
 **Propósito:** editar los **valores** de `info_negocio` — la tabla que el bot lee completa vía
 la tool `info_local` (Agente Soporte) para responder horarios, dirección, pagos, zonas, etc.
@@ -296,7 +505,7 @@ Lo que se guarda aquí es literalmente lo que el bot dicta por WhatsApp. No se c
 eliminan claves desde la UI (la estructura la define la BD; ver `docs/database/schema.md`).
 
 **Funcionalidad:**
-- Registro de campos (`SECTIONS` en `SettingsPage`): orden, agrupación, label, help,
+- Registro de campos (`SECTIONS` en `BusinessInfoSection`): orden, agrupación, label, help,
   placeholder y si es multilínea (textarea: descripción, datos de transferencia, política de
   cancelación). Claves de la BD que no estén en el registro caen en una card **"Otros"** con
   render genérico — nada queda invisible
@@ -309,6 +518,96 @@ eliminan claves desde la UI (la estructura la define la BD; ver `docs/database/s
 - Campos con el patrón global `.field`; cards planas en **dos stacks balanceados** (DS §7):
   izquierda Identidad + Contacto (+ "Otros"), derecha Horarios + Operación; la última card
   de cada stack crece (`flex: 1`) para cerrar parejo abajo. 1 columna en ≤880px
+
+#### 8b. Preguntas frecuentes (CRUD, 2026-08-11)
+
+**Propósito:** el restaurante administra sus propias FAQ (parqueadero, mascotas, eventos,
+opciones vegetarianas…) y el Agente Soporte las consulta con la tool `consultar_faq` en vez de
+tenerlas escritas a mano en el prompt. Ver `docs/bot/ai-agents.md` §Agente Soporte.
+
+**Funcionalidad:**
+- Lista ordenable con flechas ↑↓, switch `activa` por fila (update optimista, igual que la
+  disponibilidad del menú) y `FaqModal` para crear/editar/eliminar (confirmación **inline** en el
+  pie del modal, como `ClientModal` — nunca `window.confirm`)
+- `moveFaq` **renumera `orden` a 0..n-1** en vez de intercambiar dos valores: tras varios borrados
+  la BD tiene órdenes repetidos o con huecos, y sólo renumerar deja la lista consistente
+- Estado vacío que sugiere **preguntas** de ejemplo, nunca respuestas: una respuesta sembrada sería
+  una afirmación inventada del negocio que el bot le diría a un cliente real
+- **Sin realtime** (mismo criterio que `useBusinessInfo`): el único escritor es este dashboard y
+  las mutaciones ya refrescan; un evento entrante mientras el admin reordena sólo daría saltos
+
+**`faqLint.js` — guardas de contenido.** Las FAQ son texto libre que entra al contexto del agente,
+así que pueden chocar con las reglas globales del bot (no mencionar internos, precios exactos desde
+la BD). Dos capas que conviene no confundir:
+- **Bloquea** sólo lo que los CHECK de la tabla también rechazan (longitudes), para que el admin
+  vea un mensaje claro en vez de un error crudo de Postgres
+- **Avisa sin bloquear** ante precios escritos a mano, jerga interna o texto con forma de
+  instrucción; el botón pasa a *"Guardar de todos modos"*. Es ayuda de redacción para el error
+  honesto del dueño del restaurante — **la barrera real es el prompt del Agente Soporte**, que
+  trata las FAQ como dato y nunca como instrucción
+
+#### 8c. Respuestas rápidas (CRUD, 2026-08-12)
+
+**Propósito:** los mensajes que el operador repite todo el día al atender por chat ("ya salió tu
+domicilio", "confírmame la dirección"). Se guardan en `respuestas_rapidas` y aparecen como chips
+sobre el input de la tab **Soporte**. Ver §3 (Soporte) para el lado consumidor.
+
+**Funcionalidad:**
+- Misma anatomía que 8b —lista ordenable ↑↓, switch `activa` optimista, modal con confirmación
+  de borrado inline— pero con clases `rr-*` propias en `settings.less`: son dos features distintas
+  y los selectores se repiten a propósito para que tocar una pantalla no mueva la otra
+- `QuickReplyModal` trae un botón **`{nombre}`** que inserta el marcador **en la posición del
+  cursor** (no al final: casi siempre va en mitad del saludo) y un **preview en forma de burbuja**
+  con el texto ya resuelto usando un nombre de ejemplo
+- Valida **sólo longitudes y atajo duplicado** — lo mismo que rechazan los CHECK y el índice único
+  de la tabla. **No hay `faqLint` aquí**: este texto no entra al contexto de ningún agente
+- El `atajo` es único (índice sobre `lower(btrim(atajo))`): dos chips con la misma etiqueta serían
+  indistinguibles en el chat
+- Estado vacío que sugiere **nombres** de ejemplo, nunca mensajes — mismo criterio que 8b
+
+**`src/utils/quickReplies.js` — el marcador `{nombre}`.** Deliberadamente hay **uno solo**: cada
+marcador extra es un dato que puede faltar al enviar y dejar un `{algo}` crudo delante del cliente,
+y el nombre es el único que el chat siempre tiene a mano. `aplicarNombre()` usa el **primer**
+nombre ("Juan Pablo" → "Juan": el nombre completo suena a formulario) y, si no hay nombre
+registrado, **borra el marcador junto con la coma que lo sigue** en vez de dejarlo crudo o
+sustituirlo por "cliente" — "Hola {nombre}, tu pedido…" → "Hola, tu pedido…".
+
+#### 8d. Usuarios (2026-08-12)
+
+**Propósito:** repartir permisos. Es la única sub-vista que no configura texto que sale al
+cliente; va aquí porque para el restaurante la tab es "lo que administro yo", y de hecho solo
+existe para el admin — ni la RLS de `perfiles` ni `listar_usuarios()` le devuelven nada a nadie más.
+
+- La lista viene del **RPC `listar_usuarios()`**, no de un `select` a `perfiles`: el email vive en
+  `auth.users`, que PostgREST no expone. La alternativa era denormalizarlo y que se desincronizara
+- Por fila: rol (`select`), acceso (switch) y **último acceso** — para detectar cuentas dormidas
+- **No hay botón "Crear usuario"**, y la pantalla explica por qué: el alta exige la admin API con
+  `service_role`, que no puede viajar en el bundle (mismo motivo que el token de WhatsApp). Las
+  cuentas se crean en Supabase y aparecen aquí al instante como `domiciliario` — el rol de menor
+  alcance — vía `trigger_crear_perfil`
+- **Editarse a uno mismo está bloqueado en la UI**, no en la BD: el trigger solo impide quedarse
+  *sin* admin, así que con dos admins uno podría degradarse y perder el acceso de golpe
+- Los errores de los triggers (`sin ningún administrador`, `Solo un administrador`) se traducen a
+  frases en `useUsuarios`; la frontera sigue siendo la BD
+
+#### 8e. Mi perfil (todos los roles)
+
+**Archivos:** `src/components/ProfileModal.jsx` · `src/components/Avatar.jsx` ·
+`src/lib/avatares.js` · `useAuth().actualizarPerfil`
+
+Se abre desde el **menú de la barra superior**, no desde una sub-vista de Configuración: el
+domiciliario no tiene esa tab y también necesita poner su nombre y su foto. El menú superior es el
+único punto que todos los roles comparten.
+
+- Edita **nombre, teléfono y foto**. El rol se muestra pero no se edita — es de 8d, y
+  `trigger_proteger_perfil` lo rechazaría igual. `actualizarPerfil` tampoco acepta `rol`/`activo`
+  aunque se los pasen: dejar la puerta abierta invitaría a usarla desde otro punto
+- **Vista previa local antes de subir** (`URL.createObjectURL`): subir primero haría esperar al
+  usuario para saber si eligió la foto correcta
+- El avatar anterior se borra **después** de que el perfil apunta al nuevo, y es best-effort: si
+  falla queda un archivo huérfano, que es mejor que quedarse sin foto porque el borrado se adelantó
+- `Avatar` cae a la inicial del nombre con `onError`. No es decorativo: el bucket es público y una
+  URL puede quedar rota, y sin eso quedaría el icono de imagen partida en la barra superior
 
 ### 9. Reseñas (satisfacción + recuperación)
 
@@ -379,6 +678,13 @@ según el tono).
 | `useMenu` | Fetch todo el catálogo `menu`, realtime `*`, cambia `disponible` con update optimista (rollback si falla) | `products, loading, error, setDisponible` |
 | `useReviews` | Fetch `feedback` con `clientes`/`pedidos` embebidos, realtime `*`, normaliza a filas planas; handoff a Soporte (`modo=humano`) | `reviews, loading, error, refetch, handoffToSupport` |
 | `useBusinessInfo` | Fetch `info_negocio`, guarda solo claves cambiadas (sin realtime — es un formulario) | `info, loading, error, saveInfo` |
+| `useFaq` | CRUD de `faq` + `setActiva` optimista + `moveFaq` (renumera `orden` a 0..n-1); traduce los CHECK de la tabla a mensajes legibles | `faqs, loading, error, createFaq, updateFaq, deleteFaq, setActiva, moveFaq, refetch` |
+| `useDeliveryZones` | CRUD de `zonas_entrega` + `barrios` (zonas con sus barrios embebidos) y la lista de **barrios sin zona** deducida de `pedidos` con `zona IS NULL`. Sin realtime (mismo criterio que `useFaq`). Traduce a texto los errores de `proteger_zona_base` y de la FK de barrios | `zonas, sinClasificar, loading, error, createZona, updateZona, deleteZona, setZonaActiva, addBarrio, moveBarrio, deleteBarrio, refetch` |
+| `useBarrioOptions` | *(mismo archivo)* Catálogo plano de barrios activos + `tarifaBase`, para los formularios que **crean** pedidos. Solo lectura. Expone la tarifa base para poder previsualizar el mismo número que va a cobrar la BD, en vez de re-quemar un 5000 en el front | `barrios, tarifaBase, loading` |
+| `useDeliveryHistory` | Entregas pasadas de un domiciliario: período (`getRange`), paginado de 20 y resumen vía RPC `resumen_entregas`. Sin comprobación de rol — la RLS decide qué filas existen | `entregas, resumen, loading, cargandoMas, hayMas, error, cargarMas, refetch` |
+| `useUsuarios` | Lista de usuarios vía RPC `listar_usuarios` (admin-only) + `cambiarRol` / `setActivo` / `actualizarDatos` sobre `perfiles`; traduce los errores de los triggers | `usuarios, loading, error, cambiarRol, setActivo, actualizarDatos, refetch` |
+| `useDomiciliarios` | Domiciliarios activos para el selector de asignación + `asignarDomiciliario(pedidoId, id)`. Solo devuelve filas para un admin (`perfiles_select` limita al resto a su propia fila); traduce los errores del trigger a texto legible | `domiciliarios, loading, refetch` |
+| `useRespuestasRapidas` | CRUD de `respuestas_rapidas` + `setActiva` optimista + `moveRespuesta` (misma renumeración); traduce CHECK e índice único a mensajes legibles. Lo usan **dos** pantallas: Configuración (CRUD) y Soporte (solo lectura) | `respuestas, loading, error, createRespuesta, updateRespuesta, deleteRespuesta, setActiva, moveRespuesta, refetch` |
 | `useOrderHistory` | Página de pedidos server-side (rango + filtros + orden + paginación como parámetros; resumen vía RPC `historial_resumen`), realtime `*`, correcciones de estado, export del conjunto filtrado | `orders, totalCount, summary, loading, error, range, marcarEntregado, cancelarPedido, fetchAllFiltered` |
 | `useTheme` | Toggle dark/light, persiste en localStorage, aplica `data-theme` | `{ theme, toggleTheme }` |
 
@@ -457,4 +763,15 @@ constants.js) — ya **no** hardcodeado en
 - `OrderCard` detecta comprobante de Transferencia pendiente y muestra aviso
 - `EditOrderModal` calcula el recargo de domicilio como diferencia entre `total` e items — no lo modifica, solo lo preserva
 - `EditOrderModal` usa el RPC `editar_pedido` (no update directo) para recalcular totales vía trigger
+- **Pizza mitad y mitad (2026-08-10):** `MenuPicker` tiene dos modos (`Producto` / `Mitad y mitad`).
+  En el segundo se eligen las dos mitades (la lista de la segunda se filtra a la **misma masa** que
+  la primera) y luego el tamaño, entre los que existen en **ambas**, sin `porcion`. El precio que se
+  muestra por tamaño es local (el máximo de las dos), pero al confirmar se llama la RPC
+  `cotizar_mitad_y_mitad` — **la misma que usa el bot** — y se emite lo que devuelve la BD: el JS del
+  dashboard nunca fija el precio. El item emitido lleva `mitades`, que `CreateOrderModal` inserta en
+  `detalle_pedidos.mitades` y `EditOrderModal` reenvía por `editar_pedido` (si no, editar un pedido
+  borraría de qué era cada mitad). Los hooks `useOrders` y `useOrderHistory` seleccionan la columna
+  `mitades`, y `OrderCard` / `OrderDetailModal` la pintan con `.mm-tag`. Las reglas del negocio
+  (misma masa, sin porción, solo pizza salada, cobra la más cara) las decide la RPC, no este código
+  — ver [`../database/schema.md`](../database/schema.md) y [`../bot/ai-agents.md`](../bot/ai-agents.md)
 - Las imágenes en `SupportPanel` usan `loading="lazy"` + fallback visual si fallan
