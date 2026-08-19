@@ -46,8 +46,10 @@ src/
 │   ├── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
 │   ├── menu/                     ← MenuPage + ProductModal (disponibilidad del catálogo)
 │   ├── reviews/                  ← ReviewsPage + SatisfactionSummary + ReviewCard + ReplyModal + Stars + sentiment.js
-│   └── settings/                 ← SettingsPage (shell de 3 sub-vistas) + BusinessInfoSection
-│                                    (info_negocio) + FaqSection + FaqModal + faqLint.js (faq)
+│   └── settings/                 ← SettingsPage (shell de 5 sub-vistas) + BusinessInfoSection
+│                                    (info_negocio) + DeliveryZonesSection + ZoneModal
+│                                    (zonas_entrega + barrios)
+│                                    + FaqSection + FaqModal + faqLint.js (faq)
 │                                    + QuickRepliesSection + QuickReplyModal (respuestas_rapidas)
 │                                    + UsersSection (perfiles)
 │
@@ -63,6 +65,7 @@ src/
 │   ├── useMenu.js                ← Catálogo `menu` + realtime * + setDisponible (optimista)
 │   ├── useReviews.js             ← `feedback` + clientes/pedidos embebidos + realtime * (canal feedback-rt)
 │   ├── useBusinessInfo.js        ← `info_negocio` clave/valor + saveInfo (sin realtime, adrede)
+│   ├── useDeliveryZones.js       ← `zonas_entrega` + `barrios` CRUD + barrios sin zona · useBarrioOptions
 │   ├── useFaq.js                 ← `faq` CRUD + toggle activa (optimista) + reordenar (sin realtime)
 │   ├── useRespuestasRapidas.js   ← `respuestas_rapidas` CRUD + toggle + reordenar (sin realtime)
 │   ├── useDomiciliarios.js       ← Domiciliarios activos + asignarDomiciliario (solo admin)
@@ -450,22 +453,42 @@ más de una página** a memoria.
   motivo de cancelación (bloque rojo)
 - Responsive: se ocultan tipo (≤940px), total (≤720px) y fecha (≤540px)
 
-### 8. Configuración (info del negocio + FAQ + respuestas rápidas)
+### 8. Configuración (info del negocio + zonas + FAQ + respuestas rápidas)
 
-**Vista:** cuatro sub-vistas en un control segmentado (`.settings-segmented`) — **Información del
-negocio**, **Preguntas frecuentes**, **Respuestas rápidas** y **Usuarios**
-**Datos:** `useBusinessInfo` (`info_negocio`) · `useFaq` (`faq`) · `useRespuestasRapidas`
-(`respuestas_rapidas`)
+**Vista:** cinco sub-vistas en un control segmentado (`.settings-segmented`) — **Información del
+negocio**, **Zonas de domicilio**, **Preguntas frecuentes**, **Respuestas rápidas** y **Usuarios**
+**Datos:** `useBusinessInfo` (`info_negocio`) · `useDeliveryZones` (`zonas_entrega` + `barrios`) ·
+`useFaq` (`faq`) · `useRespuestasRapidas` (`respuestas_rapidas`)
 **Archivos:** `src/pages/settings/` (`SettingsPage` shell + `BusinessInfoSection` +
-`FaqSection` + `FaqModal` + `faqLint.js` + `QuickRepliesSection` + `QuickReplyModal`) +
-`src/hooks/useBusinessInfo.js` + `src/hooks/useFaq.js` + `src/hooks/useRespuestasRapidas.js` +
+`DeliveryZonesSection` + `ZoneModal` + `FaqSection` + `FaqModal` + `faqLint.js` +
+`QuickRepliesSection` + `QuickReplyModal`) + `src/hooks/useBusinessInfo.js` +
+`src/hooks/useDeliveryZones.js` + `src/hooks/useFaq.js` + `src/hooks/useRespuestasRapidas.js` +
 `src/utils/quickReplies.js` + `src/styles/settings.less`
 
 **Propósito de la tab:** todo lo que el restaurante administra **sin depender de nosotros**. Para
-el restaurante las cuatro sub-vistas son la misma tarea (administrar lo suyo),
-y por eso van juntas en vez de en tres tabs del sidebar. La otra razón es de diseño: cada
-sub-vista tiene **su** único botón `primary` (Guardar cambios / Nueva pregunta / Nueva respuesta),
-que es precisamente lo que impide meterlas en una sola pantalla (DS §3).
+el restaurante las cinco sub-vistas son la misma tarea (administrar lo suyo),
+y por eso van juntas en vez de en tabs del sidebar. La otra razón es de diseño: cada
+sub-vista tiene **su** único botón `primary` (Guardar cambios / Nueva zona / Nueva pregunta /
+Nueva respuesta), que es precisamente lo que impide meterlas en una sola pantalla (DS §3).
+
+**8b. Zonas de domicilio** (2026-08-18) es la única sub-vista que mueve **dinero**: su tarifa
+entra en `pedidos.total` vía trigger. Por eso salió de "Información del negocio", donde vivía
+como dos campos de texto (`zona_delivery` / `costo_delivery`) que el bot solo podía recitar;
+ahí quedó un puntero (`.settings-nota`) hacia acá.
+
+- Una card por zona con su tarifa, tiempo estimado y los barrios como chips; el input de
+  "Agregar barrio…" es un `<form>` por zona (submit icon-only, para no competir con el único
+  `primary` de la pantalla).
+- **La clave del barrio no se calcula en JS**: se manda solo `nombre` y la deriva
+  `trigger_normalizar_barrio`. Es la clave con la que la BD hace match contra lo que escribe el
+  cliente por WhatsApp, así que normalizarla en dos capas sería la forma segura de que se
+  desincronicen.
+- **"Barrios sin zona"**: bloque ámbar con los barrios que llegaron por WhatsApp y no están en
+  el catálogo (`pedidos` con `zona IS NULL`), agrupados en JS porque PostgREST no expone
+  `GROUP BY`. Un `<select>` + Asignar los crea directamente en la zona elegida. Es la lista de
+  trabajo pendiente del admin, y sale gratis de haber guardado el texto crudo del cliente.
+- La **zona base** se pinta aparte al final, con borde punteado y sin switch: la BD impide
+  borrarla o desactivarla (`proteger_zona_base`), así que la UI ni lo ofrece.
 
 > **Ojo con la asimetría:** 8a y 8b alimentan al **bot** (el prompt las lee vía tools). 8c **no** —
 > es texto que envía una persona desde el chat de soporte. Es la razón por la que las respuestas
@@ -656,6 +679,8 @@ según el tono).
 | `useReviews` | Fetch `feedback` con `clientes`/`pedidos` embebidos, realtime `*`, normaliza a filas planas; handoff a Soporte (`modo=humano`) | `reviews, loading, error, refetch, handoffToSupport` |
 | `useBusinessInfo` | Fetch `info_negocio`, guarda solo claves cambiadas (sin realtime — es un formulario) | `info, loading, error, saveInfo` |
 | `useFaq` | CRUD de `faq` + `setActiva` optimista + `moveFaq` (renumera `orden` a 0..n-1); traduce los CHECK de la tabla a mensajes legibles | `faqs, loading, error, createFaq, updateFaq, deleteFaq, setActiva, moveFaq, refetch` |
+| `useDeliveryZones` | CRUD de `zonas_entrega` + `barrios` (zonas con sus barrios embebidos) y la lista de **barrios sin zona** deducida de `pedidos` con `zona IS NULL`. Sin realtime (mismo criterio que `useFaq`). Traduce a texto los errores de `proteger_zona_base` y de la FK de barrios | `zonas, sinClasificar, loading, error, createZona, updateZona, deleteZona, setZonaActiva, addBarrio, moveBarrio, deleteBarrio, refetch` |
+| `useBarrioOptions` | *(mismo archivo)* Catálogo plano de barrios activos + `tarifaBase`, para los formularios que **crean** pedidos. Solo lectura. Expone la tarifa base para poder previsualizar el mismo número que va a cobrar la BD, en vez de re-quemar un 5000 en el front | `barrios, tarifaBase, loading` |
 | `useDeliveryHistory` | Entregas pasadas de un domiciliario: período (`getRange`), paginado de 20 y resumen vía RPC `resumen_entregas`. Sin comprobación de rol — la RLS decide qué filas existen | `entregas, resumen, loading, cargandoMas, hayMas, error, cargarMas, refetch` |
 | `useUsuarios` | Lista de usuarios vía RPC `listar_usuarios` (admin-only) + `cambiarRol` / `setActivo` / `actualizarDatos` sobre `perfiles`; traduce los errores de los triggers | `usuarios, loading, error, cambiarRol, setActivo, actualizarDatos, refetch` |
 | `useDomiciliarios` | Domiciliarios activos para el selector de asignación + `asignarDomiciliario(pedidoId, id)`. Solo devuelve filas para un admin (`perfiles_select` limita al resto a su propia fila); traduce los errores del trigger a texto legible | `domiciliarios, loading, refetch` |

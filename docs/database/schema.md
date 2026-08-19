@@ -36,6 +36,7 @@
 | `nombre` | text | nullable (`'Pendiente'` al crearse) |
 | `telefono` | text | **unique** — clave de búsqueda principal (NO se llama `direccion`) |
 | `direccion_principal` | text | nullable |
+| `barrio` | text | nullable · barrio habitual, **texto libre** (2026-08-18) · se resuelve contra `barrios` recién al crear el pedido, igual que cuando lo dicta el cliente por WhatsApp. El bot lo confirma en vez de repreguntarlo |
 | `metodo_pago_preferido` | text | nullable |
 | `fecha_registro` / `fecha_nacimiento` | date | |
 | `etiqueta` | text | default `'nuevo'` (nuevo/recurrente/frecuente/inactivo) |
@@ -54,12 +55,15 @@
 | `telefono` | text | |
 | `tipo_pedido` | text | check: `domicilio` / `recoger` |
 | `direccion_entrega` | text | nullable |
+| `barrio` | text | nullable · **desnormalizado a propósito** (2026-08-18): guarda el nombre del catálogo si hubo match, o el texto crudo del cliente si no. Sin FK, para que el domiciliario lo siga leyendo aunque el admin renombre o borre el barrio |
+| `zona` | text | nullable · FK → `zonas_entrega(clave)` **ON UPDATE CASCADE / ON DELETE SET NULL** · **NULL = barrio sin mapear**, se cobró la tarifa base. Es la columna por la que el dashboard lista "barrios sin zona" |
+| `costo_domicilio` | numeric | default 0 · **check ≥ 0** · costo del envío **congelado** al crear el pedido. Subirle la tarifa a una zona NO altera pedidos ya hechos |
 | `fecha_pedido` | timestamp (sin tz) | default `now()` — parsear con `parseDb()` |
 | `estado` | text | check: `pendiente`/`en_cocina`/`en_camino`/`recoger`/`entregado`/`cancelado` |
 | `metodo_pago` | text | `'Efectivo'`/`'Transferencia'` (capitalizado) |
 | `estado_pago` | text | check: `pendiente`/`confirmado`/`rechazado` |
 | `comprobante_url` | text | nullable |
-| `total` | numeric | default 0 · **lo calcula un trigger** (ver abajo) |
+| `total` | numeric | default 0 · **lo calcula un trigger** (ver abajo) · = suma de ítems **+ `costo_domicilio`** |
 | `tiempo_estimado` / `repartidor` / `notas` / `motivo_rechazo` | text | nullable · ⚠️ `repartidor` está **muerta**: NULL en los 105 pedidos, solo se lee en `OrderDetailModal`. La sustituye `domiciliario_id` |
 | `domiciliario_id` | uuid | nullable · FK → `perfiles(usuario_id)` **ON DELETE SET NULL** · la escribe **solo un admin** · es la columna sobre la que filtra la RLS del rol domiciliario (2026-08-12) |
 | `fecha_entrega` | timestamptz | nullable · la fija un trigger al pasar a `entregado` |
@@ -121,6 +125,44 @@ Seed inicial (**precios PLACEHOLDER**, se ajustan con un `UPDATE`): `sin_ocasion
 > Fuente única para las dos capas: el bot la lee con la tool `consultar_motivos_reserva` y el
 > dashboard con el hook `useReservationReasons`.
 
+### `zonas_entrega` — zonas de cobertura y su tarifa (1 fila · PK `clave` · RLS ✅)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `clave` 🔑 | text | slug interno; lo que se guarda en `pedidos.zona` |
+| `nombre` | text | lo que se nombra al cliente (`Zona Centro`) |
+| `descripcion` | text | nullable · nota interna |
+| `costo` | numeric | **check ≥ 0** · tarifa del envío para **todos** los barrios de la zona |
+| `tiempo_estimado` | text | nullable · si está, gana sobre `info_negocio.tiempo_entrega_delivery` |
+| `es_base` | boolean | default `false` · **zona comodín**: la que se cobra cuando el barrio no está mapeado |
+| `activo` | boolean | default `true` · zona inactiva → sus barrios pasan a cobrar la tarifa base |
+| `orden` | integer | orden de presentación |
+
+### `barrios` — barrios cubiertos, agrupados por zona (0 filas · PK `clave` · RLS ✅)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `clave` 🔑 | text | **la deriva el trigger** desde `nombre` con `normalizar_barrio()` — es el punto de match contra lo que escribe el cliente |
+| `nombre` | text | como se muestra (`La América`) |
+| `zona` | text | FK → `zonas_entrega(clave)` **ON UPDATE CASCADE** · borrar una zona con barrios **falla** (hay que moverlos) |
+| `activo` | boolean | default `true` |
+
+Índices: `barrios_zona_idx` y `barrios_clave_trgm` (GIN trgm, para el match difuso).
+
+Semilla: **una sola** fila en `zonas_entrega`, `base` = *Tarifa base* a **$5.000** — exactamente lo
+que el trigger cobraba quemado, para que el sistema se comporte igual que antes hasta que el
+restaurante cargue sus barrios. `barrios` arranca vacía a propósito: sembrar barrios sería
+inventar la cobertura real del negocio.
+
+> **La tarifa NUNCA la escribe quien inserta**, misma convención que `motivos_reserva`. Ni el LLM
+> ni el JS mandan `costo_domicilio`: mandan el **barrio en texto crudo** y
+> `trigger_tarifa_domicilio` lo resuelve y copia el precio. Lo que queda en `pedidos` es una
+> **foto**. Fuente única para las dos capas: el bot la lee con la tool `consultar_cobertura` y el
+> dashboard con `useDeliveryZones` / `useBarrioOptions`.
+>
+> **Un barrio sin mapear NO es un rechazo.** Cae en la zona `es_base`, se cobra esa tarifa y
+> `pedidos.zona` queda NULL. Se prefiere cobrar de más o de menos una vez a perder la venta
+> mientras el restaurante termina de cargar barrios. La zona base está protegida contra borrado
+> y desactivación (`proteger_zona_base`) justamente porque sin ella ese caso cobraría **$0**.
+
 ### `feedback` — calificaciones (1 fila · RLS ✅)
 `feedback_id` 🔑 (`FB-`), `cliente_id` (FK, **ON DELETE CASCADE**), `pedido_id` (FK, **unique**,
 **ON DELETE CASCADE**), `fecha`, `calificacion_general` smallint (**check 1–5**), `comentario`,
@@ -160,8 +202,15 @@ Claves por `categoria`:
 - `identidad`: `nombre_negocio`, `slogan`, `descripcion_general`
 - `contacto`: `direccion`, `telefono_principal`, `whatsapp`, `instagram`, `link_menu`
 - `horarios`: `horario_semana`, `horario_finsemana`, `horario_feriados`
-- `operacion`: `metodos_pago`, `datos_transferencia`, `zona_delivery`, `costo_delivery`,
-  `tiempo_entrega_delivery`, `politica_cancelacion`
+- `operacion`: `metodos_pago`, `datos_transferencia`, `tiempo_entrega_delivery`,
+  `politica_cancelacion`
+
+> **`zona_delivery` y `costo_delivery` se eliminaron el 2026-08-18.** Eran texto libre que el bot
+> solo podía recitar y que no entraba en ningún cálculo (`costo_delivery` estaba **vacío**, y
+> `zona_delivery` decía *"Solo dentro del municipio Bello y Copaa, TEN PRESENTE ZONA AMAZONIA"*).
+> Los reemplazan `zonas_entrega` + `barrios`. Se borraron en vez de dejarse por compatibilidad
+> porque `info_local` hace `getAll` sin filtro: mientras existieran, el Agente Soporte los leería
+> y podría **contradecir la tarifa real** que cobra el Agente Pedidos.
 
 > ⚠️ Los **valores** actuales son de plantilla ("La Pizzería Don Carlo", teléfonos +58) —
 > ver BUG-026: el operador debe llenar la data real desde la tab Configuración.
@@ -252,7 +301,10 @@ Creada con la migración `roles_etapa1_perfiles_y_helpers` (2026-08-12).
 
 | Tabla | Trigger | Cuándo | Qué hace |
 |---|---|---|---|
-| `detalle_pedidos` | `trigger_actualizar_total` | **AFTER INSERT** | `pedidos.total` = `SUM(precio_unitario*cantidad)` **+ $5.000 si `domicilio`** |
+| `detalle_pedidos` | `trigger_actualizar_total` | **AFTER INSERT OR UPDATE OR DELETE** | `pedidos.total` = `SUM(precio_unitario*cantidad)` **+ `pedidos.costo_domicilio`** (2026-08-18: antes sumaba $5.000 quemados y solo disparaba en INSERT) |
+| `pedidos` | `trigger_tarifa_domicilio` | BEFORE INSERT **OR UPDATE OF `tipo_pedido`, `barrio`, `costo_domicilio`** | **Resuelve el barrio y congela la tarifa** (2026-08-18): `barrio` → `resolver_barrio()` → fija `barrio` (nombre canónico), `zona` y `costo_domicilio`. Sin match → tarifa base y `zona` NULL, conservando el texto crudo. `recoger` → los tres a NULL/0. En UPDATE ajusta `total` **por delta** (`−OLD.costo +NEW.costo`), nunca recalculando desde cero. Si solo cambió `costo_domicilio` respeta el override manual (promo / envío gratis) |
+| `zonas_entrega` | `trigger_proteger_zona_base` | BEFORE UPDATE OR DELETE | Impide borrar o desactivar la zona `es_base`, y quitarle la marca sin pasársela a otra. Sin zona base, un barrio no mapeado se cobraría a $0 (2026-08-18) |
+| `barrios` | `trigger_normalizar_barrio` | BEFORE INSERT **OR UPDATE** | `clave` = `normalizar_barrio(nombre)` y `updated_at = now()`. La clave nunca la manda el cliente de la API: se deriva, para que la normalización viva en un solo sitio (2026-08-18) |
 | `pedidos` | `trigger_fecha_entrega` | BEFORE UPDATE | Fija `fecha_entrega = now()` al pasar a `estado='entregado'` |
 | `pedidos` | `notificar-estado-pedido` | AFTER UPDATE | `http_request` (pg_net) — notifica el cambio de estado (webhook) |
 | `reservas` | `trigger_validar_cupo` | BEFORE INSERT | Si hay 8 reservas solapadas (90 min) `confirmada` ese día → `RAISE EXCEPTION` |
@@ -265,18 +317,24 @@ Creada con la migración `roles_etapa1_perfiles_y_helpers` (2026-08-12).
 | `pedidos` | `trigger_validar_asignacion` | BEFORE INSERT **OR UPDATE OF `domiciliario_id`, `tipo_pedido`** | **Exige `es_admin()` para cambiar la asignación** (la RLS no puede: el mesero necesita UPDATE sobre `pedidos` y las políticas no limitan por columna). Además valida que el asignado tenga `rol='domiciliario'` y esté activo, y que el pedido sea `tipo_pedido='domicilio'`. No hace nada si la asignación no cambia, para no estorbar al mesero moviendo estados (2026-08-12) |
 | `respuestas_rapidas` | `trigger_normalizar_respuesta_rapida` | BEFORE INSERT **OR UPDATE** | Mismo criterio que `normalizar_faq` aplicado a `atajo` (una línea) y `texto` (conserva saltos); setea `updated_at` (2026-08-12) |
 
-> **El total lo calcula el trigger, nunca el JS ni el LLM.** Ojo: `trigger_actualizar_total`
-> dispara **solo en INSERT** de `detalle_pedidos` (no UPDATE/DELETE) — por eso `editar_pedido`
-> recalcula el total por su cuenta.
+> **El total lo calcula el trigger, nunca el JS ni el LLM.** El costo del envío tampoco: sale de
+> `pedidos.costo_domicilio`, que llena `trigger_tarifa_domicilio` desde la zona del barrio.
 
 ```sql
--- actualizar_total_pedido() (AFTER INSERT en detalle_pedidos)
-UPDATE pedidos SET total = (
-  SELECT COALESCE(SUM(precio_unitario * cantidad), 0)
-  FROM detalle_pedidos WHERE pedido_id = NEW.pedido_id
-) + CASE WHEN tipo = 'domicilio' THEN 5000 ELSE 0 END
-WHERE pedido_id = NEW.pedido_id;
+-- actualizar_total_pedido() (AFTER INSERT/UPDATE/DELETE en detalle_pedidos)
+-- v_pedido_id := COALESCE(NEW.pedido_id, OLD.pedido_id);
+UPDATE pedidos p SET total = (
+  SELECT COALESCE(SUM(d.precio_unitario * d.cantidad), 0)
+  FROM detalle_pedidos d WHERE d.pedido_id = v_pedido_id
+) + p.costo_domicilio
+WHERE p.pedido_id = v_pedido_id;
 ```
+
+> ⚠️ **Bug histórico arreglado el 2026-08-18.** La versión vieja usaba `NEW.pedido_id` también en
+> DELETE, donde `NEW` es un registro nulo → el `WHERE` quedaba `pedido_id = NULL` y **borrar un
+> ítem nunca recalculaba el total**. Estaba enmascarado porque `editar_pedido` reinserta y
+> sobrescribe el total a mano. Verificado en producción antes del fix: al borrar un ítem de
+> `PED-102` el total se quedaba clavado en $332.300. Ver `docs/shared/edge-cases.md`.
 
 ---
 
@@ -287,7 +345,11 @@ WHERE pedido_id = NEW.pedido_id;
 | `buscar_menu` | `(termino text, umbral float=0.2, limite int=5, solo_disponibles bool=true)` | **Búsqueda difusa** del menú: `normalizar_texto` (unaccent+lower) + diccionario de typos (`papata→patata`, `servex→cervez`, `hamurguesa→hamburguesa`, `birra→cerveza`…) + 3 capas de score (containment / `similarity` full-string / word-level trgm) **sobre `nombre`, `categoria` (peso 0.8) y `descripcion` (peso 0.7)** — extendida 2026-07-22 (migración `bug006_buscar_menu_categoria_descripcion`; antes solo `nombre`). **Devuelve `descripcion` y `similitud` (0–1)**, ordenado desc. Término vacío/null → devuelve el menú (respeta `limite`). |
 | `buscar_menu_categoria` | `(cat text, solo_disponibles bool=true)` | Lista productos de una categoría. |
 | `cotizar_mitad_y_mitad` | `(p_producto_a text, p_producto_b text, p_tamano text) → jsonb` | **Cotizador de pizza mitad y mitad** (2026-08-10). Valida: los dos productos existen y están disponibles, misma **masa** (`menu.variante`), categoría de pizza salada (`pizza_tradicional/especial/premium/premium_especial`), sabores distintos y tamaño en `pequena/mediana/grande/familiar` (**porción excluida**). Cobra el precio de la **mitad más cara**. Devuelve `{ok:true, producto_id, nombre_producto, variante, masa, precio_unitario, mitades, explicacion}` o `{ok:false, error, message}` (`MASA_DISTINTA`, `TAMANO_NO_PERMITIDO`, `CATEGORIA_NO_PERMITIDA`, `PRODUCTO_AGOTADO`, `MITADES_IGUALES`, `TAMANO_NO_DISPONIBLE`…). La usan **el bot** (tool `armar_mitad_y_mitad`) y **el dashboard** (`MenuPicker`) — misma regla, una sola fuente. |
-| `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio**, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. Desde 2026-08-10 (migración `editar_pedido_arrastra_mitades_y_notas_item`) también arrastra **`mitades` y `notas_item`** — antes los perdía al reinsertar. |
+| `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio** — desde 2026-08-18 lo **lee de `pedidos.costo_domicilio`** en vez de despejarlo restando (`total − suma de ítems`), que con tarifa variable daba un número distinto por zona —, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. Desde 2026-08-10 (migración `editar_pedido_arrastra_mitades_y_notas_item`) también arrastra **`mitades` y `notas_item`** — antes los perdía al reinsertar. |
+| `consultar_cobertura` | `(p_barrio text=null) → jsonb` | **Tool de zonas de domicilio** (2026-08-18). Sin argumento devuelve `{modo:'listado', tarifa_base, zonas:[{nombre,costo,tiempo_estimado,barrios[]}]}` (la zona base se excluye del listado: no es cobertura, es red de seguridad). Con un barrio devuelve `{modo:'barrio', cubierto, barrio, zona, costo_domicilio, tiempo_estimado, coincidencia_exacta}`. **`cubierto:false` NO es un rechazo**: trae la tarifa base en `costo_domicilio`. La usan el Agente Pedidos y el Agente Soporte. **STABLE · SECURITY DEFINER** con el patrón `auth.uid() IS NULL → n8n`. |
+| `resolver_barrio` | `(p_texto text) → TABLE(clave, nombre, zona, zona_nombre, costo, tiempo_estimado, exacto)` | Match tolerante entre lo que escribe el cliente y el catálogo: **exacto → subcadena → similitud trgm ≥ 0.45**. La subcadena exige `length(clave) >= 4` para que un barrio de 3 letras no se trague media ciudad. Devuelve 0 o 1 fila. **STABLE.** |
+| `normalizar_barrio` | `(text) → text` | Clave canónica de un barrio: minúsculas, sin tildes, sin puntuación y **sin el prefijo `barrio`** ("barrio El Centro" y "el centro" colapsan igual). **IMMUTABLE** a propósito (se indexa) — por eso no usa `unaccent()`, que es STABLE. |
+| `tarifa_base` | `() → numeric` | Costo de la zona `es_base`. **STABLE.** |
 | `generar_reserva_id` | `() → text` | Default de `reservas.reserva_id`. |
 | `historial_resumen` | `(p_from, p_to timestamp, p_estado, p_tipo, p_search, p_search_digits text, p_cliente_ids text[]) → jsonb` | Agregados del historial (total/entregados/cancelados/ingresos sin cancelados) con los mismos filtros que la lista paginada de la tab Historial. **SECURITY INVOKER** (respeta RLS: sin sesión cuenta 0). Migración `historial_resumen_rpc_e_indice_fecha` (2026-07-23), que también creó el índice `idx_pedidos_fecha_pedido`. |
 | `normalizar_texto` | `(text) → text` | unaccent + lower (base de `buscar_menu`). |
@@ -344,6 +406,7 @@ WHERE pedido_id = NEW.pedido_id;
 | `info_negocio` | todo | SELECT | SELECT |
 | `reservas` | todo | SELECT · INSERT · UPDATE | — |
 | `motivos_reserva` · `faq` | todo | SELECT | — |
+| `zonas_entrega` · `barrios` | todo | SELECT | SELECT |
 | `perfiles` | todo | solo el suyo | solo el suyo |
 | `mensajes_soporte` · `feedback` · `feedback_pendiente` · `respuestas_rapidas` · `carritos` · `n8n_*` | todo | — | — |
 
@@ -354,6 +417,7 @@ sostenidas por triggers, no por políticas:
 | Regla | Quién puede | Dónde se sostiene |
 |---|---|---|
 | Cambiar `pedidos.domiciliario_id` | solo admin | `trigger_validar_asignacion` |
+| Fijar `pedidos.costo_domicilio` desde el barrio | nadie lo escribe a mano en el alta | `trigger_tarifa_domicilio` (2026-08-18) |
 | Cambiar `perfiles.rol` / `perfiles.activo` | solo admin | `trigger_proteger_perfil` |
 | Pasar un pedido a `entregado` | admin, mesero, y el domiciliario **asignado** | RPC `marcar_entregado` (el domiciliario no tiene política de UPDATE) |
 

@@ -143,8 +143,10 @@
   conteo declarado vs. esperado) y `movimientos_caja` (gastos, retiros, propinas). El esperado
   en efectivo se agrega desde `pedidos`. **Tres trampas del esquema:** `fecha_pedido` es
   `timestamp` sin zona con valor UTC (usar `parseDb()`), el día de negocio arranca 05:00 UTC,
-  y `pedidos.total` **ya incluye los $5.000 de domicilio** que mete el trigger — si no se
-  separan, el arqueo cuadra mal cuando el domicilio lo cobra el repartidor.
+  y `pedidos.total` **ya incluye el domicilio** — si no se separan, el arqueo cuadra mal cuando
+  el domicilio lo cobra el repartidor. ✅ **Esta última dejó de ser una trampa el 2026-08-18:**
+  el envío vive en `pedidos.costo_domicilio` y ya no hay que despejarlo restando; el efectivo
+  de producto es `total − costo_domicilio`. Ojo: **ya no es una constante**, varía por zona.
 - **Venta en mostrador** `[M — cross-layer, riesgo]` — `CreateOrderModal` ya es el 80%, pero
   faltan dos cosas: el cliente es obligatorio (en mostrador nadie da el teléfono → cliente
   genérico o `cliente_id` nullable, **verificar si hoy lo es**) y `tipo_pedido` tiene un CHECK

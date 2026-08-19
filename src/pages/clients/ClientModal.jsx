@@ -7,6 +7,7 @@ export default function ClientModal({ client, onSave, onDelete, onClose }) {
   const [nombre,    setNombre]    = useState(client?.nombre || '')
   const [telefono,  setTelefono]  = useState(client?.telefono || '')
   const [direccion, setDireccion] = useState(client?.direccion_principal || '')
+  const [barrio,    setBarrio]    = useState(client?.barrio || '')
   const [modo,      setModo]      = useState(client?.modo || 'bot')
   const [saving,    setSaving]    = useState(false)
   const [deleting,  setDeleting]  = useState(false)
@@ -31,6 +32,7 @@ export default function ClientModal({ client, onSave, onDelete, onClose }) {
       nombre,
       telefono,
       direccion,
+      barrio,
       modo,
     })
 
@@ -102,8 +104,21 @@ export default function ClientModal({ client, onSave, onDelete, onClose }) {
               type="text"
               value={direccion}
               onChange={e => setDireccion(e.target.value)}
-              placeholder="Ej: Calle 10 # 5-23, Barrio Centro"
+              placeholder="Ej: Calle 10 # 5-23"
             />
+          </label>
+
+          <label className="field">
+            <span className="field-label">Barrio <span className="field-optional">Opcional</span></span>
+            <input
+              type="text"
+              value={barrio}
+              onChange={e => setBarrio(e.target.value)}
+              placeholder="Ej: El Centro"
+            />
+            <span className="field-help">
+              Decide la tarifa del domicilio. El bot lo confirma en vez de volver a preguntarlo.
+            </span>
           </label>
 
           <label className="field">

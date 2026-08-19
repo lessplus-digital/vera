@@ -60,7 +60,10 @@ export default function OrderDetailModal({ order, onMarkDelivered, onCancelOrder
   const metodo = METODO_LABEL[order.metodo_pago]
   const items = order.detalle_pedidos || []
   const itemsTotal = items.reduce((sum, it) => sum + Number(it.subtotal || 0), 0)
-  const recargo = Number(order.total || 0) - itemsTotal
+  // El envío es una columna propia desde que hay tarifa por barrio. Antes se
+  // deducía restando (total − items), que mentía en cuanto el pedido tenía
+  // cualquier otro ajuste.
+  const recargo = Number(order.costo_domicilio || 0)
   const mins = deliveryMinutes(order)
 
   return (
@@ -116,6 +119,15 @@ export default function OrderDetailModal({ order, onMarkDelivered, onCancelOrder
               <div className="od-item wide">
                 <span className="od-label">Dirección de entrega</span>
                 <span className="od-value">{order.direccion_entrega || '—'}</span>
+              </div>
+            )}
+            {order.tipo_pedido === 'domicilio' && order.barrio && (
+              <div className="od-item">
+                <span className="od-label">Barrio</span>
+                <span className="od-value">
+                  {order.barrio}
+                  {!order.zona && <span className="od-duration"> · sin zona, tarifa base</span>}
+                </span>
               </div>
             )}
             {order.repartidor && (

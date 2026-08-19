@@ -15,6 +15,7 @@ const SORT_COLUMNS = { fecha: 'fecha_pedido', total: 'total' }
 
 const SELECT_PEDIDO = `
   pedido_id, cliente_id, telefono, tipo_pedido, direccion_entrega,
+  barrio, zona, costo_domicilio,
   fecha_pedido, fecha_entrega, estado, metodo_pago, estado_pago,
   comprobante_url, total, repartidor, notas, motivo_rechazo,
   clientes ( nombre ),

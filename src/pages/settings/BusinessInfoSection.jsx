@@ -42,12 +42,21 @@ const SECTIONS = [
     id: 'operacion',
     title: 'Operación y domicilios',
     icon: 'scooter',
+    // Las zonas y el costo del domicilio vivían aquí como `zona_delivery` y
+    // `costo_delivery`: dos strings sueltos que el bot solo podía recitar y que
+    // no entraban en ningún cálculo. Ahora son tablas (`zonas_entrega` +
+    // `barrios`) con su propia pantalla, porque su tarifa SÍ entra en el total
+    // del pedido. Dejarlas también aquí crearía dos fuentes de verdad que el
+    // bot podría contradecir, así que solo queda el puntero.
+    nota: {
+      texto: 'Los barrios que cubres y cuánto cobras por el envío se configuran en',
+      vista: 'zonas',
+      enlace: 'Zonas de domicilio',
+    },
     fields: [
       { clave: 'metodos_pago', label: 'Métodos de pago' },
       { clave: 'datos_transferencia', label: 'Datos de transferencia', multiline: true, help: 'Banco, número de cuenta y titular para pagos por transferencia.' },
-      { clave: 'zona_delivery', label: 'Zona de domicilios' },
-      { clave: 'costo_delivery', label: 'Costo del domicilio' },
-      { clave: 'tiempo_entrega_delivery', label: 'Tiempo de entrega' },
+      { clave: 'tiempo_entrega_delivery', label: 'Tiempo de entrega', help: 'La respuesta general. Si una zona tiene su propio tiempo estimado, el bot usa el de la zona.' },
       { clave: 'politica_cancelacion', label: 'Política de cancelación', multiline: true },
     ],
   },
@@ -68,7 +77,7 @@ const humanize = clave => {
   return txt.charAt(0).toUpperCase() + txt.slice(1)
 }
 
-export default function BusinessInfoSection({ showToast }) {
+export default function BusinessInfoSection({ showToast, onIrA }) {
   const { info, loading, error, saveInfo } = useBusinessInfo()
   const [draft, setDraft] = useState(null) // { clave: valor } — null hasta cargar
   const [saving, setSaving] = useState(false)
@@ -135,6 +144,17 @@ export default function BusinessInfoSection({ showToast }) {
         </div>
         <div className="settings-card-body">
           {fields.map(renderField)}
+          {section.nota && (
+            <div className="settings-nota">
+              <Icon name="pin" size={13} />
+              <span>
+                {section.nota.texto}{' '}
+                <button className="settings-nota-link" onClick={() => onIrA?.(section.nota.vista)}>
+                  {section.nota.enlace}
+                </button>.
+              </span>
+            </div>
+          )}
         </div>
       </div>
     )

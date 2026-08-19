@@ -15,6 +15,59 @@
 
 ---
 
+### 2026-08-18 — Zonas de domicilio con tarifa por barrio
+
+**Contexto:** el costo del domicilio era la constante `costo_domicilio NUMERIC := 5000` escondida
+dentro de `actualizar_total_pedido()`, y las "zonas" eran dos strings sueltos de `info_negocio`
+(`zona_delivery`, `costo_delivery`) que el bot solo podía recitar. Verificado antes de tocar nada:
+`costo_delivery` estaba **vacío**, así que el bot nunca tuvo de dónde sacar el precio del envío —
+lo recitaba desde el prompt, donde `$5.000` aparecía quemado en 6 sitios.
+
+**Decisión (a) — el costo baja a una columna.** `pedidos.costo_domicilio` (+ `barrio` y `zona`).
+El total deja de ser una caja negra: se puede desglosar, exportar y cuadrar el arqueo sin
+despejarlo restando. `editar_pedido` y `EditOrderModal` dejan de inferir el recargo como
+`total − suma de ítems`, un despeje que con tarifa variable daba un número distinto por zona.
+
+**Decisión (b) — el catálogo son dos tablas, no una.** `zonas_entrega` (la tarifa) + `barrios`
+(cuelgan de una zona), calcado de `motivos_reserva` + `reservas.costo_motivo`: el precio lo copia
+un trigger (`trigger_tarifa_domicilio`), nunca quien inserta, y lo que queda en el pedido es una
+foto. Cambiar una tarifa no reescribe pedidos viejos.
+
+**Decisión (c) — un barrio sin mapear NO rechaza el pedido.** Cae en la zona `es_base` (sembrada
+en $5.000, exactamente lo que se cobraba antes) y `pedidos.zona` queda NULL. Esto también hace que
+el despliegue sea seguro en cualquier orden: mientras el bot todavía no mande el barrio, todo se
+comporta igual que ayer. La zona base está protegida contra borrado y desactivación porque sin
+ella ese caso cobraría **$0**. Los barrios no mapeados afloran en Configuración → Zonas como
+"Barrios sin zona", con cuántos pedidos llegaron de cada uno.
+
+**Decisión (d) — `barrio` va desnormalizado en `pedidos`** (texto, sin FK), como
+`detalle_pedidos.nombre_producto`: el domiciliario tiene que poder leerlo aunque el admin después
+renombre, reasigne o borre el barrio. La FK va en `zona`, que es lo que sirve para agrupar.
+
+**Backfill:** los 82 domicilios históricos con recargo exacto de $5.000 quedaron con
+`costo_domicilio = 5000`; `total` no se tocó, así que **ningún total cambió un peso**. Verificado
+con 9 escenarios en una transacción revertida (match sucio, cambio de zona, errata, barrio sin
+mapear, override manual, paso a recoger, borrado de ítem, y un pedido histórico sin ítems).
+
+**Impacto:** BD — 5 migraciones (`zonas_entrega_y_barrios`, `pedidos_barrio_y_costo_domicilio`,
+`tarifa_domicilio_variable_en_totales`, `rpc_consultar_cobertura`,
+`retirar_zona_y_costo_delivery_de_info_negocio`). Dashboard — `useDeliveryZones` (+
+`useBarrioOptions`), `DeliveryZonesSection`, `ZoneModal`, y cambios en `SettingsPage`,
+`BusinessInfoSection`, `CreateOrderModal`, `EditOrderModal`, `OrderCard`, `OrderDetailModal`,
+`ClientModal`, `useClients`, `useOrders`, `useOrderHistory`, `useDeliveryHistory`,
+`exportHistory`. Bot — `Sub — Crear_orden_completa` acepta y propaga `barrio`.
+
+**Pendiente:** el workflow principal de n8n **no se pudo escribir** (ver BUG-030): faltan la tool
+`consultar_cobertura` en Agente Pedidos y Soporte, y limpiar el `$5.000` quemado de los prompts.
+Mientras tanto el bot sigue cobrando $5.000 vía la tarifa base, que es justo lo que dice su prompt.
+Instrucciones literales para aplicarlo: [`docs/bot/pendiente-zonas-domicilio.md`](../bot/pendiente-zonas-domicilio.md)
+(atajo en Claude Code: `/zonas-bot`).
+
+**De paso:** arreglado un bug latente en `actualizar_total_pedido()` — usaba `NEW.pedido_id`, que
+en un `DELETE` es NULL, así que **borrar un ítem nunca recalculaba el total**. Ver edge-cases §22.
+
+---
+
 ### 2026-08-12 — Historial de entregas del domiciliario
 
 **Contexto:** el repartidor solo veía sus entregas activas — `useOrders` trae el día de negocio

@@ -121,8 +121,9 @@ en el mismo turno del resumen e **inventa el método de pago** (`edge-cases.md#2
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `leer_carrito1` | Supabase (get) | `carritos` WHERE `telefono` |
-| `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
+| `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Desde 2026-08-18 el `filtro` acepta **`barrio`**, que viaja crudo hasta el INSERT: el precio del envío lo pone el trigger de la BD, nunca el LLM. Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
 | `actualizar_cliente1` | Supabase (update) | `clientes` SET `direccion_principal` WHERE `cliente_id` |
+| ⏳ `consultar_cobertura` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — el parámetro que ve el LLM se llama `barrio` (`$fromAI`). Tarifa del domicilio para ese barrio, o el listado de zonas si va vacío. **`cubierto:false` no es un rechazo**: trae la tarifa base. ⏳ **Diseñada y con RPC en producción, pero el nodo NO está creado todavía** — bloqueado por BUG-030 |
 
 Prompt completo: [`agent-prompts.md#agente-pedidos`](agent-prompts.md#agente-pedidos).
 Datos bancarios (transferencia): Bancolombia, ahorros 62500073329, Vera Pizzería, NIT 1004967215.
@@ -136,7 +137,8 @@ datos y **handoff** a humano. Registra el nombre si es válido (no emojis/religi
 
 | Tool | Tipo | Detalle |
 |---|---|---|
-| `info_local` | Supabase (getAll) | `info_negocio` (clave/valor: horarios, dirección, pagos, zonas) |
+| `info_local` | Supabase (getAll) | `info_negocio` (clave/valor: horarios, dirección, pagos). **Ya NO trae zonas de domicilio**: `zona_delivery` y `costo_delivery` se eliminaron el 2026-08-18 |
+| ⏳ `consultar_cobertura1` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — mismo RPC que en el Agente Pedidos, para responder "¿a dónde llevan?" y "¿cuánto cuesta el domicilio?". ⏳ **Nodo pendiente de crear**, bloqueado por BUG-030 |
 | `consultar_faq` | HTTP POST | `/rpc/consultar_faq` body `{p_filtro}` — el parámetro que ve el LLM se llama `filtro` (`$fromAI`), como en `armar_mitad_y_mitad` (2026-08-11). Preguntas frecuentes **activas** que administra el restaurante desde el dashboard |
 | `actualizar_cliente` | Supabase (update) | `clientes` SET `nombre`, `direccion_principal` WHERE `cliente_id` |
 | `solicitar_handoff` | Supabase (update) | `clientes` SET `modo='humano'` WHERE `cliente_id` AND `telefono` |

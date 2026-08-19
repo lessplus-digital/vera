@@ -6,6 +6,22 @@
 >
 > ⚠️ Al editar un prompt en n8n, **actualiza también este archivo** (mismo commit).
 >
+> 🔴 **Deuda conocida (2026-08-18) — el prompt del Agente Pedidos quedó desalineado con la BD.**
+> Los `$5.000` de domicilio siguen **quemados en 6 sitios** de ese prompt (anuncio del costo,
+> cálculo del subtotal, casos A y C del resumen, y el mensaje de confirmación del PASO 5), y el
+> flujo del PASO 2 **no pide el barrio**. La BD ya cobra por zona (`zonas_entrega` + `barrios`,
+> ver `docs/database/schema.md`). Hoy no hay contradicción visible **solo** porque la tarifa base
+> está sembrada en $5.000; en cuanto el restaurante cree su primera zona con otro precio, el bot
+> le dirá al cliente un número y la BD cobrará otro. El cambio no se pudo aplicar: **BUG-030**
+> bloquea toda escritura sobre el workflow principal. Lo que falta:
+> 1. Reemplazar cada `$5.000` por el `costo_domicilio` que devuelva `consultar_cobertura`.
+> 2. Añadir al PASO 2a: pedir el barrio antes de cerrar un domicilio (confirmando
+>    `clientes.barrio` si ya está guardado, igual que se hace con `direccion_registrada`), y
+>    llamar `consultar_cobertura` **antes** de mostrar el resumen del PASO 3.
+> 3. Pasar `barrio` dentro del JSON de `crear_orden_completa` (el subworkflow **ya lo acepta**).
+> 4. Agente Soporte: la sección de `info_local` ya no debe prometer "zonas de domicilio" —
+>    esas claves se borraron de `info_negocio`; van por `consultar_cobertura`.
+>
 > Última sincronización: **2026-08-10** — los 5 prompts re-extraídos vía MCP. Cambios de esa
 > pasada: sección *"PIZZA MITAD Y MITAD"* (Agente Menú), `mitades` en los items (Agente
 > Pedidos) y sección *"MOTIVO DE LA RESERVA"* (Agente Reservas). En la misma lectura se

@@ -161,7 +161,10 @@ function DeliveryCard({ order, onUpdated, entregable = false }) {
       {/* La dirección es lo único que importa de un vistazo: va primero y grande. */}
       <div className="dv-addr">
         <Icon name="pin" size={16} />
-        <span>{order.direccion_entrega || 'Sin dirección registrada'}</span>
+        <span>
+          {order.direccion_entrega || 'Sin dirección registrada'}
+          {order.barrio && <span className="dv-barrio">{order.barrio}</span>}
+        </span>
       </div>
 
       <div className="dv-client">

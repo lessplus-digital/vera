@@ -46,10 +46,14 @@ const COLUMNS = [
   { key: 'estado_pago',     header: 'Estado del pago', width: 14 },
   { key: 'estado',          header: 'Estado',          width: 13 },
   { key: 'productos',       header: 'Productos',       width: 46 },
+  // Total y domicilio van separados: `total` YA incluye el envío, así que sin
+  // esta columna el arqueo no cuadra cuando el domicilio lo cobra el repartidor.
+  { key: 'domicilio',       header: 'Domicilio',       width: 12 },
   { key: 'total',           header: 'Total',           width: 12 },
   { key: 'minutos_entrega', header: 'Entrega (min)',   width: 13 },
   { key: 'fecha_entrega',   header: 'Entregado el',    width: 17 },
   { key: 'direccion',       header: 'Dirección',       width: 30 },
+  { key: 'barrio',          header: 'Barrio',          width: 18 },
   { key: 'notas',           header: 'Notas',           width: 30 },
   { key: 'motivo_rechazo',  header: 'Motivo cancelación', width: 30 },
 ]
@@ -66,10 +70,12 @@ function buildRows(orders) {
     estado: ORDER_STATES[o.estado]?.label || o.estado,
     _estadoKey: o.estado,
     productos: productosResumen(o),
+    domicilio: Number(o.costo_domicilio || 0),
     total: Number(o.total || 0),
     minutos_entrega: minutosEntrega(o),
     fecha_entrega: colombiaDateTime(o.fecha_entrega),
     direccion: o.direccion_entrega || '',
+    barrio: o.barrio || '',
     notas: o.notas || '',
     motivo_rechazo: o.motivo_rechazo || '',
   }))
@@ -184,7 +190,7 @@ export async function exportExcel({ orders, summary, rangeLabel }, filename) {
       if (idx % 2 === 1) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL.band } }
       }
-      if (c.key === 'total') {
+      if (c.key === 'total' || c.key === 'domicilio') {
         cell.numFmt = '"$"#,##0'
         cell.alignment = { vertical: 'middle', horizontal: 'right' }
       }

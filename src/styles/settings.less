@@ -1204,3 +1204,322 @@
     overflow-y: auto;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   ZONAS DE DOMICILIO  (DeliveryZonesSection)
+
+   Superficies planas (DS §7: el glass vive solo en el shell). Un único
+   botón primary por pantalla — "Nueva zona" — así que agregar barrios y
+   asignar pendientes usan submit icon-only y `.btn secondary`.
+═══════════════════════════════════════════════════════════ */
+
+.zn-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.zn-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  transition: border-color 0.15s ease, opacity 0.15s ease;
+
+  &:hover { border-color: var(--border-hover); }
+
+  /* Zona desactivada: sigue legible, pero se lee que no está operando. */
+  &.off {
+    opacity: 0.55;
+    .zn-price { color: var(--text-muted); }
+  }
+
+  /* La tarifa base no es una zona más: es la red de seguridad. */
+  &.base {
+    border-style: dashed;
+    background: transparent;
+  }
+}
+
+.zn-base-slot { margin-top: var(--sp-4); }
+
+.zn-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.zn-id { min-width: 0; }
+
+.zn-name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.zn-badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+
+.zn-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-top: var(--sp-1);
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+}
+
+.zn-price {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+
+.zn-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zn-count { font-variant-numeric: tabular-nums; }
+
+.zn-desc {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+
+.zn-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-shrink: 0;
+}
+
+/* ── Barrios de la zona ─────────────────────────────────── */
+
+.zn-barrios {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.zn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+}
+
+.zn-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover { background: var(--red-dim); color: var(--red); }
+}
+
+.zn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  input {
+    width: 150px;
+    padding: 5px 10px;
+    border: 1px dashed var(--border-hover);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--fs-body-sm);
+
+    &::placeholder { color: var(--text-muted); }
+    &:focus {
+      outline: none;
+      border-style: solid;
+      border-color: var(--amber-border);
+    }
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover:not(:disabled) { border-color: var(--amber-border); color: var(--amber); }
+    &:disabled { opacity: 0.35; cursor: default; }
+  }
+}
+
+/* ── Barrios que llegaron por WhatsApp y no están en ninguna zona ── */
+
+.zn-pending {
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--bg-card);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--radius-md);
+}
+
+.zn-pending-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  color: var(--amber);
+}
+
+.zn-pending-title {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.zn-pending-sub {
+  margin-top: 2px;
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  max-width: 72ch;
+}
+
+.zn-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.zn-pending-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+
+  .zn-pending-name {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--fs-body);
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .zn-pending-count {
+    font-size: var(--fs-caption);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  select {
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--fs-body-sm);
+    cursor: pointer;
+  }
+}
+
+/* ── Campo de dinero del modal de zona ──────────────────── */
+
+.zn-money {
+  display: flex;
+  align-items: center;
+
+  .zn-money-sign {
+    padding: 0 2px 0 12px;
+    color: var(--text-muted);
+    font-size: var(--fs-body);
+  }
+
+  input {
+    flex: 1;
+    padding-left: 4px !important;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.zn-opt {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Puntero desde "Información del negocio" hacia esta pantalla. */
+.settings-nota {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-secondary);
+  font-size: var(--fs-body-sm);
+  line-height: 1.5;
+
+  svg { flex-shrink: 0; margin-top: 2px; }
+}
+
+.settings-nota-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--amber);
+  font-family: var(--font-sans);
+  font-size: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover { color: var(--text-primary); }
+}
+
+@media (max-width: 720px) {
+  .zn-card-head { flex-direction: column; gap: var(--sp-3); }
+  .zn-pending-row { flex-wrap: wrap; }
+  .zn-add input { width: 120px; }
+}

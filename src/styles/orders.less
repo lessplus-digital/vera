@@ -1261,3 +1261,47 @@
   font-weight: 500;
   line-height: 1.4;
 }
+
+/* Barrio del pedido — decide la tarifa del envío, así que se lee junto a la
+   dirección. Sin zona asignada se marca en ámbar: ese pedido cobró la tarifa
+   base y el admin debería mapear el barrio. */
+.oc-barrio {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  white-space: nowrap;
+
+  &.sin-zona {
+    border-color: var(--amber-border);
+    color: var(--amber);
+  }
+}
+
+/* Selector de barrio del pedido manual */
+.co-barrio-select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  cursor: pointer;
+
+  &:focus { outline: none; border-color: var(--amber-border); }
+  &:disabled { opacity: 0.6; cursor: default; }
+}
+
+.co-barrio-hint {
+  margin-top: 6px;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.5;
+}

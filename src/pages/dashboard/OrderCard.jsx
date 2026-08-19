@@ -128,7 +128,15 @@ export default function OrderCard({ order, isNew, onUpdated, domiciliarios = [] 
         {order.tipo_pedido === 'domicilio' && order.direccion_entrega && (
           <div className="addr">
             <span style={{ color: 'var(--text-muted)', display: 'inline-flex' }}><Icon name="pin" size={13} /></span>
-            <span>{order.direccion_entrega}</span>
+            <span>
+              {order.direccion_entrega}
+              {/* El barrio decide la tarifa: sin zona, se cobró la base. */}
+              {order.barrio && (
+                <span className={`oc-barrio${order.zona ? '' : ' sin-zona'}`}>
+                  {order.barrio}
+                </span>
+              )}
+            </span>
           </div>
         )}
 

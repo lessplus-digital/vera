@@ -46,7 +46,7 @@ export function useDeliveryHistory(domiciliarioId, periodo = '7d') {
 
     let q = supabase
       .from('pedidos')
-      .select('pedido_id, telefono, direccion_entrega, metodo_pago, total, fecha_entrega, clientes ( nombre )')
+      .select('pedido_id, telefono, direccion_entrega, barrio, metodo_pago, total, fecha_entrega, clientes ( nombre )')
       .eq('domiciliario_id', domiciliarioId)
       .eq('estado', 'entregado')
       .not('fecha_entrega', 'is', null)

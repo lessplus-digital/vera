@@ -25,11 +25,11 @@ export default function EditOrderModal({ order, onClose, onUpdated }) {
     }
   }, [order])
 
-  const itemsOriginalSum = (order.detalle_pedidos || []).reduce(
-    (sum, item) => sum + item.cantidad * Number(item.precio_unitario || 0),
-    0
-  )
-  const domicilioSurcharge = Number(order.total || 0) - itemsOriginalSum
+  // El envío sale de su columna, no de restar (total − items): con tarifa por
+  // barrio ese despeje daba un número distinto en cada zona. Es el mismo valor
+  // que el RPC `editar_pedido` vuelve a sumar al guardar, así que el preview y
+  // el total real no se pueden separar.
+  const domicilioSurcharge = Number(order.costo_domicilio || 0)
 
   const itemsTotal = items.reduce((sum, item) => sum + item.cantidad * item.precio_unitario, 0)
   const total = itemsTotal + domicilioSurcharge
