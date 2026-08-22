@@ -1357,7 +1357,9 @@
   gap: 4px;
 
   input {
-    width: 150px;
+    // Cerrado cabe entre los chips sin romper la fila; al enfocarlo se abre
+    // porque aquí ya no se escribe un barrio, se pega una lista entera.
+    width: 200px;
     padding: 5px 10px;
     border: 1px dashed var(--border-hover);
     border-radius: var(--radius-pill);
@@ -1365,10 +1367,13 @@
     color: var(--text-primary);
     font-family: var(--font-sans);
     font-size: var(--fs-body-sm);
+    transition: width 0.18s ease, border-color 0.18s ease;
 
     &::placeholder { color: var(--text-muted); }
     &:focus {
       outline: none;
+      width: 340px;
+      max-width: 100%;
       border-style: solid;
       border-color: var(--amber-border);
     }
@@ -1521,5 +1526,6 @@
 @media (max-width: 720px) {
   .zn-card-head { flex-direction: column; gap: var(--sp-3); }
   .zn-pending-row { flex-wrap: wrap; }
-  .zn-add input { width: 120px; }
+  .zn-add { width: 100%; }
+  .zn-add input { width: 100%; &:focus { width: 100%; } }
 }

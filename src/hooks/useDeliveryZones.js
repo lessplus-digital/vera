@@ -140,22 +140,44 @@ export function useDeliveryZones() {
     return { error: null }
   }
 
+  // Acepta uno o varios barrios en el mismo texto: "Niquía, Camacol, Terranova"
+  // entra en UN solo insert, no tres round-trips. Se parte por coma, punto y
+  // coma o salto de línea, para que pegar una lista de cualquier lado funcione.
+  //
   // `clave` la deriva el trigger `trigger_normalizar_barrio` desde el nombre —
-  // aquí NO se manda, para que la normalización viva en un solo sitio.
-  async function addBarrio(zona, nombre) {
-    const limpio = String(nombre || '').replace(/\s+/g, ' ').trim()
-    if (!limpio) return { error: 'Escribe el nombre del barrio.' }
+  // aquí NO se manda, para que la normalización viva en un solo sitio. Por eso
+  // el dedupe local es a propósito tonto (solo mayúsculas/espacios): sirve para
+  // no mandar dos veces lo mismo del propio lote, pero quién es duplicado DE
+  // VERDAD lo decide la BD, que sí sabe que "Niquia" y "NIQUÍA" son el mismo.
+  async function addBarrios(zona, texto) {
+    const vistos = new Set()
+    const nombres = []
+    for (const parte of String(texto || '').split(/[,;\n]/)) {
+      const limpio = parte.replace(/\s+/g, ' ').trim()
+      if (!limpio) continue
+      const key = limpio.toLowerCase()
+      if (vistos.has(key)) continue
+      vistos.add(key)
+      nombres.push(limpio)
+    }
+    if (!nombres.length) return { error: 'Escribe el nombre del barrio.' }
 
-    const { error: insertError } = await supabase
+    // `ignoreDuplicates` es un ON CONFLICT DO NOTHING: un barrio que ya existe
+    // (en esta zona o en otra) NO se mueve solo — se reporta y ya. Moverlo es
+    // una decisión explícita, y para eso está `moveBarrio`.
+    const { data, error: insertError } = await supabase
       .from('barrios')
-      .insert({ nombre: limpio, zona })
+      .upsert(nombres.map(nombre => ({ nombre, zona })), { onConflict: 'clave', ignoreDuplicates: true })
+      .select('clave')
 
     if (insertError) {
-      console.error('Error agregando barrio:', insertError)
+      console.error('Error agregando barrios:', insertError)
       return { error: mensajeDeError(insertError) }
     }
+
     await refetch()
-    return { error: null }
+    const agregados = data?.length ?? 0
+    return { error: null, agregados, repetidos: nombres.length - agregados }
   }
 
   async function moveBarrio(clave, zona) {
@@ -189,7 +211,7 @@ export function useDeliveryZones() {
     updateZona,
     deleteZona,
     setZonaActiva,
-    addBarrio,
+    addBarrios,
     moveBarrio,
     deleteBarrio,
     refetch,

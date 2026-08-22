@@ -9,7 +9,7 @@ export default function DeliveryZonesSection({ showToast }) {
   const {
     zonas, sinClasificar, loading, error,
     createZona, updateZona, deleteZona, setZonaActiva,
-    addBarrio, moveBarrio, deleteBarrio,
+    addBarrios, moveBarrio, deleteBarrio,
   } = useDeliveryZones()
 
   const [modal, setModal] = useState(null)     // null | { zona } | { zona: null }
@@ -57,11 +57,24 @@ export default function DeliveryZonesSection({ showToast }) {
     const texto = nuevoBarrio[zonaClave] || ''
     if (!texto.trim()) return
 
-    const { error: addError } = await addBarrio(zonaClave, texto)
+    const { error: addError, agregados, repetidos } = await addBarrios(zonaClave, texto)
     if (addError) {
       showToast('error', addError)
-    } else {
-      setNuevoBarrio(v => ({ ...v, [zonaClave]: '' }))
+      return
+    }
+
+    setNuevoBarrio(v => ({ ...v, [zonaClave]: '' }))
+
+    // Agregar UN barrio no avisa nada: el chip aparece solo y el toast sobra.
+    // Los lotes sí, porque ahí no se ve de un vistazo qué entró y qué no.
+    if (agregados === 0) {
+      showToast('error', repetidos === 1
+        ? 'Ese barrio ya está en una zona.'
+        : `Esos ${repetidos} barrios ya están en alguna zona.`)
+    } else if (repetidos > 0) {
+      showToast('success', `✓ ${agregados} ${agregados === 1 ? 'barrio agregado' : 'barrios agregados'} · ${repetidos} ya ${repetidos === 1 ? 'estaba' : 'estaban'}`)
+    } else if (agregados > 1) {
+      showToast('success', `✓ ${agregados} barrios agregados`)
     }
   }
 
@@ -76,9 +89,11 @@ export default function DeliveryZonesSection({ showToast }) {
     const zona = asignando[nombre]
     if (!zona) return
 
-    const { error: addError } = await addBarrio(zona, nombre)
+    const { error: addError, agregados } = await addBarrios(zona, nombre)
     if (addError) {
       showToast('error', addError)
+    } else if (!agregados) {
+      showToast('error', `"${nombre}" ya está en otra zona. Muévelo desde ahí.`)
     } else {
       setAsignando(v => ({ ...v, [nombre]: undefined }))
       showToast('success', `✓ "${nombre}" quedó en ${zonas.find(z => z.clave === zona)?.nombre}`)
@@ -143,10 +158,10 @@ export default function DeliveryZonesSection({ showToast }) {
                 type="text"
                 value={nuevoBarrio[zona.clave] || ''}
                 onChange={e => setNuevoBarrio(v => ({ ...v, [zona.clave]: e.target.value }))}
-                placeholder="Agregar barrio…"
-                maxLength={60}
+                placeholder="Agregar barrios (sepáralos por coma)…"
+                maxLength={600}
               />
-              <button type="submit" disabled={!(nuevoBarrio[zona.clave] || '').trim()} aria-label="Agregar barrio">
+              <button type="submit" disabled={!(nuevoBarrio[zona.clave] || '').trim()} aria-label="Agregar barrios">
                 <Icon name="plus" size={12} />
               </button>
             </form>
