@@ -69,6 +69,12 @@ El mismo valor está en `info_negocio.link_menu`, que el Agente Soporte lee vía
 (existentes + nuevos) → `crear_carrito` (nuevo) o `actualizar_carrito` (existente) → responder.
 Nunca crea carrito vacío ni antes de `consultar_menu`; nunca pide confirmación para agregar.
 
+**No anuncia lo que la tool no confirmó (2026-08-21, BUG-032):** el prompt le prohíbe mostrar el
+🛒 o cantar el total si `crear_carrito`/`actualizar_carrito` no devolvió el carrito guardado —
+reintenta una vez y, si falla, avisa que no pudo guardar. Es la misma regla que ya tenía el Agente
+Pedidos para `crear_orden_completa`, y existe porque el fallo silencioso de `crear_carrito` era
+indistinguible de un éxito para el cliente.
+
 **Agotado ≠ inexistente (2026-07-28):** `consultar_menu` devuelve `productos_por_categoria`
 (disponibles, lo único ofrecible/agregable) y `agotados` (existen en la carta, hoy no hay). El
 prompt prohíbe listar u agregar un agotado, y prohíbe igual de fuerte decir "no lo manejamos"
@@ -79,7 +85,7 @@ categoría. Solo `encontrados = 0` **con** `agotados` vacío significa que no es
 |---|---|---|
 | `leer_carrito` | Supabase (get) | `carritos` WHERE `telefono` |
 | `consultar_menu` | Subworkflow | `Sub — Consultar_menu` · input `filtro`; RPC `buscar_menu` (fuzzy por nombre/categoría/descripción, devuelve `similitud` — BUG-006, 2026-07-22). Devuelve `productos_por_categoria` (**solo disponibles**) + `agotados` aparte (2026-07-28). Detalle: [subworkflows.md](subworkflows.md#sub--consultar_menu) |
-| `crear_carrito` | HTTP POST | `/carritos` body `{telefono, items, total}` (credencial n8n desde BUG-003) |
+| `crear_carrito` | HTTP POST (**upsert**) | `/carritos` body `{telefono, items, total}` (credencial n8n desde BUG-003). Header **`Prefer: resolution=merge-duplicates,return=representation`** — `carritos` tiene PK `telefono`, así que un POST plano chocaba contra el carrito abandonado del cliente y fallaba en silencio (BUG-032, 2026-08-21). `merge-duplicates` lo vuelve idempotente; `return=representation` es lo que le permite al agente confirmar que se guardó |
 | `actualizar_carrito` | HTTP PATCH | `/carritos?telefono=eq.{fromAI}` body `{items, total}` (credencial n8n) |
 | `armar_mitad_y_mitad` | HTTP POST | `/rpc/cotizar_mitad_y_mitad` body `{p_producto_a, p_producto_b, p_tamano}` (2026-08-10). Cotiza una pizza mitad y mitad **server-side** y devuelve el item listo para el carrito |
 
@@ -101,7 +107,15 @@ Prompt completo: [`agent-prompts.md#agente-menú`](agent-prompts.md#agente-menú
 ## 3. AGENTE PEDIDOS
 
 **Rol:** tomar el carrito confirmado y crear el pedido real. Pregunta **siempre** tipo de
-pedido y método de pago (una pregunta por mensaje). Domicilio suma **$5.000**.
+pedido y método de pago (una pregunta por mensaje). Si es domicilio pregunta además el
+**barrio** y cobra lo que devuelva `consultar_cobertura` — nunca una cifra de memoria.
+
+**Dónde se suma el domicilio (2026-08-19):** en el **PASO 3** el agente lo suma a mano
+(`Subtotal + costo_domicilio`) porque el pedido todavía no existe en la BD. En el **PASO 5**
+muestra `$[total]` **tal cual** lo devolvió `crear_orden_completa`: ese número ya trae el
+domicilio incluido por el trigger `actualizar_total_pedido` (`SUM(items) + costo_domicilio`).
+Volver a sumarlo ahí se lo cobra dos veces al cliente — es el error que se coló al aplicar
+esto a mano y se corrigió el mismo día.
 
 Invariantes que comparte con la BB.DD.: `tipo_pedido` en minúscula (`domicilio`/`recoger`),
 `metodo_pago` capitalizado (`Efectivo`/`Transferencia`), items **sin modificar** desde
@@ -123,7 +137,7 @@ en el mismo turno del resumen e **inventa el método de pago** (`edge-cases.md#2
 | `leer_carrito1` | Supabase (get) | `carritos` WHERE `telefono` |
 | `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Desde 2026-08-18 el `filtro` acepta **`barrio`**, que viaja crudo hasta el INSERT: el precio del envío lo pone el trigger de la BD, nunca el LLM. Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
 | `actualizar_cliente1` | Supabase (update) | `clientes` SET `direccion_principal` WHERE `cliente_id` |
-| ⏳ `consultar_cobertura` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — el parámetro que ve el LLM se llama `barrio` (`$fromAI`). Tarifa del domicilio para ese barrio, o el listado de zonas si va vacío. **`cubierto:false` no es un rechazo**: trae la tarifa base. ⏳ **Diseñada y con RPC en producción, pero el nodo NO está creado todavía** — bloqueado por BUG-030 |
+| `consultar_cobertura` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — el parámetro que ve el LLM se llama `barrio` (`$fromAI`). Tarifa del domicilio para ese barrio, o el listado de zonas si va vacío. **`cubierto:false` no es un rechazo**: trae la tarifa base. Vive desde 2026-08-19 |
 
 Prompt completo: [`agent-prompts.md#agente-pedidos`](agent-prompts.md#agente-pedidos).
 Datos bancarios (transferencia): Bancolombia, ahorros 62500073329, Vera Pizzería, NIT 1004967215.
@@ -138,7 +152,7 @@ datos y **handoff** a humano. Registra el nombre si es válido (no emojis/religi
 | Tool | Tipo | Detalle |
 |---|---|---|
 | `info_local` | Supabase (getAll) | `info_negocio` (clave/valor: horarios, dirección, pagos). **Ya NO trae zonas de domicilio**: `zona_delivery` y `costo_delivery` se eliminaron el 2026-08-18 |
-| ⏳ `consultar_cobertura1` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — mismo RPC que en el Agente Pedidos, para responder "¿a dónde llevan?" y "¿cuánto cuesta el domicilio?". ⏳ **Nodo pendiente de crear**, bloqueado por BUG-030 |
+| `consultar_cobertura1` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — mismo RPC que en el Agente Pedidos, para responder "¿a dónde llevan?" y "¿cuánto cuesta el domicilio?". Vive desde 2026-08-19 |
 | `consultar_faq` | HTTP POST | `/rpc/consultar_faq` body `{p_filtro}` — el parámetro que ve el LLM se llama `filtro` (`$fromAI`), como en `armar_mitad_y_mitad` (2026-08-11). Preguntas frecuentes **activas** que administra el restaurante desde el dashboard |
 | `actualizar_cliente` | Supabase (update) | `clientes` SET `nombre`, `direccion_principal` WHERE `cliente_id` |
 | `solicitar_handoff` | Supabase (update) | `clientes` SET `modo='humano'` WHERE `cliente_id` AND `telefono` |

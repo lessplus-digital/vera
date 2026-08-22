@@ -13,6 +13,13 @@
 
 ## Bot
 
+- **Una sola tool de escritura del carrito** — desde BUG-032 (2026-08-21) `crear_carrito` es un
+  upsert (`Prefer: resolution=merge-duplicates`), así que hace exactamente lo mismo que
+  `actualizar_carrito`: ambas mandan `items` y `total` completos y la PK es el teléfono. La
+  decisión *"¿creo o actualizo?"* que el Agente Menú todavía tiene que tomar ya no significa nada
+  — y es justo donde vivía el bug. Fundir las dos en una sola tool borraría esa bifurcación del
+  prompt y reduciría la superficie de error del agente. No se hizo junto con el fix porque es un
+  cambio de comportamiento, no un header: merece su propia pasada y su propia prueba.
 - **Revalidar `disponible` al cerrar el pedido** — desde el fix del 2026-07-28 el bot ya no
   ofrece ni agrega productos agotados, pero un item puede agotarse **mientras** ya está en el
   carrito (el admin lo marca desde la pestaña Menú entre que el cliente arma el pedido y lo

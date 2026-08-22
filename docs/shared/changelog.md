@@ -15,6 +15,119 @@
 
 ---
 
+### 2026-08-21 — Un carrito abandonado bloqueaba al cliente para siempre (BUG-032)
+
+**Contexto:** a un cliente con una fila vieja en `carritos`, el bot le anunciaba *"te dejo agregada
+1 Vera Pizza estofada familiar"* y el producto nunca entraba; al confirmar, el Agente Pedidos
+respondía correctamente *"No tienes un pedido armado todavía"* y el cliente quedaba en bucle.
+
+**Diagnóstico:** `crear_carrito` era un `POST` plano contra `/rest/v1/carritos` y la tabla tiene
+`PRIMARY KEY (telefono)`. Con la fila ya existente, PostgREST devolvía conflicto y el nodo quedaba
+en `status: error` **dentro de una ejecución que terminaba en `success`** — invisible en la lista de
+ejecuciones. Y el Agente Menú no miraba el resultado de la tool, así que el fallo era
+indistinguible de un éxito para el cliente. El sub-workflow solo borra el carrito cuando el pedido
+se crea con éxito, así que cualquier conversación abandonada dejaba la fila.
+
+**Tercer hallazgo, el que no estaba en el reporte:** el "job opcional que borre carritos sin
+actividad en 24h" **ya existía** (`limpiar_carritos_abandonados()`, pg_cron `0 8 * * *`, en
+`succeeded` desde hacía semanas) y estaba roto. `carritos.updated_at` tenía `DEFAULT now()`, que
+solo aplica al INSERT: sin trigger, y con el `PATCH` de `actualizar_carrito` mandando solo `items` y
+`total`, el valor era la fecha de **creación** congelada. El `WHERE updated_at < now() - interval
+'24 hours'` decía "creado hace más de 24h", no "sin actividad en 24h".
+
+**Decisión — tres capas:**
+1. **n8n `crear_carrito`:** header `Prefer` → `resolution=merge-duplicates,return=representation`.
+   El POST pasa a ser upsert sobre la PK y deja de fallar. Method sigue en `POST`.
+2. **n8n Agente Menú:** bloque nuevo *"NUNCA ANUNCIES UN CARRITO QUE LA TOOL NO CONFIRMÓ"* + una
+   línea en `PROHIBIDO`. Misma regla que ya tenía el Agente Pedidos para `crear_orden_completa`.
+3. **BD:** migración `bug032_carritos_touch_updated_at` — trigger `trg_carritos_touch_updated_at`
+   BEFORE UPDATE, para que la ventana de 24h mida lo que dice medir.
+
+Los dos cambios de n8n se aplicaron **a mano en el editor**: BUG-030 sigue bloqueando la API
+(recomprobado con un `patchNodeField` de un solo header, mismo
+`request/body/settings must NOT have additional properties`).
+
+**Verificación:** síntoma reproducido en BD (segundo INSERT plano sobre la misma PK →
+`unique_violation`; el mismo INSERT como upsert `on conflict` → OK). Trigger comprobado en dos
+transacciones separadas (`now()` es fijo dentro de una): `updated_at` pasó de `17:08:35` a
+`17:08:38`. Los dos cambios de n8n releídos de la **versión publicada** del workflow
+(`activeVersionId f729a914`), no del editor. Fila de prueba borrada; `carritos` en 0 filas.
+Falta la prueba con tráfico real → queda en "En observación".
+
+**Impacto:** `docs/bot/agent-prompts.md` (Agente Menú re-extraído verbatim), `docs/bot/ai-agents.md`,
+`docs/database/schema.md` (tabla `carritos` + triggers), `docs/shared/edge-cases.md` (#26).
+**Sin cambios en el dashboard.** Queda en el backlog fundir `crear_carrito` y `actualizar_carrito`
+en una sola tool, que con el upsert ya hacen lo mismo.
+
+### 2026-08-19 — Pedido fantasma: una confirmación mal enrutada y un carrito vacío que no frenó
+
+**Contexto:** primera prueba real de las zonas por WhatsApp. Una conversación (CLI-038) fluyó bien;
+la otra (CLI-039) llevó al cliente por barrio, dirección, costo de envío y método de pago para una
+pizza **que nunca entró al carrito**, y solo al cuarto mensaje respondió "No tienes un pedido
+armado todavía".
+
+**Diagnóstico (ejecuciones 12702, 12706, 12708, 12712, 12714, 12716 + `carritos`):** la
+confirmación *"Si confirmo"* respondía a una pregunta del **Agente Menú**, pero el Orquestador la
+mandó a **pedidos** porque `"sí confirmo"` estaba en su lista literal de frases. Sin ese paso por
+menú, nadie llamó `actualizar_carrito`. El carrito quedó con `items: []` (lo había creado
+`crear_carrito`), y el Agente Pedidos —que distingue "no existe" de "existe vacío"— siguió el flujo
+sacando el producto de la **memoria de conversación**. En dos de las cuatro ejecuciones ni llamó
+`leer_carrito1`.
+
+**Decisión:** dos prompts reescritos y aplicados a mano (BUG-030). Orquestador: una confirmación se
+clasifica por **a qué pregunta responde**, hablar de un producto no es un carrito armado, y cambiar
+la dirección con un pedido en curso es "pedidos" (se verificó que rebotaba a "soporte" y volvía).
+Agente Pedidos: `items: []` **es** carrito vacío, `leer_carrito1` en cada turno, y prohibido deducir
+los items de la conversación.
+
+**Lo que NO falló:** `consultar_cobertura` se llamó y respondió bien — el $5.000 salió de la tool
+(dedujo "la Milagrosa" de la dirección registrada → zona Centro), no fue inventado. Las zonas no
+estaban implicadas.
+
+**Validado en vivo el mismo día (ejecución 12734):** con el carrito en `items: []`, el Agente
+Pedidos respondió *"ahora mismo no tienes un pedido armado en el sistema"* en vez de inventarse el
+producto y seguir pidiendo barrio y método de pago. La guarda del PASO 1 funciona.
+
+**Sin probar todavía:** el fix de ruteo del Orquestador (la confirmación de producto que debe
+volver a "menu"). En la conversación de prueba no hubo paso de confirmación de producto, así que
+esa rama no se ejercitó.
+
+**Pendiente:** sigue sin registrarse ningún pedido nuevo, así que la comprobación de total
+anunciado vs `pedidos.total` con una zona distinta de $5.000 continúa sin hacerse — ahora
+bloqueada por BUG-032. Ver edge-cases §25.
+
+---
+
+### 2026-08-19 — Bello cargado: 5 zonas, 58 barrios, y el bot cobrando por zona de verdad
+
+**Contexto:** las zonas existían pero la tabla estaba vacía salvo la tarifa base, así que
+`consultar_cobertura` devolvía `cubierto:false` + $5.000 para todo. La función estaba viva pero
+dormida.
+
+**Decisión:** cinco tarifas por distancia real al local (Barrio La Mesa, junto al Parque de Bello):
+Centro $5.000 (10 barrios) · Bello cercano $6.000 (12) · Niquía y oriente $7.500 (10) · Ladera y
+norte alto $9.000 (13) · Corregimientos y veredas $10.000 (12). El precio vive en la **zona**, no
+en el barrio: subir tarifas son 5 ediciones, no 57.
+
+**Verificado:** `consultar_cobertura` resuelve tildes, mayúsculas, el prefijo "barrio " y
+abreviaturas ("sta ana" → Santa Ana, "NIQUÍA" → Niquía) contra los 57 barrios reales. Lo no
+mapeado (Envigado, "poblaod") cae en tarifa base sin rechazar el pedido, como se diseñó.
+
+**Falso positivo detectado y resuelto:** la regla de subcadena de `resolver_barrio` hacía que un cliente
+que respondiera solo **"Bello"** matcheara **"Puerto Bello"** y se le cobraran $7.500. Se agregó
+`Bello` como barrio de Centro: el match exacto le gana a la subcadena, así que ahora cae en $5.000
+y "Puerto Bello" sigue en $7.500 (verificado). Total: 58 barrios.
+
+**De paso — pegado masivo de barrios:** el input de cada zona agregaba **uno a la vez**, con un
+round-trip por barrio. Ahora acepta una lista separada por coma en un solo `upsert`
+(`addBarrio` → `addBarrios` en `useDeliveryZones.js`), reporta `"3 agregados · 1 ya estaba"` y no
+mueve en silencio un barrio que ya viva en otra zona.
+
+**Impacto:** datos (`zonas_entrega`, `barrios`) + `useDeliveryZones.js`, `DeliveryZonesSection.jsx`
+y `settings.less`. Sin cambios de esquema.
+
+---
+
 ### 2026-08-18 — Zonas de domicilio con tarifa por barrio
 
 **Contexto:** el costo del domicilio era la constante `costo_domicilio NUMERIC := 5000` escondida
@@ -57,11 +170,16 @@ mapear, override manual, paso a recoger, borrado de ítem, y un pedido históric
 `ClientModal`, `useClients`, `useOrders`, `useOrderHistory`, `useDeliveryHistory`,
 `exportHistory`. Bot — `Sub — Crear_orden_completa` acepta y propaga `barrio`.
 
-**Pendiente:** el workflow principal de n8n **no se pudo escribir** (ver BUG-030): faltan la tool
-`consultar_cobertura` en Agente Pedidos y Soporte, y limpiar el `$5.000` quemado de los prompts.
-Mientras tanto el bot sigue cobrando $5.000 vía la tarifa base, que es justo lo que dice su prompt.
-Instrucciones literales para aplicarlo: [`docs/bot/pendiente-zonas-domicilio.md`](../bot/pendiente-zonas-domicilio.md)
-(atajo en Claude Code: `/zonas-bot`).
+**Cerrado el 2026-08-19 — el bot ya cobra por zona.** El workflow principal se editó **a mano en
+n8n** (BUG-030 sigue bloqueando la API, así que no hubo alternativa): se crearon
+`consultar_cobertura` (→ Agente Pedidos) y `consultar_cobertura1` (→ Agente Soporte), ambos
+`HTTP Request Tool` contra `/rpc/consultar_cobertura`; el prompt del Agente Pedidos ahora pide el
+barrio y usa el `costo_domicilio` devuelto; el de Soporte dejó de prometer zonas vía `info_local`.
+Verificado leyendo el workflow real por MCP (103 nodos, tools colgadas por `ai_tool` del agente
+correcto). Prompts sincronizados en [`agent-prompts.md`](../bot/agent-prompts.md).
+También quedó cableado el opcional que faltaba: `Edit Fields` pasa `barrio`, `Parse Orquestador` lo
+expone como `barrio_registrado` y el Agente Pedidos lo confirma (*"¿Sigues por el barrio …?"*) en
+vez de repreguntarlo, igual que ya hacía con `direccion_registrada`.
 
 **De paso:** arreglado un bug latente en `actualizar_total_pedido()` — usaba `NEW.pedido_id`, que
 en un `DELETE` es NULL, así que **borrar un ítem nunca recalculaba el total**. Ver edge-cases §22.

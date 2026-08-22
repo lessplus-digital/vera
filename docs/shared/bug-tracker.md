@@ -12,7 +12,7 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-032**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-033**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
@@ -55,19 +55,28 @@
      omiten; el workflow quedó intacto en 101 nodos y ni siquiera cambió `updatedAt`.)
   4. Guardar desde la UI tampoco sirve: esas tres claves las **escribe el editor**, así que
      vuelven a aparecer. Verificado — tras un guardado manual el error se repitió idéntico.
-- **Impacto:** el bot no puede recibir la tool `consultar_cobertura` ni la limpieza del `$5.000`
-  quemado en el prompt del Agente Pedidos (ver changelog 2026-08-18). Funcionalmente el bot sigue
-  bien —cobra $5.000 vía la tarifa base, que es lo que dice su prompt— pero **no puede cobrar
-  tarifas por zona** hasta que esto se destrabe.
-- **Fix:** los cambios pendientes se aplican **a mano en el editor de n8n** — instrucciones
-  completas y literales en **[`docs/bot/pendiente-zonas-domicilio.md`](../bot/pendiente-zonas-domicilio.md)**
-  (atajo: `/zonas-bot`). De fondo, la vía MCP se destraba solo con una de estas dos, ninguna urgente:
+- **Impacto (actualizado 2026-08-19):** las zonas de domicilio **ya no están bloqueadas** — se
+  aplicaron a mano en el editor y el bot cobra por barrio (ver changelog 2026-08-18). Lo que queda
+  es el impacto estructural: **todo cambio futuro sobre `Pizzeria Vera` hay que hacerlo a mano**,
+  con el costo que eso tiene (en la aplicación manual de las zonas se coló un error —
+  `$[total + costo_domicilio]` en el PASO 5, que cobraba el domicilio dos veces— que solo se
+  detectó al releer el workflow por MCP; por API el diff habría sido evidente).
+- **Fix:** mientras dure, los cambios se aplican **a mano en el editor de n8n** y se verifican
+  releyendo el workflow con `n8n_get_workflow` (mode `filtered`) — la lectura por API **sí**
+  funciona, es solo la escritura la que rebota. De fondo, la vía MCP se destraba solo con una de
+  estas dos, ninguna urgente:
   1. Actualizar el n8n-mcp a una versión que **filtre** `settings` a las 8 claves del esquema
      antes del `PUT` — es lo correcto: el problema es del cliente, no del workflow.
+     **Comprobado el 2026-08-19: n8n-mcp está en 2.73.0, que es la última publicada, y sigue sin
+     filtrar.** Hay que esperar una versión nueva; no tiene sentido reintentar hasta entonces.
   2. Actualizar n8n a una versión cuyo esquema de API pública ya incluya `binaryMode`,
-     `timeSavedMode` y `callerPolicy`.
+     `timeSavedMode` y `callerPolicy`. (La instancia dejó de reportar su versión a la API desde
+     n8n 1.119.0, así que hay que mirarla desde la UI.)
 - **Alcance:** afecta a **todo** el workflow principal, no solo a esta tarea. Cualquier cambio
   futuro por MCP sobre `Pizzeria Vera` va a rebotar igual hasta que se resuelva.
+- **Recomprobado 2026-08-21** trabajando BUG-032: un `patchNodeField` de un solo header sobre
+  `crear_carrito` rebotó con el mismo `request/body/settings must NOT have additional properties`.
+  Sigue vigente; los dos cambios de BUG-032 van a mano.
 
 ### BUG-031 · 🟡 Media · 🔴 Abierto — 8 pedidos con total escrito a mano y cero líneas de detalle
 
@@ -152,6 +161,12 @@
 
 Fixes ya aplicados cuya verificación final depende de tráfico real:
 
+- **BUG-032** — carrito idempotente. Las tres capas están aplicadas y verificadas por MCP (upsert
+  en `crear_carrito`, regla nueva en el Agente Menú, trigger `trg_carritos_touch_updated_at`), pero
+  el camino completo solo se prueba con una conversación real: **dejar un carrito con items sin
+  convertirlo en pedido y, desde ese mismo teléfono, pedir otra cosa**. El producto debe entrar y el
+  carrito quedar con los items nuevos (`select * from carritos where telefono = '...'`). Confirmar
+  también que si la escritura falla el bot **no** muestra el 🛒 — antes lo cantaba igual.
 - **BUG-028** — el job `expirar-pedidos-pendientes` (pg_cron, 16:00 UTC) todavía no ha corrido
   en producción. Confirmar en la primera ejecución que: (a) cierra solo los `pendiente` de días
   anteriores y **no** toca los del turno en curso, y (b) el cliente recibe la cancelación con un

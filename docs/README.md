@@ -14,8 +14,7 @@ docs/
 │   ├── feedback.md        ← sistema de feedback: job que pide + subworkflow que procesa
 │   ├── ai-agents.md       ← agentes IA: arquitectura, tools, reglas (referencia)
 │   ├── agent-prompts.md   ← system prompts completos verbatim (fuente de verdad)
-│   ├── subworkflows.md    ← lógica server-side de las tools (n8n)
-│   └── pendiente-zonas-domicilio.md ← cableado del bot que quedó sin aplicar (BUG-030) · `/zonas-bot`
+│   └── subworkflows.md    ← lógica server-side de las tools (n8n)
 │
 ├── database/             ← Capa 2 · Supabase (PostgreSQL) — backend compartido
 │   └── schema.md          ← tablas, columnas, triggers, RPCs

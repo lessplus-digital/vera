@@ -212,3 +212,81 @@ por definición corre cuando el pedido **sí** tiene líneas.
 primero cuántas filas **ya** violan el invariante que vas a asumir. Un `GROUP BY (total − suma)`
 tarda un segundo y aquí cambió el diseño: delta en vez de recálculo. Un trigger correcto sobre
 datos incorrectos sigue destruyendo datos.
+
+## 24. Un total que ya venía sumado, sumado otra vez en el mensaje al cliente (2026-08-19)
+
+**Síntoma:** al cablear las zonas de domicilio en el prompt del Agente Pedidos, el PASO 5 (el
+mensaje de "¡Pedido registrado!") quedó como `💰 Total a pagar: $[total + costo_domicilio]`. Con
+un pedido de $50.000 y envío de $8.000 el bot habría anunciado **$66.000**: $8.000 de más,
+contradiciendo el resumen que él mismo mostró un turno antes y el total que ve el dashboard.
+
+**Causa:** el mismo número se arma en dos sitios que parecen iguales y no lo son. En el **PASO 3**
+el pedido todavía no existe en la BD, así que el agente suma a mano `Subtotal + costo_domicilio`.
+En el **PASO 5** el número viene de `crear_orden_completa`, y ahí ya pasó por el trigger
+`actualizar_total_pedido`, que hace `SUM(items) + costo_domicilio`. La sustitución mecánica
+`5000 → costo_domicilio` es correcta en el PASO 3 e incorrecta en el PASO 5, donde el reemplazo
+correcto era **quitar la suma entera**.
+
+**Cómo se detectó:** releyendo el nodo por MCP y comparándolo contra la definición real del
+trigger en Postgres (`pg_get_functiondef`), no contra lo que el doc decía que hacía.
+
+**Lección:** cuando un valor cruza la frontera hacia la BD, deja de ser "lo que calculamos" y pasa
+a ser "lo que la BD devuelve" — y los agregados calculados por trigger casi siempre vuelven **ya
+compuestos**. Antes de escribir una fórmula sobre un valor que viene de una tool, leer qué
+devuelve esa tool. Un buscar-y-reemplazar sobre un prompt es especialmente propenso a esto: acierta
+en las N-1 apariciones donde el contexto es el mismo y falla justo en la que cambió de lado.
+
+## 25. Un carrito vacío no es lo mismo que no tener carrito, y el agente sí nota la diferencia (2026-08-19)
+
+**Síntoma:** en una prueba real por WhatsApp (CLI-039), el bot le pidió al cliente barrio, dirección
+y método de pago, le anunció un total y le confirmó una pizza… que nunca existió. Cuatro mensajes
+después se dio cuenta y respondió *"No tienes un pedido armado todavía"*.
+
+**Causa, en dos capas:**
+
+1. **El ruteo.** El Agente Menú preguntó *"¿confirmas que quieres 1x Vera Pizza familiar
+   estofada?"* y el cliente respondió *"Si confirmo"*. El prompt del Orquestador listaba
+   literalmente `"sí confirmo"` entre las frases que mandan a **pedidos**, así que la confirmación
+   se desvió del agente que la había pedido. Nadie llamó `actualizar_carrito` y el producto nunca
+   entró. Verificado en la ejecución 12706: `agente: "pedidos"`, razón *"cliente confirma
+   explícitamente creación del pedido"*.
+2. **La guarda que no guardó.** El Agente Menú ya había llamado `crear_carrito`, así que existía
+   una fila en `carritos` con `items: []`. El PASO 1 decía *"si el carrito está vacío **o no
+   existe**"*, pero para el modelo un carrito que **existe** no es lo mismo que uno vacío: siguió
+   el flujo y sacó la pizza de la **memoria de conversación**, que es compartida por sesión. En dos
+   de las cuatro ejecuciones ni siquiera llamó `leer_carrito1`.
+
+**Solución:** el Orquestador clasifica las confirmaciones por **a qué pregunta responden**, no por
+la frase; y el PASO 1 define el carrito vacío como dos casos explícitos (`no devuelve nada` **o**
+`items: []`), obliga a releerlo en cada turno y prohíbe deducir productos de la conversación.
+
+**Lección:** al escribir la guarda de un estado, enumera los estados **reales** que devuelve la
+herramienta, no el concepto. "Vacío o no existe" suena exhaustivo y deja fuera justo el caso que se
+da en producción: la fila creada pero sin contenido. Y ojo con la memoria compartida entre agentes:
+si un agente puede *leer* lo que otro escribió en el chat, va a tratarlo como dato aunque su tool
+diga lo contrario — hay que prohibírselo por escrito.
+
+## 26. Un job de limpieza por `updated_at` no limpia nada si nadie refresca `updated_at` (2026-08-21)
+
+**Síntoma:** al arreglar BUG-032 se iba a crear "un job que borre carritos sin actividad en 24h".
+Resultó que ya existía: `limpiar_carritos_abandonados()` en pg_cron (`0 8 * * *`), corriendo a
+diario y en `succeeded` desde hacía semanas. Y aun así los carritos abandonados seguían dejando
+clientes en bucle.
+
+**Causa:** la columna se veía bien —`updated_at timestamptz NOT NULL DEFAULT now()`— pero ese
+`DEFAULT` **solo aplica al INSERT**. No había trigger de `touch`, y el `PATCH` de
+`actualizar_carrito` manda `items` y `total`, no `updated_at`. O sea: el valor era la **fecha de
+creación**, congelada de por vida. El `WHERE updated_at < now() - interval '24 hours'` se leía como
+"sin actividad en 24h" y en realidad decía "creado hace más de 24h": borraba un carrito vivo en una
+conversación larga y, al revés, uno abandonado hace 3 horas seguía bloqueando el teléfono hasta la
+próxima corrida.
+
+**Solución:** trigger `trg_carritos_touch_updated_at` BEFORE UPDATE (migración
+`bug032_carritos_touch_updated_at`).
+
+**Lección:** un `DEFAULT now()` **no** es una columna "última modificación" — es "fecha de
+creación" con otro nombre. Antes de confiar en cualquier housekeeping que filtre por `updated_at`,
+verifica que algo la escriba en el UPDATE: `pg_trigger` sobre la tabla, o la columna en el body de
+quien escribe. Y ojo con el otro sesgo de este bug: **el job ya existía**. Antes de implementar un
+punto del "fix propuesto", comprueba contra el sistema real si ya está — puede estar ahí y estar
+roto, que es peor que no estar, porque nadie lo vuelve a mirar.

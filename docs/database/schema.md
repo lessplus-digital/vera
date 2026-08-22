@@ -95,6 +95,11 @@
 ### `carritos` — carrito temporal del bot (0 filas · PK `telefono` · RLS ✅)
 `telefono` 🔑, `items` jsonb (default `[]`), `total` numeric, `updated_at` timestamptz.
 
+> **La PK es el teléfono**, así que un cliente solo puede tener **un** carrito. Cualquier escritura
+> del bot que cree carrito tiene que ser un **upsert**, nunca un INSERT plano: si la fila ya existe
+> PostgREST devuelve conflicto y el nodo de n8n falla en silencio (BUG-032). El header correcto es
+> `Prefer: resolution=merge-duplicates,return=representation`.
+
 ### `reservas` — (15 filas · RLS ✅)
 `reserva_id` 🔑 (`generar_reserva_id()`), `cliente_id` (FK, nullable, **ON DELETE CASCADE**), `telefono`,
 `nombre_cliente`, `fecha` date, `hora` time, `personas` int (**check 1–12**),
@@ -316,6 +321,7 @@ Creada con la migración `roles_etapa1_perfiles_y_helpers` (2026-08-12).
 | `perfiles` | `trigger_proteger_ultimo_admin` | BEFORE DELETE | Impide borrar al último admin activo (2026-08-12) |
 | `pedidos` | `trigger_validar_asignacion` | BEFORE INSERT **OR UPDATE OF `domiciliario_id`, `tipo_pedido`** | **Exige `es_admin()` para cambiar la asignación** (la RLS no puede: el mesero necesita UPDATE sobre `pedidos` y las políticas no limitan por columna). Además valida que el asignado tenga `rol='domiciliario'` y esté activo, y que el pedido sea `tipo_pedido='domicilio'`. No hace nada si la asignación no cambia, para no estorbar al mesero moviendo estados (2026-08-12) |
 | `respuestas_rapidas` | `trigger_normalizar_respuesta_rapida` | BEFORE INSERT **OR UPDATE** | Mismo criterio que `normalizar_faq` aplicado a `atajo` (una línea) y `texto` (conserva saltos); setea `updated_at` (2026-08-12) |
+| `carritos` | `trg_carritos_touch_updated_at` | BEFORE UPDATE | `updated_at = now()` en cada UPDATE. Antes solo se escribía en el INSERT (default `now()`) y nadie lo refrescaba, así que `limpiar_carritos_abandonados()` medía las 24h **desde que se creó** el carrito y no desde la última actividad — podía borrar un carrito vivo a mitad de conversación (BUG-032, 2026-08-21) |
 
 > **El total lo calcula el trigger, nunca el JS ni el LLM.** El costo del envío tampoco: sale de
 > `pedidos.costo_domicilio`, que llena `trigger_tarifa_domicilio` desde la zona del barrio.
