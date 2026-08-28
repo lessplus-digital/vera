@@ -12,7 +12,7 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-033**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-035**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
@@ -20,7 +20,12 @@
 
 ## Abiertos
 
-### BUG-030 · 🔴 Alta · 🔴 Abierto — ninguna escritura por API funciona sobre el workflow principal de n8n
+### BUG-030 · 🟢 Baja · 🔴 Abierto — el n8n-mcp de la comunidad no puede escribir el workflow principal
+
+> **Degradado de 🔴 Alta a 🟢 Baja el 2026-08-25.** El bug sigue existiendo tal cual está descrito,
+> pero dejó de bloquear: el **MCP nativo de n8n** (`n8n-native`, `/mcp-server/http`) escribe por el
+> SDK, no por la API pública v1, y no reenvía `settings`. Las 4 ediciones de BUG-033 se aplicaron
+> por ahí sin tocar el editor. Lo que queda roto es la vía `n8n-mcp` (npx), que sí sigue rebotando.
 
 - **Componente:** n8n → workflow `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`)
 - **Síntoma:** **cualquier** `PUT` sobre el workflow falla con
@@ -61,10 +66,11 @@
   con el costo que eso tiene (en la aplicación manual de las zonas se coló un error —
   `$[total + costo_domicilio]` en el PASO 5, que cobraba el domicilio dos veces— que solo se
   detectó al releer el workflow por MCP; por API el diff habría sido evidente).
-- **Fix:** mientras dure, los cambios se aplican **a mano en el editor de n8n** y se verifican
-  releyendo el workflow con `n8n_get_workflow` (mode `filtered`) — la lectura por API **sí**
-  funciona, es solo la escritura la que rebota. De fondo, la vía MCP se destraba solo con una de
-  estas dos, ninguna urgente:
+- **Workaround vigente (2026-08-25):** escribir con **`n8n-native`** (`update_workflow` +
+  `publish_workflow`), que no toca la API pública v1. Antes de eso los cambios se aplicaban a
+  mano en el editor. La lectura por `n8n_get_workflow` (mode `filtered`) **sí** funciona en
+  ambas vías y sigue siendo la forma de verificar. De fondo, la vía `n8n-mcp` se destraba solo
+  con una de estas dos, ninguna urgente:
   1. Actualizar el n8n-mcp a una versión que **filtre** `settings` a las 8 claves del esquema
      antes del `PUT` — es lo correcto: el problema es del cliente, no del workflow.
      **Comprobado el 2026-08-19: n8n-mcp está en 2.73.0, que es la última publicada, y sigue sin
@@ -72,11 +78,29 @@
   2. Actualizar n8n a una versión cuyo esquema de API pública ya incluya `binaryMode`,
      `timeSavedMode` y `callerPolicy`. (La instancia dejó de reportar su versión a la API desde
      n8n 1.119.0, así que hay que mirarla desde la UI.)
-- **Alcance:** afecta a **todo** el workflow principal, no solo a esta tarea. Cualquier cambio
-  futuro por MCP sobre `Pizzeria Vera` va a rebotar igual hasta que se resuelva.
+- **Alcance (corregido 2026-08-25):** afecta a la vía `n8n-mcp` (npx) sobre `Pizzeria Vera`, no a
+  todo cambio futuro, como decía este entry antes. Con `n8n-native` configurado las escrituras
+  van por ahí; esto queda como registro de por qué `n8n_update_partial_workflow` sigue fallando
+  si alguien lo intenta.
 - **Recomprobado 2026-08-21** trabajando BUG-032: un `patchNodeField` de un solo header sobre
   `crear_carrito` rebotó con el mismo `request/body/settings must NOT have additional properties`.
   Sigue vigente; los dos cambios de BUG-032 van a mano.
+
+### BUG-034 · 🟢 Baja · 🔴 Abierto — 5 nodos `OpenAI Chat Model` con un parámetro fuera de esquema
+
+- **Componente:** n8n → `Pizzeria Vera`, nodos `OpenAI Chat Model` … `OpenAI Chat Model4`
+- **Síntoma:** cada escritura por `n8n-native` devuelve la misma advertencia para los cinco:
+  `Field "parameters.builtInTools": This field is only allowed when: /responsesApiEnabled=true`.
+- **Detectado:** 2026-08-25, aplicando BUG-033. Son advertencias de validación, **no** errores:
+  la escritura se guarda igual y el bot funciona. Preexistente — no lo introdujeron esos cambios.
+- **Causa probable:** los nodos conservan `builtInTools` de cuando se probó la Responses API;
+  con `responsesApiEnabled` en false el campo queda huérfano y el validador lo marca.
+- **Riesgo:** hoy ninguno visible. Importa si una versión futura de n8n endurece la validación y
+  pasa de advertencia a error, o si alguien enciende `responsesApiEnabled` sin mirar qué tools
+  quedaron ahí dentro.
+- **Fix propuesto:** abrir uno de los cinco nodos, confirmar que `builtInTools` está vacío o es
+  irrelevante, y quitarlo con `update_workflow` (`setNodeParameter`). Verificar que la
+  advertencia desaparece en la siguiente escritura.
 
 ### BUG-031 · 🟡 Media · 🔴 Abierto — 8 pedidos con total escrito a mano y cero líneas de detalle
 
@@ -161,6 +185,13 @@
 
 Fixes ya aplicados cuya verificación final depende de tráfico real:
 
+- **BUG-033** — cobertura fuera de Bello. Las dos capas están aplicadas y verificadas por MCP
+  (RPC sin tarifa cuando `cubierto:false` + las 4 ediciones de n8n, publicadas y releídas del
+  workflow). Falta la prueba por WhatsApp, que es la única que ejercita al modelo:
+  «¿Tienen servicio en Envigado?» y «¿Llegan a Sabaneta?» → debe decir que no llegan y ofrecer
+  recoger, **sin precio ni tiempo**; «¿Llegan a Niquía?» → $7.500, 30 a 45 min; «estoy en niqia»
+  → debe preguntar «¿te refieres a Niquía?»; «¿cuánto el domicilio al centro?» → $5.000; y un
+  pedido a domicilio diciendo «estoy en Itagüí» **no** puede terminar creado como domicilio.
 - **BUG-032** — carrito idempotente. Las tres capas están aplicadas y verificadas por MCP (upsert
   en `crear_carrito`, regla nueva en el Agente Menú, trigger `trg_carritos_touch_updated_at`), pero
   el camino completo solo se prueba con una conversación real: **dejar un carrito con items sin

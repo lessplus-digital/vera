@@ -290,3 +290,34 @@ verifica que algo la escriba en el UPDATE: `pg_trigger` sobre la tabla, o la col
 quien escribe. Y ojo con el otro sesgo de este bug: **el job ya existía**. Antes de implementar un
 punto del "fix propuesto", comprueba contra el sistema real si ya está — puede estar ahí y estar
 roto, que es peor que no estar, porque nadie lo vuelve a mirar.
+
+---
+
+## 27. Una salvedad temporal en un prompt no caduca sola (2026-08-25)
+
+**Síntoma:** el bot le decía a un cliente *«sí te llegamos a Envigado 🙌, el domicilio son $5.000»*.
+Envigado está al otro lado del área metropolitana. Lo mismo con Sabaneta y con Apartadó, que ni
+siquiera es del Valle de Aburrá.
+
+**Causa:** la herramienta respondía bien —`consultar_cobertura('envigado')` devolvía
+`cubierto: false` desde el primer día—. El que mentía era el prompt, porque en su momento se le
+escribió a propósito: *«Si cubierto=false NO rechaces el pedido: se cobra igual el
+costo_domicilio»*. Era una salvedad razonable **mientras `barrios` estaba vacía**: sin catálogo,
+todo daba `false` y rechazar habría matado todas las ventas. Pero la premisa venció el día que se
+cargaron los 58 barrios de Bello, y nadie volvió a ese párrafo. Desde entonces la regla dejó de
+cubrir un hueco de datos y pasó a inventar cobertura.
+
+**Solución (dos capas, a propósito):**
+1. **La herramienta dejó de dar munición.** Con `cubierto:false` la RPC devuelve `costo_domicilio`
+   y `tiempo_estimado` en **NULL**: si no hay número, el modelo no tiene qué cantar aunque el
+   prompt se vuelva a torcer. Además devuelve `mensaje` (qué hacer) y `sugerencias` (por si era
+   una errata: `niqia` → Niquía).
+2. **Los prompts dejaron de contradecirla** (4 ediciones en n8n: los dos agentes y las dos descripciones de tool).
+
+**Lección doble.** Primera: **cuando el prompt y la herramienta se contradicen, gana el prompt** —
+el modelo obedece la instrucción en lenguaje natural antes que el dato del JSON, así que un
+`cubierto:false` impecable no vale nada si dos líneas más arriba dice «no le digas que no
+llegan». Segunda: toda regla que empiece por «por ahora» o «mientras tanto» es **deuda con fecha de
+vencimiento invisible**. Si escribes una, escribe también la condición que la mata («cuando
+`barrios` tenga filas, borrar este párrafo») y déjala en el backlog — o revísala cuando cambie el
+dato del que dependía. El bug no fue una línea mal escrita: fue una línea que dejó de ser cierta.

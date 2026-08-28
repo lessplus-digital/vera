@@ -13,6 +13,18 @@
 
 ## Bot
 
+- **Reja dura de cobertura en la BD** — tras BUG-033 (2026-08-25) el bot ya no promete domicilios
+  fuera de Bello, pero la garantía vive en los prompts: si un agente futuro vuelve a torcerse,
+  `trigger_tarifa_domicilio` acepta igual el pedido y le cobra la tarifa base. La reja dura sería
+  **rechazar** en la BD un `pedidos` de `tipo_pedido='domicilio'` cuyo barrio no resuelve — solo
+  en el camino del bot (`auth.uid() IS NULL`), nunca en el del dashboard, donde un admin sí
+  necesita poder escribir un barrio que aún no está en el catálogo. No se hizo junto con el fix
+  porque el riesgo se invierte: una errata que el matcher no alcance dejaría de ser un cobro raro
+  y pasaría a ser una venta perdida en seco. Medido el 2026-08-25: de 89 domicilios históricos, 88
+  tienen `zona IS NULL`, pero **todos** son anteriores a las zonas (2026-08-18) y ni siquiera
+  guardaron `barrio`; el único posterior (PED-240, La Milagrosa) resolvió bien. O sea que aún no
+  hay evidencia de fugas del matcher: volver a medir cuando haya volumen real con barrio.
+
 - **Una sola tool de escritura del carrito** — desde BUG-032 (2026-08-21) `crear_carrito` es un
   upsert (`Prefer: resolution=merge-duplicates`), así que hace exactamente lo mismo que
   `actualizar_carrito`: ambas mandan `items` y `total` completos y la PK es el teléfono. La

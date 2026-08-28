@@ -142,7 +142,7 @@ Seed inicial (**precios PLACEHOLDER**, se ajustan con un `UPDATE`): `sin_ocasion
 | `activo` | boolean | default `true` · zona inactiva → sus barrios pasan a cobrar la tarifa base |
 | `orden` | integer | orden de presentación |
 
-### `barrios` — barrios cubiertos, agrupados por zona (0 filas · PK `clave` · RLS ✅)
+### `barrios` — barrios cubiertos, agrupados por zona (59 filas · PK `clave` · RLS ✅)
 | Columna | Tipo | Notas |
 |---|---|---|
 | `clave` 🔑 | text | **la deriva el trigger** desde `nombre` con `normalizar_barrio()` — es el punto de match contra lo que escribe el cliente |
@@ -154,8 +154,10 @@ Seed inicial (**precios PLACEHOLDER**, se ajustan con un `UPDATE`): `sin_ocasion
 
 Semilla: **una sola** fila en `zonas_entrega`, `base` = *Tarifa base* a **$5.000** — exactamente lo
 que el trigger cobraba quemado, para que el sistema se comporte igual que antes hasta que el
-restaurante cargue sus barrios. `barrios` arranca vacía a propósito: sembrar barrios sería
-inventar la cobertura real del negocio.
+restaurante cargue sus barrios. `barrios` arrancó vacía a propósito: sembrar barrios sería
+inventar la cobertura real del negocio. **Ya no lo está**: el restaurante cargó los 58 barrios
+de Bello en 5 zonas (2026-08-18), más `centro` → zona *Centro* (2026-08-25, BUG-033: nadie lo
+había cargado y «estoy en el centro» caía en el no-match).
 
 > **La tarifa NUNCA la escribe quien inserta**, misma convención que `motivos_reserva`. Ni el LLM
 > ni el JS mandan `costo_domicilio`: mandan el **barrio en texto crudo** y
@@ -163,10 +165,18 @@ inventar la cobertura real del negocio.
 > **foto**. Fuente única para las dos capas: el bot la lee con la tool `consultar_cobertura` y el
 > dashboard con `useDeliveryZones` / `useBarrioOptions`.
 >
-> **Un barrio sin mapear NO es un rechazo.** Cae en la zona `es_base`, se cobra esa tarifa y
-> `pedidos.zona` queda NULL. Se prefiere cobrar de más o de menos una vez a perder la venta
-> mientras el restaurante termina de cargar barrios. La zona base está protegida contra borrado
-> y desactivación (`proteger_zona_base`) justamente porque sin ella ese caso cobraría **$0**.
+> **Un barrio sin mapear es FUERA DE COBERTURA para el bot** (2026-08-25, BUG-033). Hasta esa
+> fecha se cobraba la tarifa base y se aceptaba el pedido «para no perder la venta mientras el
+> restaurante carga barrios»; con los 58 barrios ya cargados, esa salvedad dejó de proteger una
+> venta y pasó a prometer domicilios a Envigado, Sabaneta y Apartadó. Hoy `consultar_cobertura`
+> devuelve `cubierto:false` **sin `costo_domicilio` y sin `tiempo_estimado`**, y los agentes
+> tienen prohibido prometer el envío.
+>
+> El **trigger** `trigger_tarifa_domicilio` sigue aplicando la tarifa base a un barrio sin
+> mapear: es la red de seguridad de los pedidos creados a mano desde el dashboard (un admin
+> puede escribir un barrio que aún no está en el catálogo) y evita que ese caso cobre **$0**.
+> Por eso la zona base sigue protegida contra borrado y desactivación (`proteger_zona_base`).
+> `pedidos.zona` NULL sigue siendo la marca de «barrio sin mapear».
 
 ### `feedback` — calificaciones (1 fila · RLS ✅)
 `feedback_id` 🔑 (`FB-`), `cliente_id` (FK, **ON DELETE CASCADE**), `pedido_id` (FK, **unique**,
@@ -352,7 +362,7 @@ WHERE p.pedido_id = v_pedido_id;
 | `buscar_menu_categoria` | `(cat text, solo_disponibles bool=true)` | Lista productos de una categoría. |
 | `cotizar_mitad_y_mitad` | `(p_producto_a text, p_producto_b text, p_tamano text) → jsonb` | **Cotizador de pizza mitad y mitad** (2026-08-10). Valida: los dos productos existen y están disponibles, misma **masa** (`menu.variante`), categoría de pizza salada (`pizza_tradicional/especial/premium/premium_especial`), sabores distintos y tamaño en `pequena/mediana/grande/familiar` (**porción excluida**). Cobra el precio de la **mitad más cara**. Devuelve `{ok:true, producto_id, nombre_producto, variante, masa, precio_unitario, mitades, explicacion}` o `{ok:false, error, message}` (`MASA_DISTINTA`, `TAMANO_NO_PERMITIDO`, `CATEGORIA_NO_PERMITIDA`, `PRODUCTO_AGOTADO`, `MITADES_IGUALES`, `TAMANO_NO_DISPONIBLE`…). La usan **el bot** (tool `armar_mitad_y_mitad`) y **el dashboard** (`MenuPicker`) — misma regla, una sola fuente. |
 | `editar_pedido` | `(p_pedido_id text, p_items jsonb) → jsonb` | **SECURITY DEFINER**. Solo si `estado='pendiente'` (bloqueo `FOR UPDATE`); borra e reinserta items, **preserva el recargo de domicilio** — desde 2026-08-18 lo **lee de `pedidos.costo_domicilio`** en vez de despejarlo restando (`total − suma de ítems`), que con tarifa variable daba un número distinto por zona —, recalcula total. Lo usa el dashboard. Retorna `{ success, ... }`. Desde 2026-08-10 (migración `editar_pedido_arrastra_mitades_y_notas_item`) también arrastra **`mitades` y `notas_item`** — antes los perdía al reinsertar. |
-| `consultar_cobertura` | `(p_barrio text=null) → jsonb` | **Tool de zonas de domicilio** (2026-08-18). Sin argumento devuelve `{modo:'listado', tarifa_base, zonas:[{nombre,costo,tiempo_estimado,barrios[]}]}` (la zona base se excluye del listado: no es cobertura, es red de seguridad). Con un barrio devuelve `{modo:'barrio', cubierto, barrio, zona, costo_domicilio, tiempo_estimado, coincidencia_exacta}`. **`cubierto:false` NO es un rechazo**: trae la tarifa base en `costo_domicilio`. La usan el Agente Pedidos y el Agente Soporte. **STABLE · SECURITY DEFINER** con el patrón `auth.uid() IS NULL → n8n`. |
+| `consultar_cobertura` | `(p_barrio text=null) → jsonb` | **Tool de zonas de domicilio** (2026-08-18). Sin argumento devuelve `{modo:'listado', tarifa_base, zonas:[{nombre,costo,tiempo_estimado,barrios[]}]}` (la zona base se excluye del listado: no es cobertura, es red de seguridad). Con un barrio devuelve `{modo:'barrio', cubierto, barrio, zona, costo_domicilio, tiempo_estimado, coincidencia_exacta}`. **`cubierto:false` = FUERA DE COBERTURA** (2026-08-25, BUG-033): devuelve `costo_domicilio` y `tiempo_estimado` en **NULL a propósito** —sin número que cantar, el agente no puede prometer un domicilio que no existe— más `mensaje` (instrucción explícita) y `sugerencias` (hasta 3 barrios con `similarity ≥ 0.40`, para erratas que el matcher no alcanzó: `niqia` → `["Niquía"]`; el umbral es alto a propósito para que `sabaneta` **no** sugiera `Sabanalarga`). El modo listado agrega `municipio: "Bello"` y `cobertura`. La usan el Agente Pedidos y el Agente Soporte. **STABLE · SECURITY DEFINER** con el patrón `auth.uid() IS NULL → n8n`. |
 | `resolver_barrio` | `(p_texto text) → TABLE(clave, nombre, zona, zona_nombre, costo, tiempo_estimado, exacto)` | Match tolerante entre lo que escribe el cliente y el catálogo: **exacto → subcadena → similitud trgm ≥ 0.45**. La subcadena exige `length(clave) >= 4` para que un barrio de 3 letras no se trague media ciudad. Devuelve 0 o 1 fila. **STABLE.** |
 | `normalizar_barrio` | `(text) → text` | Clave canónica de un barrio: minúsculas, sin tildes, sin puntuación y **sin el prefijo `barrio`** ("barrio El Centro" y "el centro" colapsan igual). **IMMUTABLE** a propósito (se indexa) — por eso no usa `unaccent()`, que es STABLE. |
 | `tarifa_base` | `() → numeric` | Costo de la zona `es_base`. **STABLE.** |

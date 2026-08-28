@@ -14,6 +14,64 @@
 ```
 
 ---
+### 2026-08-25 — El bot prometía domicilio a otros municipios (BUG-033)
+
+**Contexto:** «¿Tienes servicio en Envigado?» → *«Sí Juan, sí te llegamos a Envigado 🙌 El domicilio
+te queda en $5.000 y el tiempo estimado de entrega es de 30 a 45 minutos.»* Igual con Sabaneta y
+con Apartadó, que ni siquiera es del Valle de Aburrá. Vera solo reparte en Bello.
+
+**Diagnóstico:** la herramienta nunca se equivocó — `consultar_cobertura('envigado')` devolvía
+`cubierto:false` desde el primer día, y el matcher tiene **cero falsos positivos** sobre 12
+municipios de fuera. Lo que mentía era el prompt, y a propósito: la decisión (c) del 2026-08-18
+le ordenaba al agente ignorar el `false` y cobrar la tarifa base *«mientras el restaurante termina
+de cargar sus barrios»*. Esa premisa venció cuando se cargaron los 58 barrios de Bello, y nadie
+volvió al párrafo.
+
+**Decisión — arreglarlo en dos capas, no en una.** La herramienta deja de dar munición: con
+`cubierto:false` la RPC devuelve `costo_domicilio` y `tiempo_estimado` en **NULL a propósito**, más
+`mensaje` (qué hacer) y `sugerencias` (hasta 3 barrios con `similarity ≥ 0.40`, para erratas como
+`niqia` → Niquía; el umbral es alto para que `sabaneta` **no** sugiera `Sabanalarga`). Y los cuatro
+textos de n8n dejan de contradecirla: `cubierto=false` significa sin domicilio, con la alternativa
+de recoger en el local. Dos capas porque una sola no basta: si mañana el prompt se tuerce otra vez,
+ya no hay número que cantar.
+
+**De paso:** el barrio `centro` no existía en el catálogo. Quien decía «estoy en el centro» caía en
+el no-match, y el bug lo tapaba cobrándole la tarifa base — que por casualidad es la misma tarifa
+de la zona Centro. Agregado a la zona Centro ($5.000).
+
+**Impacto:** migraciones `bug033_cobertura_no_promete_fuera_de_bello` y
+`bug033_cobertura_sugerencias_umbral`; nodos `consultar_cobertura`, `consultar_cobertura1`,
+`AGENTE PEDIDOS` y `AGENTE SOPORTE` en n8n (publicados y releídos del workflow);
+`docs/database/schema.md`, `docs/bot/agent-prompts.md`, `docs/bot/ai-agents.md`,
+`edge-cases.md` §27, `backlog.md`.
+
+**Verificado:** 10 municipios de fuera (Envigado, Sabaneta, Apartadó, Medellín, Itagüí, Copacabana,
+Rionegro, La Estrella, Caldas, Bogotá) → `cubierto:false` sin tarifa; variantes de Bello (`la mila`,
+`trebol`, `zamorra`, `provincia`, `pachely`, `centro`, `el centro`, `centro de bello`) → cubiertas
+con su zona correcta; `niqia` → sugiere Niquía. Falta la prueba por WhatsApp (en observación).
+
+---
+
+### 2026-08-25 — El MCP nativo de n8n destraba las escrituras (BUG-030 degradado)
+
+**Contexto:** desde el 2026-08-18, **toda** escritura por API sobre `Pizzeria Vera` rebotaba con
+`request/body/settings must NOT have additional properties`: el `PUT` de la API pública v1 reenvía
+`settings`, y ahí viajan `binaryMode`, `timeSavedMode` y `callerPolicy`, que su esquema no admite.
+Cuatro vías de arreglo probadas y descartadas con evidencia. Consecuencia: cada cambio del bot se
+hacía a mano en el editor, con el riesgo de transcripción que eso trae — un error de copiado en el
+PASO 5 llegó a cobrar el domicilio dos veces.
+
+**Decisión:** configurar el **MCP nativo de n8n** (`n8n-native`, `/mcp-server/http`) junto al
+`n8n-mcp` de la comunidad, que se queda para lecturas y docs de nodos. El nativo escribe por el
+SDK de n8n con operaciones granulares (`updateNodeParameters`, `setNodeParameter`,
+`setNodeSettings`) y no toca el endpoint que rebotaba. Trae además historial de versiones y
+`restore_workflow_version`, o sea que una edición mala se revierte.
+
+**Impacto:** `.mcp.json` (git-ignored, con el token) y `.mcp.json.example`. BUG-030 pasa de 🔴 Alta
+a 🟢 Baja: el bug sigue existiendo en la vía `n8n-mcp` (npx), pero dejó de bloquear. Las 4 ediciones
+de BUG-033 fueron los primeros cambios aplicados por API desde que existe el bug.
+
+---
 
 ### 2026-08-21 — Un carrito abandonado bloqueaba al cliente para siempre (BUG-032)
 
