@@ -8,9 +8,22 @@
 ## Modelo y memoria (todos los agentes)
 
 - **LLM:** `gpt-5.1` (nodo OpenAI Chat Model, credencial `OpenAi account`).
-- **Memoria:** Postgres Chat Memory — `sessionKey = {{ $json.telefono }}`,
-  `contextWindowLength = 10`. Cada agente tiene su propia instancia, pero comparten
-  la misma tabla de historial por teléfono.
+- **Memoria:** Postgres Chat Memory — `contextWindowLength = 10`, misma tabla de
+  historial. Los **4 agentes** usan `sessionKey = {{ $json.telefono }}`; el **ORQUESTADOR
+  usa `orq:{{ $json.telefono }}`** desde 2026-09-01 (BUG-036).
+
+  > **Por qué la sesión aparte.** Cuando el orquestador compartía sesión con los agentes,
+  > cada turno de cliente dejaba en la ventana su mensaje **por duplicado** (lo escribían
+  > las dos cadenas) más el JSON de clasificación como mensaje `ai`. Sumado a los
+  > `tool_call` y sus resultados, eso daba **~6 filas por turno real**: con `k=10`
+  > (últimas ~20 filas) la ventana útil eran **3-5 turnos**, y por eso los agentes
+  > "olvidaban" lo dicho al principio de la conversación. `registrar_contexto_handoff()`
+  > lee las **dos** sesiones, así que la escalada a humano sigue llevando contexto.
+
+  > **La memoria ya no es la fuente de verdad del pedido.** `tipo_pedido`, `barrio`,
+  > `direccion_entrega` y `metodo_pago` viven en `carritos` y se leen por la vista
+  > `estado_pedido` (ver [`../database/schema.md`](../database/schema.md)). Lo que se
+  > pierda de la ventana ya no se pierde del pedido.
 
 ## Arquitectura
 
@@ -21,6 +34,13 @@
        │
        └─ Parse Orquestador (Code) — limpia/parsea el JSON; si falla → 'soporte' (fallback seguro)
             │                          reinyecta contexto desde el nodo 'Edit Fields'
+            │                          y filtra las `senales` con lista blanca
+            │
+            └─ Guardar senales (HTTP → rpc/guardar_datos_pedido) — persiste las señales
+            │    y devuelve el estado del pedido. onError=continue: si falla, el bot sigue
+            │
+            └─ Contexto + estado (Set) — restaura el contexto del cliente tras el HTTP
+            │    y expone `estado_pedido` como una línea legible para los prompts
             │
             └─ Decision Orquestador (Switch por {{ $json.agente }}) — 4 salidas
                  ├─ 0: menu     → AGENTE MENÚ
@@ -48,6 +68,20 @@ solo emite `{ "agente": "menu|pedidos|soporte|reservas", "razon": "..." }`.
 | Confirma el pedido o responde al flujo de pedido (tipo, pago, dirección) | **pedidos** |
 | Saludos, estado de pedido, info del local, quejas, hablar con humano, actualizar datos | **soporte** |
 | Reservar mesa, disponibilidad, cancelar/consultar reserva | **reservas** |
+
+**Segunda función: capturar señales (2026-09-01, BUG-035).** El JSON pasa a ser
+`{ agente, razon, senales }`, donde `senales` lleva `tipo_pedido`, `metodo_pago`, `barrio` o `direccion_entrega`
+**solo cuando el cliente los AFIRMA**. El prompt lo delimita con ejemplos: *"quiero una pizza
+a domicilio"* sí es señal; *"¿hacen domicilios?"*, *"no, domicilio no"* y *"el domicilio me
+pareció caro"* no lo son. Existe porque el cliente suele dar el dato **al saludar**, cuando
+todavía atiende Soporte o Menú, y para cuando entra el Agente Pedidos ese mensaje ya salió de
+la ventana. Lo hace el orquestador —y no un regex en un Code node— justamente porque hay que
+distinguir una pregunta de una decisión. `Parse Orquestador` no confía en la salida: filtra
+las señales contra una **lista blanca** antes de que lleguen a la BD, igual que ya hacía con
+`agente`; la dirección además **exige un dígito**, para que un *"por ahí cerca al parque"* no entre
+como dirección válida. Un mismo mensaje puede traer varias señales (*"cra 58C #23A-04, Cabañitas,
+en efectivo"*) y se capturan todas: no hacerlo era lo que provocaba que se repreguntara la
+dirección recién dada.
 
 Reglas clave: ante duda menu↔pedidos → **menu**; nunca clasifica **pedidos** sin evidencia
 de carrito/flujo activo en el historial; respuestas de una palabra → mirar historial.
@@ -110,6 +144,19 @@ Prompt completo: [`agent-prompts.md#agente-menú`](agent-prompts.md#agente-menú
 pedido y método de pago (una pregunta por mensaje). Si es domicilio pregunta además el
 **barrio** y cobra lo que devuelva `consultar_cobertura` — nunca una cifra de memoria.
 
+**El PASO 2 lo manda `faltantes`, no el prompt (2026-09-01, BUG-035):** el agente pregunta
+**solo** los campos que la vista `estado_pedido` reporta como faltantes, y tiene prohibido
+repreguntar los que no aparezcan ahí. Antes el prompt se contradecía —abría con *"no preguntes
+lo que ya sabes"* y seguía con **`a) SIEMPRE PREGUNTA Tipo de pedido`**— y ganaba la orden más
+enfática: el cliente decía *"a domicilio"* al saludar y el agente se lo volvía a preguntar al
+cerrar.
+
+> **El gate de confirmación NO se tocó, a propósito.** Se probó a atarlo a
+> `paso_flujo = 'resumen'` en la BD y se revirtió el mismo día: agregaba un modo de fallo
+> duro —si el agente olvida marcar el paso, el pedido no se puede crear **nunca**— para
+> arreglar algo que no estaba roto. Ese gate solo necesita recordar **un** turno, que sobra
+> incluso con la ventana corta. `paso_flujo` queda en la tabla como informativo.
+
 **Fuera de Bello no hay domicilio (2026-08-25, BUG-033):** si `consultar_cobertura` devuelve
 `cubierto:false`, el agente tiene prohibido prometer el envío, inventar una tarifa o cobrar la
 tarifa base. Pregunta por las `sugerencias` (por si era una errata) y si no, ofrece recoger en
@@ -140,7 +187,8 @@ en el mismo turno del resumen e **inventa el método de pago** (`edge-cases.md#2
 
 | Tool | Tipo | Detalle |
 |---|---|---|
-| `leer_carrito1` | Supabase (get) | `carritos` WHERE `telefono` |
+| `leer_carrito1` | Supabase (get) | **vista `estado_pedido`** WHERE `telefono` (2026-09-01, antes la tabla `carritos`). Devuelve el carrito **más** el estado del flujo y **`faltantes`** — la lista de lo que aún hay que preguntar, calculada por la BD |
+| `guardar_datos_pedido` | HTTP POST | `/rpc/guardar_datos_pedido` (2026-09-01, credencial n8n). Persiste cada dato **apenas el cliente lo dice**, con semántica COALESCE por campo. Devuelve el estado guardado + `faltantes` |
 | `crear_orden_completa` | Subworkflow | `Sub — Crear_orden_completa` · inputs `filtro` (pedido_json), `cliente_id`, `telefono`. Inserta en `pedidos` + `detalle_pedidos` (credencial `service_role` desde BUG-007). Desde 2026-08-18 el `filtro` acepta **`barrio`**, que viaja crudo hasta el INSERT: el precio del envío lo pone el trigger de la BD, nunca el LLM. Detalle: [subworkflows.md](subworkflows.md#sub--crear_orden_completa) |
 | `actualizar_cliente1` | Supabase (update) | `clientes` SET `direccion_principal` WHERE `cliente_id` |
 | `consultar_cobertura` | HTTP POST | `/rpc/consultar_cobertura` body `{p_barrio}` — el parámetro que ve el LLM se llama `barrio` (`$fromAI`). Tarifa del domicilio para ese barrio, o el listado de zonas si va vacío. **`cubierto:false` = fuera de cobertura** (2026-08-25, BUG-033): la respuesta viene sin `costo_domicilio` y sin `tiempo_estimado`, más `mensaje` y `sugerencias`. Vive desde 2026-08-19 |

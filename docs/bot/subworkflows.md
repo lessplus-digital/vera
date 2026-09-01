@@ -48,6 +48,13 @@ en que el producto realmente no está en la carta.
 - **Inputs:** `cliente_id`, `telefono`, `filtro` (JSON string del pedido)
 - **Salida:** `{ ok: true, mensaje }` o `{ ok: false, error, message }`
 
+> ⚠️ **La salida NO incluye `pedido_id` ni `total` (BUG-038).** El nodo `Respuesta de salida` está
+> hardcodeado y descarta el `pedidoId` que `Code in JavaScript` ya calculó. El PASO 5 del prompt
+> del Agente Pedidos pide `#[pedido_id]`, así que el cliente recibe *"Tu número de pedido es #no
+> disponible en este momento"*. Al arreglarlo, **no** devuelvas el `total` de esa fila: en ese
+> punto todavía no incluye el domicilio (`trigger_actualizar_total` es AFTER INSERT sobre
+> `detalle_pedidos`). Ver [`../shared/bug-tracker.md`](../shared/bug-tracker.md).
+
 ```
 When Executed (cliente_id, telefono, filtro)
   └─ Validar payload (Code) — parsea filtro; valida tipo_pedido (domicilio/recoger),

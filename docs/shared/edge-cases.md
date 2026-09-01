@@ -321,3 +321,35 @@ llegan». Segunda: toda regla que empiece por «por ahora» o «mientras tanto»
 vencimiento invisible**. Si escribes una, escribe también la condición que la mata («cuando
 `barrios` tenga filas, borrar este párrafo») y déjala en el backlog — o revísala cuando cambie el
 dato del que dependía. El bug no fue una línea mal escrita: fue una línea que dejó de ser cierta.
+
+
+## 30. Aislar la memoria del orquestador lo dejó ciego (2026-09-01)
+
+**Síntoma:** tras darle al ORQUESTADOR su propio `sessionKey` (`orq:<telefono>`) para sacarlo de
+la ventana compartida, empezó a clasificar mal las respuestas cortas. El Agente Pedidos preguntaba
+*"¿en qué barrio estás?"*, el cliente escribía **"La milagrosa"**, y el orquestador lo mandaba a
+**menu** con la razón *"menciona posible producto sin contexto claro"*. El Agente Menú se apropiaba
+del flujo y llegaba a preguntar *"¿efectivo o tarjeta?"* — **tarjeta ni siquiera es un método de
+pago del negocio**. En otra prueba, "así está bien" con el carrito lleno también cayó en menu, el
+agente respondió *"un compañero te va a pedir los datos"* y **la conversación se murió ahí**: nadie
+los pidió nunca.
+
+**Causa:** al separar la sesión, el historial del orquestador pasó a contener **solo los mensajes
+del cliente y sus propios JSON de clasificación** — dejó de ver las respuestas de los agentes. Y
+media docena de sus reglas dependían justo de eso: *"mira QUÉ se preguntó justo antes"*, *"si el
+agente de pedidos hizo una pregunta → pedidos"*, *"NUNCA clasifiques pedidos sin evidencia en el
+historial de que existe un carrito"*. Se cambió **ruido por ceguera**.
+
+**Solución:** no revertir el aislamiento, sino **darle evidencia dura en vez de historial**. Un
+nodo lee `estado_pedido` ANTES de clasificar y le inyecta una línea con `n_items` y `faltantes`.
+Con *"productos en el carrito: 1 | falta por preguntar: barrio"*, "La milagrosa" deja de ser
+ambiguo. Las reglas que decían *"busca evidencia de carrito en el historial"* pasaron a decir
+*"la evidencia de carrito la tienes en el ESTADO REAL, no la busques en el historial"*.
+
+**Lección.** Cuando le quitas contexto a un componente para limpiarlo, **audita primero qué
+decisiones tomaba con ese contexto**. Aquí el ruido y la señal viajaban por el mismo canal: al
+cortar el canal se fueron los dos. La forma correcta de sacar a un componente de un historial
+compartido es reemplazar lo que leía de ahí por un dato explícito — y si ese dato es determinista
+(una fila de la BD) el componente además queda **mejor** que antes, no solo igual. Corolario: un
+agente sin guardarraíl sobre un tema **improvisa** en vez de callarse — el prompt del Agente Menú
+no menciona "pago" ni una vez, y aun así se inventó un método de pago que no existe.

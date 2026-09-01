@@ -12,13 +12,53 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-035**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-039**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-038 · 🟡 Media · 🔴 Abierto — el bot no le da al cliente su número de pedido
+
+- **Componente:** n8n → `Sub — Crear_orden_completa` (`a94A2VKvFC0ugkD3`), nodo `Respuesta de salida`
+- **Síntoma (visto en las pruebas del 2026-09-01):** al registrar el pedido, el cliente recibe
+  *"🎉 ¡Pedido registrado! Tu número de pedido es #**no disponible en este momento**"* (PED-244).
+  En otra corrida el agente simplemente **omitió** el número y escribió *"quedó agendado"*
+  (PED-243). Dos improvisaciones distintas del mismo dato ausente. El pedido **sí se crea bien**:
+  `PED-244` quedó completo y con el total correcto — lo único que falla es lo que se le dice al
+  cliente. Sin número, el cliente no puede referirse a su pedido después ("¿cómo va el PED-244?").
+- **Causa (verificada leyendo el subworkflow vivo):** el último nodo devuelve una respuesta
+  **hardcodeada** que descarta lo que el nodo anterior ya había calculado:
+
+  ```js
+  // Respuesta de salida
+  return [{ json: { ok: true, mensaje: "El pedido se creó correctamente" } }];
+  ```
+
+  Dos nodos antes, `Code in JavaScript` ya tiene `pedidoId` y `pedidoFinal` (la fila completa que
+  devolvió el INSERT) y los pasa hacia adelante — y ahí se pierden. Mientras tanto el PASO 5 del
+  prompt del Agente Pedidos pide `#[pedido_id]` y `$[total]`: **el prompt pide dos campos que la
+  tool nunca devolvió.** Es un desajuste preexistente entre prompt y subworkflow, no de los
+  cambios de BUG-035/036.
+- **Fix propuesto:** que `Respuesta de salida` devuelva también el `pedido_id`:
+
+  ```js
+  const c = $('Code in JavaScript').first().json;
+  return [{ json: { ok: true, pedido_id: c.pedidoId, mensaje: "El pedido se creó correctamente" } }];
+  ```
+
+  ⚠️ **Trampa al hacerlo — NO devuelvas `pedidoFinal.total`.** En ese punto del flujo ese total es
+  **solo la suma de ítems, sin domicilio**: el trigger `trigger_actualizar_total` corre AFTER
+  INSERT sobre `detalle_pedidos`, o sea **después** de que el INSERT de `pedidos` devolvió la fila.
+  Devolverlo haría que el PASO 5 le cante al cliente un total menor al que va a pagar. Hoy el
+  agente calcula el total él mismo (subtotal + domicilio) y en las pruebas dio exacto ($104.300,
+  igual que `pedidos.total`), así que **el total no hay que tocarlo**: solo agregar `pedido_id`.
+  Si algún día se quiere devolver el total real, hay que **releer el pedido** después del INSERT
+  de detalles, no reusar la fila del primer INSERT.
+
+---
 
 ### BUG-030 · 🟢 Baja · 🔴 Abierto — el n8n-mcp de la comunidad no puede escribir el workflow principal
 
