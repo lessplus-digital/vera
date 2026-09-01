@@ -14,6 +14,117 @@
 ```
 
 ---
+### 2026-09-01 (tarde) — Lo que salió de las pruebas en producción (BUG-037 y dos ajustes)
+
+**Contexto:** dos conversaciones reales por WhatsApp contra el flujo nuevo. El bug original murió
+—*"hola, para pedir una pizza a domicilio"* llegó al cierre sin que nadie repreguntara el tipo de
+entrega, y una de las pruebas registró el pedido `PED-242` de punta a punta— pero salieron tres
+cosas que la BD sola no podía atrapar.
+
+**1. El orquestador quedó ciego (regresión del propio cambio de la mañana).** Darle `sessionKey`
+propio lo sacó del ruido, pero también de las respuestas de los agentes, que es de donde salían
+sus reglas de desambiguación. *"La milagrosa"*, respondiendo a *"¿en qué barrio estás?"*, se fue a
+**menu** como *"posible producto sin contexto claro"*; *"así está bien"* con el carrito lleno,
+igual, y la conversación **se quedó trabada sin que nadie pidiera los datos de entrega**. Se
+arregló sin revertir: un nodo `Leer estado` consulta `estado_pedido` **antes** de clasificar, y las
+reglas pasaron a decidir con `n_items` + `faltantes` en vez de con heurísticas sobre el historial.
+Detalle en [`edge-cases.md#30`](edge-cases.md).
+
+**2. BUG-037 — el Agente Menú improvisaba fuera de su alcance.** Pedía dirección y barrio, y llegó
+a ofrecer *"¿efectivo o **tarjeta**?"* — **tarjeta no es un método de pago del negocio**. Su prompt
+no menciona "pago" ni una sola vez: sin guardarraíl, el modelo no se calla, rellena. Se le puso un
+**límite duro de alcance** (no pregunta tipo de entrega, barrio, dirección, método de pago ni con
+cuánto paga; si el cliente los da, no los procesa) y tres prohibiciones nuevas, incluida la de
+**anunciar lo que hará el siguiente agente** — ese *"ahora un compañero te va a pedir los datos"*
+era justo lo que dejaba al cliente esperando un mensaje que nunca llega, porque el flujo avanza
+cuando el cliente escribe, no solo.
+
+**3. Un mensaje con varios datos de golpe.** *"cra 58C N23A 04, cabañítas, en efectivo"* capturó
+barrio y método de pago, pero **volvió a pedir la dirección**: `direccion_entrega` no estaba en el
+esquema de señales. Se agregó, con una lista blanca que **exige un dígito** (una dirección real
+lleva número) para que una vaguedad como *"por ahí cerca al parque"* no entre como dirección
+válida — verificado con 9 casos, incluido que un barrio suelto no se cuele. Y el Agente Pedidos
+lleva ahora una regla de respaldo: **lee el mensaje del turno antes de preguntar**, porque
+`faltantes` describe lo que había guardado, no lo que el cliente acaba de escribir.
+
+**Impacto:** en n8n, nodos nuevos `Leer estado` y `Contexto orquestador`; prompts de `ORQUESTADOR`,
+`AGENTE MENÚ` y `AGENTE PEDIDOS`; `Parse Orquestador` y `Guardar senales`.
+
+**Resultado de la verificación final (3ª prueba, tel. …8122, pedido `PED-244`).** El flujo completo
+corrió sin una sola repregunta:
+
+| Turno del cliente | Qué hizo el bot |
+|---|---|
+| *"hola. para pedir un domicilio por favor"* | capturó `tipo_pedido: domicilio` y pasó a armar el carrito |
+| *"dame 2 patatas mexicanas…"* | armó el carrito y cerró con *"¿Deseas agregar algo más o procedemos?"* — **sin** pedir datos de entrega (BUG-037 corregido) |
+| *"asi está bien"* | → **pedidos** y preguntó el barrio. **No** repreguntó si era domicilio (el caso que trababa la conversación) |
+| *"carrera 58CN23A 04 cabañas"* | capturó la dirección, cotizó Cabañas a $6.000 y saltó al pago. **No** volvió a pedir la dirección |
+| *"efectivo"* | resumen correcto: $98.300 + $6.000 = **$104.300** |
+| *"si asi está bien"* | creó `PED-244` — total en BD $104.300, `costo_domicilio` 6.000, barrio Cabañas. Exacto |
+
+Los tres puntos de arriba quedan **verificados en producción**. El único defecto que sobrevive es
+que el mensaje de cierre dice *"Tu número de pedido es #**no disponible en este momento**"*:
+`Sub — Crear_orden_completa` nunca devolvió `pedido_id`, un desajuste **preexistente** entre ese
+subworkflow y el PASO 5 del prompt, que ahora quedó a la vista. Registrado como **BUG-038** con el
+fix y su trampa (no devolver el `total` de esa fila: en ese punto todavía no incluye el domicilio).
+
+Los dos prompts largos se verificaron con un diff línea a línea contra la versión
+anterior para descartar pérdidas al reescribirlos completos (la única diferencia incidental fue
+una tilde que faltaba en `conocelas`).
+
+---
+### 2026-09-01 — El estado del pedido sale de la memoria del chat y pasa a la BD (BUG-035/036)
+
+**Contexto:** el bot repreguntaba datos que el cliente ya había dado. Caso reportado: *"hola,
+para pedir una pizza a domicilio"* → se arma el carrito → *"¿es para domicilio o lo recoges?"*.
+
+**Diagnóstico — tres causas, no una.** (1) El prompt del Agente Pedidos se **contradecía**:
+abría con *"no preguntes lo que ya sabes"* y diez líneas después ordenaba **`a) SIEMPRE
+PREGUNTA Tipo de pedido`**; ganaba la orden más enfática. (2) El dato **ya no estaba en la
+ventana**: las 5 memorias compartían `sessionKey = telefono`, así que por turno caían el
+mensaje del cliente **duplicado** (lo escribían la cadena del orquestador y la del agente), el
+JSON de clasificación como mensaje `ai`, y cada `tool_call` con su resultado — **~6 filas por
+turno medidas sobre una sesión real**, o sea 3-5 turnos útiles con `k=10`. (3) **No existía
+estado estructurado**: `tipo_pedido`, `barrio`, `direccion_entrega` y `metodo_pago` vivían solo
+como texto en el historial, así que al caerse de la ventana se perdían. Los ítems sobrevivían
+porque estaban en `carritos` — la jugada que ya funcionaba nunca se había aplicado al resto.
+
+**Decisión — mover el estado a la BD, no alargar la ventana.** `carritos` gana las columnas
+del flujo; la vista `estado_pedido` las expone junto a **`faltantes`**, la lista de lo que aún
+falta preguntar, **calculada por la BD**; y `guardar_datos_pedido()` las escribe con semántica
+COALESCE. El PASO 2 del prompt pasa a *"pregunta solo lo que venga en `faltantes`"*. Un trigger
+sostiene las invariantes que el prompt no puede garantizar:
+pasar a `recoger` limpia barrio/dirección/envío, y cambiar de barrio sin recotizar invalida la
+tarifa anterior para que no se cobre la del barrio viejo.
+
+**El saludo también cuenta.** Como el dato suele darse cuando todavía atiende Soporte o Menú,
+el ORQUESTADOR pasa a emitir `senales` (`tipo_pedido`/`metodo_pago`/`barrio`) **solo cuando el
+cliente los afirma**, con ejemplos explícitos de qué NO es señal (*"¿hacen domicilios?"*,
+*"no, domicilio no"*). Se descartó hacerlo con regex en un Code node: un regex no distingue una
+pregunta de una decisión y habría creado un bug peor —asumir el tipo de pedido—; el orquestador
+ya lee cada mensaje y entiende la negación. `Parse Orquestador` filtra esas señales contra una
+lista blanca antes de que toquen la BD.
+
+**Descartado en el camino:** atar el gate PASO 3 → PASO 4 a `paso_flujo = 'resumen'` en la BD.
+Sonaba coherente con el resto del cambio, pero metía un fallo duro —si el agente olvida marcar el
+paso, el pedido no se puede crear **nunca**— para blindar algo que no estaba roto: ese gate solo
+necesita recordar **un** turno, que sobra incluso con la ventana corta. Se revirtió antes de
+publicar; `paso_flujo` se queda como campo informativo.
+
+**De paso:** la memoria del orquestador pasa a `sessionKey = orq:<telefono>`, lo que duplica la
+ventana útil de los agentes; `registrar_contexto_handoff()` se actualizó para leer las dos
+sesiones, porque el contexto de escalada dependía justamente de que el orquestador escribiera
+el turno del cliente antes de `solicitar_handoff`.
+
+**Impacto:** migraciones `carritos_estado_flujo_pedido_columnas`,
+`carritos_trigger_normalizar_estado`, `estado_pedido_vista_y_rpc`,
+`handoff_contexto_lee_sesion_orquestador`, `guardar_datos_pedido_no_crea_fila_vacia`; en n8n
+(**draft, pendiente de publicar**) los nodos `leer_carrito1`, `AGENTE PEDIDOS`, `ORQUESTADOR`,
+`Parse Orquestador`, `Postgres Chat Memory` y los nuevos `guardar_datos_pedido`,
+`Guardar senales` y `Contexto + estado`; `docs/database/schema.md`, `docs/bot/ai-agents.md`,
+`docs/shared/bug-tracker.md`.
+
+---
 ### 2026-08-25 — El bot prometía domicilio a otros municipios (BUG-033)
 
 **Contexto:** «¿Tienes servicio en Envigado?» → *«Sí Juan, sí te llegamos a Envigado 🙌 El domicilio

@@ -52,6 +52,14 @@
 
 ---
 
+> ⚠️ **DESINCRONIZADO (2026-09-01).** Los prompts del **ORQUESTADOR**, del **AGENTE PEDIDOS** y
+> del **AGENTE MENÚ** se reescribieron en n8n por BUG-035/036/037 y están **publicados y en
+> producción** — este archivo conserva la versión **anterior**. Los cambios de fondo:
+> el Agente Pedidos pregunta por `faltantes` en vez de *"SIEMPRE PREGUNTA"*; el Orquestador lee
+> `estado_pedido` antes de clasificar y emite `senales`; el Agente Menú tiene un límite duro de
+> alcance (no pide datos de entrega ni pago). Para esos tres agentes **lee el nodo real**, no este
+> archivo; se re-sincroniza verbatim en una pasada dedicada. El resto de secciones sigue vigente.
+
 ## ORQUESTADOR
 
 ```text
