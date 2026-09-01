@@ -7,3 +7,7 @@ dist/
 
 # MCP local con API key de n8n — usar .mcp.json.example como plantilla
 .mcp.json
+# Estado local de la CLI de Supabase (link del proyecto, caché). El código de
+# las Edge Functions —supabase/functions/— SÍ va a git.
+supabase/.temp/
+supabase/.branches/

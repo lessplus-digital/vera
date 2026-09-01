@@ -34,7 +34,7 @@ export const ROL_LABEL = {
 const TABS_POR_ROL = {
   admin: [
     'dashboard', 'soporte', 'estadisticas', 'historial',
-    'clientes', 'reservas', 'menu', 'resenas', 'configuracion',
+    'clientes', 'reservas', 'menu', 'resenas', 'usuarios', 'configuracion',
   ],
   mesero: [
     'dashboard', 'historial', 'clientes', 'reservas', 'menu',
@@ -53,7 +53,10 @@ const CAPACIDADES_POR_ROL = {
     crearPedido:         true,
     cambiarEstadoPedido: true,  // UPDATE directo sobre pedidos
     marcarEntregado:     true,  // RPC marcar_entregado
-    gestionarUsuarios:   true,  // CRUD sobre perfiles
+    // Tab Usuarios: `perfiles` (RLS `es_admin()` + trigger_proteger_perfil),
+    // el bucket `avatares` (políticas con `OR es_admin()`) y las contraseñas
+    // vía la Edge Function `admin-password`, que revalida el rol por su cuenta.
+    gestionarUsuarios:   true,
     gestionarMenu:       true,
   },
   mesero: {

@@ -1,0 +1,495 @@
+/* ═══════════════════════════════════════════════════════════
+   USUARIOS — tab Usuarios (UsersPage, UserModal, PasswordModal)
+
+   Vivía en settings.less mientras la pantalla era una sub-vista de
+   Configuración. Salió con ella.
+
+   Superficies planas (DS §7: el glass vive solo en el sidebar y la topbar).
+   Un único primary por pantalla (DS §3): la LISTA no tiene ninguno —sus
+   acciones son toggles y botones de icono— y cada modal se queda con el suyo
+   ("Guardar", "Cambiar contraseña"). El prefijo `us-` lo comparten la página
+   y sus modales; `pw-` es solo del de contraseña, que también usa "Mi perfil".
+═══════════════════════════════════════════════════════════ */
+
+.us-page {
+  padding: 20px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: fadeIn 0.2s ease;
+
+  @media (max-width: 560px) { padding: 16px 14px 32px; }
+}
+
+/* ── Toolbar ── */
+
+.us-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.us-intro {
+  min-width: 0;
+  max-width: 560px;
+}
+
+.us-page-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.us-page-sub {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+.us-count {
+  font-size: var(--fs-body-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.us-error {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+}
+
+/* Aviso de por qué no hay botón "crear usuario". Informativo, no un error:
+   azul, no ámbar ni rojo. */
+.us-alta {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--blue-border);
+  background: var(--blue-dim);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body-sm);
+  color: var(--text-secondary);
+  line-height: 1.55;
+
+  svg { flex-shrink: 0; margin-top: 2px; color: var(--blue); }
+  strong { color: var(--text-primary); }
+}
+
+/* ── Lista ── */
+
+.us-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.us-row {
+  display: grid;
+  grid-template-columns: auto 1.4fr auto 1.3fr auto auto;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  transition: background 0.15s ease;
+
+  &:hover { background: var(--bg-card-hover); }
+
+  /* Sin acceso: se atenúa la identidad, no los controles — hay que poder
+     reactivarlo desde la misma fila. */
+  &.off {
+    .avatar, .us-id { opacity: 0.5; }
+  }
+
+  @media (max-width: 1100px) {
+    grid-template-columns: auto 1fr auto;
+
+    .us-acceso { display: none; }
+    // Las acciones se anclan a la esquina superior derecha en vez de dejarse
+    // colocar solas: `.us-rol` ocupa una fila entera y las empujaría debajo del
+    // switch, lejos de la persona a la que pertenecen.
+    .us-acciones { grid-column: 3; grid-row: 1; }
+    .us-rol { grid-column: 1 / -1; }
+  }
+
+  @media (max-width: 620px) {
+    grid-template-columns: auto 1fr;
+
+    .us-estado   { grid-column: 1 / -1; justify-self: start; }
+    .us-acciones { grid-column: 1 / -1; justify-self: start; }
+  }
+}
+
+.us-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.us-nombre {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-tu {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+}
+
+.us-email, .us-tel {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.us-acceso {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: right;
+}
+
+.us-acceso-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.us-acceso-valor {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+
+.us-rol {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.us-rol-select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-sm);
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { border-color: var(--amber-border); }
+  &:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  option { background: var(--bg-card); color: var(--text-primary); }
+}
+
+.us-rol-hint {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.us-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.us-estado-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  min-width: 68px;
+
+  &.on  { color: var(--green); }
+  &.off { color: var(--text-muted); }
+}
+
+/* Editar perfil y cambiar contraseña. Botones de icono y no `.btn`: son dos
+   por fila y con cinco filas el texto convertiría la lista en un muro de
+   llamadas a la acción. El `title` y el `aria-label` llevan el significado. */
+
+.us-acciones {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.us-accion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--amber-border);
+    background: var(--bg-inset);
+  }
+
+  &:disabled { opacity: 0.35; cursor: not-allowed; }
+}
+
+.us-historial {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+
+  &:hover { color: var(--text-primary); border-color: var(--amber-border); }
+}
+
+/* ── Modal: ficha del usuario (UserModal) ── */
+
+.us-modal {
+  width: 460px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.us-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+
+  .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+  .sub {
+    font-size: var(--fs-body-sm);
+    color: var(--text-muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.us-modal-body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 68vh;
+  overflow-y: auto;
+}
+
+.us-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.us-modal-error {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.us-foto {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.us-foto-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.us-foto-botones {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.us-foto-hint {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* ── Modal: historial de entregas del domiciliario ──
+   El contenido lo pinta DeliveryHistory (deliveries.less) en su variante
+   `.compacto`; aquí solo el contenedor. */
+
+.us-hist-modal {
+  width: 620px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .us-hist-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+
+    .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+    .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 2px; }
+  }
+
+  .us-hist-id {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .us-hist-body {
+    padding: 16px 20px;
+    max-height: 68vh;
+    overflow-y: auto;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CONTRASEÑA (PasswordModal) — compartido por la tab Usuarios
+   y por "Mi perfil" del menú superior.
+═══════════════════════════════════════════════════════════ */
+
+.pw-modal {
+  width: 420px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+
+  .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
+  .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 2px; line-height: 1.45; }
+}
+
+.pw-body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pw-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* El ojo va superpuesto DENTRO del input, que conserva su borde y su foco del
+   patrón `.field`. El `padding-right` reserva el hueco: sin él, una contraseña
+   larga pasa por debajo del botón. */
+.pw-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  // `.field` apila en columna y sus inputs se estiran solos; dentro de este
+  // contenedor en fila hay que pedirlo explícitamente.
+  input { flex: 1; min-width: 0; padding-right: 38px; }
+}
+
+.pw-ojo {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+
+  &:hover { color: var(--text-primary); background: var(--bg-inset); }
+}
+
+/* El helper del `.field` en tono de error: mismo sitio, mismo tamaño — solo
+   cambia el color, para que el mensaje no empuje el formulario al aparecer. */
+.field-help.pw-mal { color: var(--red); }
+
+.pw-error {
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: var(--fs-body-sm);
+  font-weight: 500;
+  line-height: 1.45;
+}

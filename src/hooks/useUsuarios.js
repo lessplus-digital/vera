@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { subirAvatar, borrarAvatarAnterior } from '../lib/avatares'
+import { cambiarPasswordDeUsuario } from '../lib/passwords'
 
 // Usuarios del restaurante, para la pantalla de administración.
 //
@@ -7,9 +9,14 @@ import { supabase } from '../lib/supabase'
 // porque el email vive en `auth.users`, que PostgREST no expone. El RPC es
 // SECURITY DEFINER y autoriza por su cuenta: a un no-admin le responde 42501.
 //
-// Las mutaciones sí van directo a `perfiles` — ahí la RLS ya alcanza para
-// filas, y `trigger_proteger_perfil` cubre lo que la RLS no puede (que solo un
-// admin cambie `rol`/`activo`, y que no quede el sistema sin admin).
+// Las mutaciones de perfil van directo a `perfiles` — ahí la RLS ya alcanza
+// (`perfiles_update` acepta `es_admin()` sobre cualquier fila), y
+// `trigger_proteger_perfil` cubre lo que la RLS no puede (que solo un admin
+// cambie `rol`/`activo`, y que no quede el sistema sin admin).
+//
+// La contraseña es la excepción: no es una columna de `perfiles` sino un dato
+// de `auth.users`, y ninguna política llega ahí. Ese camino sale del navegador
+// hacia la Edge Function `admin-password` (ver `src/lib/passwords.js`).
 export function useUsuarios() {
   const [usuarios, setUsuarios] = useState([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +57,45 @@ export function useUsuarios() {
     })
   }
 
+  /**
+   * Sube la foto de un usuario y la deja apuntada en su perfil.
+   *
+   * Mismo orden que en "Mi perfil": primero se sube, luego se guarda la URL y
+   * SOLO entonces se borra la anterior. Al revés, un guardado fallido dejaría
+   * al usuario sin ninguna foto.
+   */
+  async function actualizarAvatar(usuarioId, file) {
+    const { url, error: upError } = await subirAvatar(usuarioId, file)
+    if (upError) return { error: upError }
+
+    const anterior = usuarios.find(u => u.usuario_id === usuarioId)?.avatar_url
+    const { error: saveError } = await aplicar(usuarioId, { avatar_url: url })
+    if (saveError) return { error: saveError }
+
+    if (anterior) await borrarAvatarAnterior(anterior)
+    return { error: null }
+  }
+
+  /** Quita la foto: primero se desapunta del perfil, luego se borra el archivo. */
+  async function quitarAvatar(usuarioId) {
+    const anterior = usuarios.find(u => u.usuario_id === usuarioId)?.avatar_url
+    if (!anterior) return { error: null }
+
+    const { error: saveError } = await aplicar(usuarioId, { avatar_url: null })
+    if (saveError) return { error: saveError }
+
+    await borrarAvatarAnterior(anterior)
+    return { error: null }
+  }
+
+  /**
+   * Contraseña de otro usuario. No refresca la lista a propósito: no cambia
+   * ninguna columna que esta pantalla muestre.
+   */
+  async function cambiarPassword(usuarioId, password) {
+    return cambiarPasswordDeUsuario(usuarioId, password)
+  }
+
   async function aplicar(usuarioId, patch) {
     const { error: updateError } = await supabase
       .from('perfiles')
@@ -64,7 +110,18 @@ export function useUsuarios() {
     return { error: null }
   }
 
-  return { usuarios, loading, error, cambiarRol, setActivo, actualizarDatos, refetch: fetchUsuarios }
+  return {
+    usuarios,
+    loading,
+    error,
+    cambiarRol,
+    setActivo,
+    actualizarDatos,
+    actualizarAvatar,
+    quitarAvatar,
+    cambiarPassword,
+    refetch: fetchUsuarios,
+  }
 }
 
 // Los triggers de `perfiles` son la frontera real; aquí solo se traduce lo que

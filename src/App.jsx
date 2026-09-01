@@ -19,6 +19,7 @@ import MenuPage from './pages/menu/MenuPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import HistoryPage from './pages/history/HistoryPage'
 import ReviewsPage from './pages/reviews/ReviewsPage'
+import UsersPage from './pages/users/UsersPage'
 
 export default function App() {
   // El tema vive aquí para que también aplique en la pantalla de login.
@@ -132,6 +133,7 @@ function DashboardShell({ theme, onToggleTheme, rol }) {
         {ver('reservas')      && <ReservationsPage />}
         {ver('menu')          && <MenuPage />}
         {ver('resenas')       && <ReviewsPage />}
+        {ver('usuarios')      && <UsersPage />}
         {ver('configuracion') && <SettingsPage />}
       </div>
     </div>

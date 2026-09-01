@@ -39,7 +39,7 @@ client** (see the WhatsApp token note under Gotchas).
 user's profile** load, `LoginPage` if there's no session, a "sin acceso" screen if the user
 has no usable role, otherwise `DashboardShell`. `DashboardShell` switches tabs via
 `activeTab` state (not URLs): `dashboard`, `soporte`, `estadisticas`, `historial`,
-`clientes`, `reservas`, `menu`, `resenas`, `configuracion` — **filtered by role**.
+`clientes`, `reservas`, `menu`, `resenas`, `usuarios`, `configuracion` — **filtered by role**.
 
 Data hooks that query Supabase live inside `DashboardShell`, **not** `App` — they require
 an authenticated session (RLS blocks everything otherwise), so they must not run on the
@@ -71,6 +71,15 @@ Full matrix and the verification runs in `docs/database/schema.md` §Modelo de p
 **Creating users requires `service_role`**, which cannot ship in the bundle (same reason as
 the WhatsApp token). Accounts are created in the Supabase dashboard and land as
 `domiciliario` via `trigger_crear_perfil`; the app only assigns roles.
+
+**Edge Functions (`supabase/functions/`) are the escape hatch for that rule** — the only
+server-side code in this repo, and they are **not** part of `npm run build`. Deploy them
+with `npx supabase functions deploy <name>` (see README §Edge Functions). There is one:
+`admin-password`, which lets an admin set another user's password. It exists precisely
+because that needs `service_role`; the key stays a function secret. It authorizes itself
+twice — `verify_jwt` at the gateway, then `mi_rol()` called **with the caller's token**
+(never read from the JWT). Any new function must do the same: the gateway only proves
+*someone* is logged in, not *who*.
 
 > ✅ **Update (2026-07-22, verified via Supabase MCP):** RLS is now enabled on **every** table
 > (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),

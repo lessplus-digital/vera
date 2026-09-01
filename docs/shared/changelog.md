@@ -14,6 +14,58 @@
 ```
 
 ---
+### 2026-09-01 — Usuarios sale de Configuración a tab propia, con contraseñas y foto
+
+**Contexto:** gestionar usuarios era la sub-vista 8d de **Configuración**, junto a la información
+del negocio, las zonas, las FAQ y las respuestas rápidas. Las otras cuatro editan **texto que el
+bot recita**; esta reparte accesos. Escondida detrás de un sub-selector, la operación más delicada
+del panel era la más difícil de encontrar. Además le faltaban dos cosas que el restaurante pedía a
+mano por Supabase: **cambiar la contraseña** de alguien y **ponerle foto**.
+
+**Decisión — tab propia (`usuarios`, solo admin), y el reparto de acciones dentro:** la FILA lleva
+lo que se cambia de un golpe y en frío (rol, acceso); los MODALES lo que hay que escribir y
+confirmar (identidad, contraseña). Así cada modal conserva su único botón primary (DS §3) y la
+lista no tiene ninguno.
+
+**La foto no necesitó nada nuevo en la BD.** Verificado en `pg_policies`: las tres políticas de
+`storage.objects` sobre el bucket `avatares` ya llevaban `... OR es_admin()` desde que se creó
+(2026-08-12), y `perfiles_update` ya aceptaba `es_admin()` sobre cualquier fila. El comentario de
+`src/lib/avatares.js` decía que la política solo comparaba contra `auth.uid()` — **drift**,
+corregido junto con `docs/database/schema.md` §Storage.
+
+**La contraseña sí, y es la parte interesante.** Ponerle la contraseña a otra cuenta exige la Admin
+API con `service_role`, que no puede viajar en el bundle (mismo motivo que el token de WhatsApp y
+que el alta de usuarios). El camino barato —`resetPasswordForEmail`— **se descartó con datos**: de
+los 5 usuarios, **3 tienen un email interno inventado** (un mesero y los dos domiciliarios), sin
+bandeja donde recibir el enlace. Se creó la Edge Function **`admin-password`** con dos barreras:
+`verify_jwt` en el gateway, y dentro la función llama a `mi_rol()` **con el token de quien llama**
+— no lee el rol del JWT, donde no viaja y donde el cliente no es de fiar. El `service_role` se usa
+solo para el `updateUserById` final.
+
+**Alcance por rol:** la tab es solo del admin, así que "Mi perfil" (menú superior, el único punto
+que todos comparten) gana **"Cambiar mi contraseña"** para el mesero y el domiciliario. Es el mismo
+`PasswordModal`, con `auth.updateUser` en vez de la Edge Function — ese camino sí lo permite la
+clave publicable. Abre su propio modal y no es un campo del formulario: se aplica al instante, sin
+pasar por "Guardar", y con un campo ahí escribirla y salir con "Cancelar" haría creer que quedó
+cambiada.
+
+**Sigue sin haber botón "Crear usuario"** — el alta sigue exigiendo la admin API y la pantalla lo
+explica. Se movió, no se resolvió.
+
+**Impacto:** nuevos `supabase/config.toml` + `supabase/functions/admin-password/index.ts`,
+`src/pages/users/` (`UsersPage` + `UserModal`), `src/components/PasswordModal.jsx`,
+`src/lib/passwords.js`, `src/styles/users.less`; eliminado `src/pages/settings/UsersSection.jsx`
+y su bloque `.us-*` de `settings.less`; tocados `useUsuarios`, `ProfileModal`, `Icon` (`shield`,
+`key`, `eye`, `eye-off`), `Sidebar`, `Header`, `App`, `permisos.js`, `formatters.js`
+(`nombreDeUsuario`), `avatares.js`, `SettingsPage`, `.gitignore`, `README.md`,
+`docs/dashboard/components.md` y `docs/database/schema.md`.
+
+**Despliegue:** la función **no** se despliega con `npm run build`. Requiere
+`npx supabase login` → `npx supabase link --project-ref lwigogymjoyyzwiyewgi` →
+`npx supabase functions deploy admin-password`. Hasta entonces, el botón de contraseña de la tab
+Usuarios responde con error; el resto de la pantalla funciona.
+
+---
 ### 2026-08-25 — El bot prometía domicilio a otros municipios (BUG-033)
 
 **Contexto:** «¿Tienes servicio en Envigado?» → *«Sí Juan, sí te llegamos a Envigado 🙌 El domicilio

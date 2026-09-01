@@ -959,6 +959,41 @@
   color: var(--text-primary);
 }
 
+/* Fila de contraseña: mismo peso visual que `.perfil-rol` —son los dos datos
+   que no se editan escribiendo en el formulario— pero con acción en vez de
+   valor, porque esta sí se puede cambiar desde aquí. */
+.perfil-clave {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.perfil-clave-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.perfil-clave-label {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.perfil-clave-hint {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .perfil-rol-hint {
   grid-column: 2;
   font-size: var(--fs-caption);
@@ -974,235 +1009,6 @@
   font-size: var(--fs-body-sm);
   font-weight: 500;
   line-height: 1.45;
-}
-
-/* ═══════════════════════════════════════════════════════════
-   Usuarios (Configuración → Usuarios)
-═══════════════════════════════════════════════════════════ */
-
-.us-count {
-  font-size: var(--fs-body-sm);
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-/* Aviso de por qué no hay botón "crear usuario". Informativo, no un error:
-   azul, no ámbar ni rojo. */
-.us-alta {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
-  border: 1px solid var(--blue-border);
-  background: var(--blue-dim);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-body-sm);
-  color: var(--text-secondary);
-  line-height: 1.55;
-
-  svg { flex-shrink: 0; margin-top: 2px; color: var(--blue); }
-  strong { color: var(--text-primary); }
-}
-
-.us-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.us-row {
-  display: grid;
-  grid-template-columns: auto 1.4fr auto 1.3fr auto;
-  align-items: center;
-  gap: 14px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  transition: background 0.15s ease;
-
-  &:hover { background: var(--bg-card-hover); }
-
-  /* Sin acceso: se atenúa la identidad, no los controles — hay que poder
-     reactivarlo desde la misma fila. */
-  &.off {
-    .avatar, .us-id { opacity: 0.5; }
-  }
-
-  @media (max-width: 1100px) {
-    grid-template-columns: auto 1fr auto;
-
-    .us-acceso { display: none; }
-    .us-rol { grid-column: 1 / -1; }
-  }
-
-  @media (max-width: 620px) {
-    grid-template-columns: auto 1fr;
-
-    .us-estado { grid-column: 1 / -1; justify-self: start; }
-  }
-}
-
-.us-id {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.us-nombre {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-body);
-  font-weight: 600;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.us-tu {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--amber);
-  background: var(--amber-dim);
-  border: 1px solid var(--amber-border);
-  border-radius: var(--radius-pill);
-  padding: 1px 6px;
-}
-
-.us-email, .us-tel {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.us-acceso {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  text-align: right;
-}
-
-.us-acceso-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.us-acceso-valor {
-  font-size: var(--fs-caption);
-  color: var(--text-secondary);
-}
-
-.us-rol {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.us-rol-select {
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--fs-body-sm);
-  font-weight: 600;
-  padding: 6px 10px;
-  cursor: pointer;
-
-  &:hover:not(:disabled) { border-color: var(--amber-border); }
-  &:disabled { opacity: 0.55; cursor: not-allowed; }
-
-  option { background: var(--bg-card); color: var(--text-primary); }
-}
-
-.us-rol-hint {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-  line-height: 1.4;
-}
-
-.us-estado {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.us-estado-label {
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  min-width: 68px;
-
-  &.on  { color: var(--green); }
-  &.off { color: var(--text-muted); }
-}
-
-/* Historial de entregas del domiciliario, abierto desde la fila de Usuarios.
-   El contenido lo pinta DeliveryHistory (deliveries.less) en su variante
-   `.compacto`; aquí solo el contenedor del modal. */
-
-.us-historial {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 4px;
-  padding: 3px 8px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-
-  &:hover { color: var(--text-primary); border-color: var(--amber-border); }
-}
-
-.us-hist-modal {
-  width: 620px;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-
-  .us-hist-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-
-    .title { font-size: var(--fs-title); font-weight: 600; color: var(--text-primary); }
-    .sub   { font-size: var(--fs-body-sm); color: var(--text-muted); margin-top: 2px; }
-  }
-
-  .us-hist-id {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-  }
-
-  .us-hist-body {
-    padding: 16px 20px;
-    max-height: 68vh;
-    overflow-y: auto;
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════

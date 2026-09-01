@@ -114,6 +114,7 @@ const SECTION_LABELS = {
   reservas:     'Reservas',
   menu:         'Disponibilidad del menú',
   resenas:      'Reseñas y satisfacción',
+  usuarios:     'Usuarios y accesos',
   configuracion: 'Configuración del negocio',
 }
 

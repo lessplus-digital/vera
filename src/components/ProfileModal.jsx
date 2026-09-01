@@ -4,15 +4,18 @@ import Avatar from './Avatar'
 import { useAuth } from '../hooks/useAuth'
 import { ROL_LABEL } from '../utils/permisos'
 import { subirAvatar, borrarAvatarAnterior, validarAvatar } from '../lib/avatares'
+import { cambiarMiPassword } from '../lib/passwords'
+import PasswordModal from './PasswordModal'
 
 const LIMITES = { nombre: 80, telefono: 20 }
 
 /*
  * "Mi perfil" — lo abre cualquier rol desde el menú de la barra superior.
  *
- * Va en el menú de usuario y no en una tab de Configuración porque el
- * domiciliario NO tiene esa tab (solo ve sus entregas) y también necesita poner
- * su nombre y su foto. El menú superior es el único sitio que todos comparten.
+ * Va en el menú de usuario y no en una tab porque el mesero y el domiciliario
+ * NO tienen la tab Usuarios (esa es solo del admin) y también necesitan poner
+ * su nombre, su foto y su contraseña. El menú superior es el único sitio que
+ * todos comparten.
  *
  * Aquí no se edita el rol: eso es de la pantalla de Usuarios, y la BD lo
  * rechazaría igual (`trigger_proteger_perfil`).
@@ -26,6 +29,7 @@ export default function ProfileModal({ onClose, showToast }) {
   const [archivo,  setArchivo]  = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [error,    setError]    = useState(null)
+  const [cambiandoPassword, setCambiandoPassword] = useState(false)
 
   const fileRef = useRef(null)
 
@@ -92,6 +96,7 @@ export default function ProfileModal({ onClose, showToast }) {
   const fotoActual = preview || perfil?.avatar_url
 
   return (
+    <>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel perfil-modal" onClick={e => e.stopPropagation()}>
 
@@ -161,6 +166,30 @@ export default function ProfileModal({ onClose, showToast }) {
             <span className="perfil-rol-hint">Solo un administrador puede cambiarlo.</span>
           </div>
 
+          {/*
+            La contraseña no es un campo más del formulario: se aplica sola, al
+            instante, sin pasar por "Guardar". Por eso abre su propio modal —
+            con un campo aquí, escribirla y cerrar con "Cancelar" haría creer
+            que quedó cambiada. Y el botón es secondary: el primary de esta
+            pantalla ya es "Guardar" (DS §3).
+          */}
+          <div className="perfil-clave">
+            <div className="perfil-clave-texto">
+              <span className="perfil-clave-label">Contraseña</span>
+              <span className="perfil-clave-hint">
+                Cámbiala si crees que alguien más la conoce.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn secondary sm"
+              onClick={() => setCambiandoPassword(true)}
+              disabled={saving}
+            >
+              <Icon name="key" size={14} /> Cambiar
+            </button>
+          </div>
+
           {nombreInvalido && (
             <div className="perfil-error">El nombre debe tener al menos 2 caracteres.</div>
           )}
@@ -177,5 +206,20 @@ export default function ProfileModal({ onClose, showToast }) {
 
       </div>
     </div>
+
+    {/*
+      Fuera del overlay de "Mi perfil", no dentro: el overlay cierra al hacer
+      clic y un modal anidado heredaría ese click, cerrando los dos de golpe.
+    */}
+    {cambiandoPassword && (
+      <PasswordModal
+        titulo="Cambiar mi contraseña"
+        descripcion="Tu sesión sigue abierta; solo tendrás que usar la nueva la próxima vez que entres."
+        onSubmit={cambiarMiPassword}
+        onClose={() => setCambiandoPassword(false)}
+        showToast={showToast}
+      />
+    )}
+    </>
   )
 }
