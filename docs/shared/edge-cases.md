@@ -353,3 +353,31 @@ compartido es reemplazar lo que leía de ahí por un dato explícito — y si es
 (una fila de la BD) el componente además queda **mejor** que antes, no solo igual. Corolario: un
 agente sin guardarraíl sobre un tema **improvisa** en vez de callarse — el prompt del Agente Menú
 no menciona "pago" ni una vez, y aun así se inventó un método de pago que no existe.
+
+---
+
+## 31. Una escritura bloqueada por RLS no falla: afecta cero filas y devuelve éxito (2026-09-09)
+
+**Qué pasó.** Al montar la batería de roles (`qa/sql/08-roles-rls.sql`), el test "un mesero
+intenta borrar un pedido" salió en **verde por la razón equivocada**. La comprobación era
+*"¿lanzó excepción?"*, y como no lanzó ninguna, el test lo interpretó como que la operación había
+pasado. El mismo patrón se repitió con los dos UPDATE del domiciliario.
+
+**Por qué.** RLS **filtra filas**, no deniega operaciones. Un `DELETE` cuya política no se cumple
+no es un error: es un `DELETE` que no encuentra ninguna fila que borrar. Devuelve éxito y
+`ROW_COUNT = 0`. Los triggers de columna se comportan al revés — `proteger_perfil` y
+`validar_asignacion_domiciliario` sí lanzan (42501 / 23514) — así que en la misma batería conviven
+dos semánticas opuestas y es fácil escribir la aserción con la forma equivocada.
+
+Es la cara complementaria de la §11: allí RLS bloqueó una escritura de n8n y **el flujo siguió
+como si nada**; aquí bloquea una escritura y **el test verde dice que la política no existe**.
+
+**Lección.** Una prueba de seguridad sobre RLS no puede aserverar sobre excepciones: tiene que
+**contar filas antes y después**. Si el número no cambia, la política funciona; si cambia, hay
+fuga. La regla general: *para RLS se cuentan filas, para triggers se atrapan códigos de error.*
+Y cuando pruebes ambos en la misma batería, di explícitamente cuál esperas en cada caso.
+
+**Trampa de montaje que sale de lo mismo.** El rol `authenticated` no puede escribir en una tabla
+temporal creada por el superusuario (`permission denied for table …`). Haz los intentos mientras
+suplantas, `reset role`, y **lee el estado después** — no intentes acumular resultados dentro de
+la suplantación.

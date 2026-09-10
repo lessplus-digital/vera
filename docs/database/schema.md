@@ -69,6 +69,13 @@
 | `fecha_entrega` | timestamptz | nullable · la fija un trigger al pasar a `entregado` |
 | `feedback_solicitado` | boolean | default `false` (lo usa el job de feedback) |
 
+**Índice único anti doble-confirmación:** `unique_pedido_cliente_minuto` sobre
+`(telefono, date_trunc('minute', fecha_pedido))` — **un pedido por teléfono y por minuto**. Es lo
+que impide que un cliente impaciente que dice "confirmo" dos veces, o un reintento del webhook de
+Meta (edge-case §8), acabe con dos pedidos idénticos. Un segundo INSERT en el mismo minuto revienta
+con **23505**, así que quien inserte pedidos en lote (seeds, pruebas) tiene que separarlos en el
+tiempo. Verificado el 2026-09-09 con `qa/sql/07-housekeeping.sql` T7.
+
 ### `detalle_pedidos` — líneas de pedido (16 filas · RLS ✅)
 | Columna | Tipo | Notas |
 |---|---|---|

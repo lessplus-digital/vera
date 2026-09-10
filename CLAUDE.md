@@ -27,6 +27,16 @@ npm run preview   # serve the production build locally
 There is **no test runner, linter, or typecheck** configured. `package.json` has only
 `dev`/`build`/`preview`. Don't invent `npm test`/`npm run lint` — they don't exist.
 
+**But there IS a test suite** (2026-09-09), and it's not JavaScript: `qa/sql/` holds 8
+deterministic SQL batteries (~3.500 cases) covering the RPCs, triggers, constraints and RLS —
+which is where most of the logic a customer can break actually lives. They run **through the
+Supabase MCP**, not through npm. Each file returns **only the rows that fail** (empty = green);
+the ones that write are wrapped in `BEGIN … ROLLBACK`. Before changing a function, a trigger or an
+RPC, check whether a battery covers it and re-run it afterwards. Status and findings live in
+`qa/RESULTADOS.md`; each battery's header carries the invariants it checks and the setup traps
+that already bit (snapshot-in-subquery, the `touch_updated_at` trigger defeating a backdated
+`UPDATE`, RLS-blocked writes that don't raise).
+
 ### Environment (`.env.local`, git-ignored)
 
 Copy `.env.example` → `.env.local`. `src/lib/supabase.js` throws at startup if the
@@ -146,6 +156,7 @@ significant change — don't re-derive what's already written:
 | **Database** (Supabase) | `docs/database/schema.md` |
 | **Dashboard** (this repo) | `docs/dashboard/components.md`, `docs/dashboard/design-system.md` |
 | Cross-layer | `docs/shared/bug-tracker.md` (open bugs), `docs/shared/backlog.md` (pending features), `docs/shared/changelog.md` (done), `docs/shared/edge-cases.md` (lessons) |
+| **Tests** | `qa/RESULTADOS.md` (status + findings), `qa/sql/` (the batteries themselves) |
 
 When you make a significant change, update the matching doc:
 
@@ -155,6 +166,8 @@ When you make a significant change, update the matching doc:
 - Bug found → `docs/shared/bug-tracker.md` · bug resolved → remove it there + condensed
   entry in `docs/shared/changelog.md` · lesson learned → `docs/shared/edge-cases.md`
 - Architectural decision → `docs/shared/changelog.md` · deferred feature/idea → `docs/shared/backlog.md`
+- Changed a DB function/trigger/RPC → re-run the matching battery in `qa/sql/` and update
+  `qa/RESULTADOS.md`; if the change is a fix for a bug the battery caught, add the regression case
 
 ## Global rules enforced by the bot + shared DB
 

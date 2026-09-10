@@ -30,6 +30,19 @@ docs/
     └── edge-cases.md      ← lecciones reutilizables (se consultan ANTES de trabajar)
 ```
 
+Fuera de `docs/` hay una carpeta más que forma parte de la base de conocimiento:
+
+```
+qa/                        ← campaña de pruebas (2026-09-09)
+├── RESULTADOS.md          ← estado por batería, hallazgos y el plan de las 3 capas
+└── sql/                   ← 8 baterías deterministas, ejecutables vía el MCP de Supabase
+```
+
+**Antes de tocar una función, un trigger o una RPC, mira si hay una batería que la cubra** y
+ejecútala después del cambio: es la forma más barata de no reabrir algo ya cerrado. Cada fichero
+devuelve **solo las filas que fallan** (resultado vacío = verde) y lleva en el encabezado los
+invariantes que verifica y las trampas de montaje que ya mordieron.
+
 ## Las tres capas
 
 | Capa | Qué es | Dónde vive | Doc |

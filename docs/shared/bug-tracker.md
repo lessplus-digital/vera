@@ -12,13 +12,187 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-039**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-045**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-039 · 🔴 Alta · 🔴 Abierto — `buscar_menu` empata todo en 1.000 y el bot agrega el producto equivocado
+
+- **Componente:** BD → `buscar_menu()` · consumido por `Sub — Consultar_menu` (`r9BbkGSCNJcJ2P6t`)
+  → tool `consultar_menu` del Agente Menú.
+- **Síntoma (medido con la batería `qa/sql/02-menu.sql`, 2026-09-09):**
+  - **26 de 133 productos (20%) no salen en el top-5** al buscarlos por su **nombre exacto**,
+    aunque su similitud sea 1.000.
+  - **125 de 133 (94%) empatan** en el score máximo con otro producto de nombre distinto; 49 de
+    ellos con entre 6 y 20 competidores.
+  - Frases naturales que **no devuelven lo pedido en ninguna de las 5 posiciones**:
+
+    | El cliente escribe | Lo que recibe el bot |
+    |---|---|
+    | `una copa de vino` | De Mi Tierra · De Mi Tierra · Limonada de Vino Tinto · Panecillos de Nutella · Limonada de Sandía |
+    | `pan de ajo` | De Mi Tierra · Limonada de Vino Tinto · Panecillos de Nutella · De Mi Tierra · Limonada de Sandía |
+    | `arepa de pollo` | Pollo Champiñon · Pollo Tocineta · Pollo Champiñon · Pollo Tocineta · Limonada de Vino Tinto |
+    | `lasaña de pollo` | Pollo Champiñon · Pollo Tocineta · Pollo Champiñon · Pollo Tocineta · Limonada de Vino Tinto |
+    | `una limonada de mango` | Panecillos de Nutella · Limonada de Vino Tinto · Limonada Tamarindo · Limonada Hierbabuena · De Mi Tierra |
+
+- **Causa (leída de la definición viva):** la **CAPA C** (`word_scores`) puntúa palabra contra
+  palabra con `MAX(similarity(f.word, sw.word))` y el score final es un `GREATEST(...)`. Basta que
+  **una sola palabra** del nombre coincida exacta con **una sola palabra** de la búsqueda para que
+  el producto puntúe **1.000**. El filtro es `length(word) >= 2`, así que la preposición **`"de"`**
+  entra: todo producto que contenga "de" empata a 1.000 con toda búsqueda que contenga "de". Luego
+  `ORDER BY similitud DESC LIMIT 5` corta **arbitrariamente** entre los empatados.
+- **Por qué es Alta:** el prompt del Agente Menú usa la similitud como criterio de confianza
+  (*"≥0.5 → proceder sin confirmar; 0.2-0.5 → confirmar «¿Te refieres a…?»"*). Con todo empatado en
+  1.000 **el bot nunca entra en la banda de confirmación**: agrega al carrito, con plena confianza,
+  un producto que el cliente no pidió. La regla `PROHIBIDO elegir un producto distinto al que pidió
+  el cliente` se rompe **desde la herramienta**, no desde el modelo (patrón de edge-case §27).
+- **Fix propuesto (simulado y medido, no teórico):**
+  1. Excluir stopwords (`de la el en con y al los las un una del sin por para mi su a`) del match
+     palabra-a-palabra, **a ambos lados**.
+  2. Desempatar en el `ORDER BY`: coincidencia exacta del nombre normalizado → containment →
+     similitud → nombre más corto.
+
+  **Medición:** producto hallado en top-5 por su nombre exacto pasa de **107/133 (80%) a 133/133
+  (100%)**; queda primero en 105/133, y **los 28 que no quedan primeros son exactamente los nombres
+  duplicados por variante** (Tradicional/Estofada), donde "primero" no está definido.
+- ⚠️ **Trampa al implementarlo:** la simulación **descartó la CAPA D** (diccionario de correcciones)
+  y por eso `chelita` dejó de devolver cervezas. El fix real **debe conservar `termino_corregido`** y
+  aplicar el filtro de stopwords sobre las dos variantes del término. El test `02-menu.sql · T4`
+  existe para atrapar esa regresión.
+- **Cabo suelto que el fix NO resuelve:** `una limonada de mango` sigue sin devolver *Limonada Mango
+  Biche*. Es vocabulario, no ranking: entrada en el diccionario o en `descripcion`.
+
+---
+
+### BUG-040 · 🟡 Media · 🔴 Abierto — un typo de transposición deja a un cliente de Bello fuera de cobertura
+
+- **Componente:** BD → `consultar_cobertura()`, bloque `sugerencias` (umbral `similarity >= 0.40`).
+- **Síntoma (batería `qa/sql/01-cobertura.sql`, 2026-09-09):** barrido de 59 barrios × 4 clases de
+  typo = **236 casos**; **25 devuelven `cubierto:false` Y cero sugerencias** — el bot le dice *"solo
+  repartimos en Bello"* a alguien que **vive en Bello**, sin ofrecerle una corrección.
+
+  | Clase de typo | Fallos / 59 | Ejemplos |
+  |---|---|---|
+  | **transponer 2 letras seguidas** | **21 (36%)** | `pardo`→Prado · `cnetro`→Centro · `zmaora`→Zamora · `saurez`→Suárez · `nqiuia`→Niquía |
+  | borrar una letra (nombres ≤5) | 4 | `prdo`→Prado · `peez`→Pérez · `pais`→París |
+  | duplicar letra · quitar la última | 0 | robustos |
+
+- **Causa:** trigram se hunde con las transposiciones (similitud 0.20–0.385 contra el umbral 0.40).
+  **No es un umbral mal elegido**: el comentario del código explica que 0.40 es deliberadamente alto
+  para que `sabaneta` no sugiera `Sabanalarga`. Bajarlo rompería ese diseño.
+- **Fix propuesto (validado):** añadir una **segunda pasada por anagrama** cuando trigram no devuelve
+  nada — transponer dos letras conserva exactamente el multiconjunto de caracteres, así que basta
+  comparar las letras ordenadas de la clave normalizada.
+
+  **Medición:** resuelve **21/21** transposiciones, cada una a **un solo** barrio, con **0 falsos
+  positivos** en los controles negativos `sabaneta`, `sabanalarga`, `envigado`, `itagui`, `medellin`,
+  `bogota`, `copacabana`. El umbral 0.40 se queda como está.
+- **Sin resolver:** las 4 deleciones en nombres de ≤5 letras. Necesitarían distancia de edición —
+  `fuzzystrmatch` está **disponible pero no instalada** en el proyecto.
+
+---
+
+### BUG-043 · 🟡 Media · 🔴 Abierto — se puede sobrevender el salón: el control de cupo solo corre en INSERT
+
+- **Componente:** BD → `trigger_validar_cupo` sobre `reservas`.
+- **Síntoma (batería `qa/sql/06-reservas.sql` T4, 2026-09-09):** con las 8 mesas ya ocupadas a una
+  hora, **cualquier UPDATE mete una novena reserva confirmada**. Medido por dos vías:
+  - **a) Reactivar una cancelada:** cancelar una reserva libera el cupo, entra otra persona, y al
+    volver a poner la primera en `confirmada` quedan **9 confirmadas a las 19:00**.
+  - **b) Mover una reserva a una franja llena:** un admin cambia la hora de una reserva de las
+    13:00 a las 19:00 (llena) desde el modal del dashboard → **9 confirmadas**.
+- **Causa:** el trigger está declarado `BEFORE INSERT` únicamente:
+
+  ```sql
+  CREATE TRIGGER trigger_validar_cupo BEFORE INSERT ON public.reservas
+    FOR EACH ROW EXECUTE FUNCTION validar_cupo_reserva()
+  ```
+
+  La función en sí ya está escrita para soportar UPDATE — excluye la fila propia con
+  `reserva_id != NEW.reserva_id` y sale temprano si `estado != 'confirmada'`. **Solo falta
+  declararla también en UPDATE.**
+- **Por qué importa al cliente final:** dos grupos llegan a la misma mesa a la misma hora y hay que
+  decirle a uno que se vaya. Y `consultar_disponibilidad` (el subworkflow que consulta el bot)
+  cuenta reservas confirmadas, así que el bot seguirá ofreciendo una franja que ya está sobrevendida.
+- **Fix propuesto:** `CREATE TRIGGER … BEFORE INSERT OR UPDATE OF fecha, hora, estado ON reservas`.
+  Acotar a esas tres columnas evita revalidar en cada cambio de notas o de nombre.
+  ⚠️ Antes de aplicarlo hay que comprobar que no haya reservas ya sobrevendidas, porque el primer
+  UPDATE que recibieran empezaría a fallar. **Comprobado el 2026-09-09: no hay ninguna** — cero
+  franjas con más de 8 confirmadas solapadas, y las 16 reservas de la BD (15 confirmadas + 1
+  cancelada) son todas del pasado (11-jun a 15-ago). **El fix se puede aplicar sin migración de
+  datos.**
+
+---
+
+### BUG-044 · 🟢 Baja · 🔴 Abierto — el modal de reservas ofrece valores que la BD rechaza
+
+- **Componente:** dashboard → `src/utils/constants.js:95-99` (`RESERVATION_STATES`) y
+  `src/pages/reservations/ReservationModal.jsx:156,165`.
+- **Síntoma:** dos desajustes entre lo que la UI permite elegir y lo que el CHECK de la BD acepta:
+  1. **Estado `pendiente`.** `RESERVATION_STATES[0]` es `pendiente` y el `<select>` de la línea 165
+     lo ofrece, pero `reservas_estado_check` solo acepta `confirmada`/`cancelada` — verificado: el
+     INSERT revienta. El admin que elija "Pendiente" recibe un error crudo de Postgres.
+  2. **`personas` hasta 30.** El input de la línea 156 tiene `max={30}`, pero
+     `reservas_personas_check` es **1–12**. Escribir 20 pasa la validación del navegador y revienta
+     en la BD.
+- **Efecto secundario:** `ReservationDetail.jsx:11` usa `RESERVATION_STATES[0]` como *fallback*
+  cuando no encuentra el estado, así que cualquier valor inesperado se pinta como "Pendiente" en
+  ámbar — un estado que no existe. Y el filtro de `ReservationsPage.jsx:214` ofrece "Pendiente",
+  que siempre devuelve vacío.
+- **Fix propuesto:** quitar `pendiente` de `RESERVATION_STATES` (y usar `confirmada` como fallback
+  en `ReservationDetail`), y bajar el `max` del input a 12. Ojo: el prompt del Agente Reservas ya
+  dice que más de 12 personas se escalan a un humano, así que 12 es el número correcto en las tres
+  capas.
+
+---
+
+### BUG-042 · 🟢 Baja · 🔴 Abierto — recotizar el domicilio con la misma tarifa se descarta y el bot vuelve a preguntar
+
+- **Componente:** BD → trigger `trg_carritos_normalizar_estado` (`carritos_normalizar_estado()`),
+  bloque de invalidación por cambio de barrio.
+- **Síntoma (batería `qa/sql/04-flujo-pedido.sql` T4, 2026-09-09):** el cliente cambia de barrio
+  dentro de la **misma zona** (p. ej. Centro → La Milagrosa, ambos $5.000). El Agente Pedidos
+  recotiza correctamente y guarda `costo_domicilio = 5000, cobertura_ok = true`… y el trigger lo
+  **descarta**: los dos campos quedan en NULL y `faltantes` vuelve a incluir `"cobertura"`.
+- **Causa:** la heurística del trigger asume que recotizar **cambia el número**:
+
+  ```sql
+  if tg_op = 'UPDATE'
+     and new.barrio is distinct from old.barrio
+     and new.costo_domicilio is not distinct from old.costo_domicilio then
+    new.costo_domicilio := null;  new.cobertura_ok := null;
+  end if;
+  ```
+
+  El propio comentario lo dice: *"(Si la tarifa cambia en el MISMO update, es que ya se recotizó:
+  se respeta.)"*. Pero **la tarifa es por zona, no por barrio**, así que moverse entre dos barrios
+  de la misma zona recotiza bien y aun así se tira. **321 de 1711 pares de barrios (18,8%)
+  comparten tarifa.**
+- **Impacto real (medido):** se **autorrepara en el segundo guardado** — al recotizar otra vez el
+  barrio ya no cambia, la condición no se cumple y el valor entra. Cuesta un turno extra y puede
+  hacer que el bot anuncie el costo del domicilio dos veces, lo que al cliente le parece un
+  tartamudeo. **No rompe el pedido.** Por eso 🟢 y no 🟡.
+- **Fix propuesto:** distinguir "no recotizó" de "recotizó y dio lo mismo" con un dato explícito en
+  vez de inferirlo del precio. Lo más barato: que el trigger no invalide cuando el UPDATE trae
+  `cobertura_ok` explícito (es decir, cuando el agente sí llamó a `consultar_cobertura`), en lugar
+  de comparar `costo_domicilio`.
+
+---
+
+### BUG-041 · 🟢 Baja · 🔴 Abierto — `buscar_menu_categoria` devuelve categorías vecinas
+
+- **Componente:** BD → `buscar_menu_categoria()`.
+- **Síntoma:** `pizza_premium` devuelve **36** productos cuando la categoría tiene **24** (se cuela
+  `pizza_premium_especial`, 12 productos con **precios distintos**). `adicion` devuelve **14** cuando
+  tiene **4**.
+- **Riesgo:** el bot puede listar una premium-especial como si fuera premium y cantar el precio de la
+  categoría equivocada — choca con la regla global *"precios siempre exactos desde la BD"*.
+
+---
 
 ### BUG-038 · 🟡 Media · 🔴 Abierto — el bot no le da al cliente su número de pedido
 
@@ -199,35 +373,19 @@
 - **Fix propuesto:** reemplazar los `\n` escapados por saltos de línea reales en los cuatro
   nodos. El link de Google en sí **es correcto** (Google Maps real de La Vera Pizzería).
 
----
-
-### BUG-026 · 🟡 Media · 🔴 Abierto — `info_negocio` contiene datos de plantilla de otro negocio
-
-- **Componente:** BD (`info_negocio`) → bot (tool `info_local`, Agente Soporte)
-- **Síntoma:** el bot responde información de **"La Pizzería Don Carlo"** cuando le preguntan
-  por el local: teléfonos +58 (Venezuela), "Banco Venezuela" en `datos_transferencia`,
-  "municipio Sucre" en `zona_delivery`, instagram `@doncarlопizzeria` (¡con caracteres
-  cirílicos!). Son valores semilla de una plantilla, nunca se reemplazaron con los datos
-  reales de Vera Pizzería.
-- **Causa (verificada vía MCP 2026-07-23):** la tabla se pobló con data de ejemplo y ningún
-  flujo la actualizaba — no existía UI para editarla.
-- **Fix aplicado parcialmente:** la tab **Configuración** del dashboard (2026-07-23) ya
-  permite editarla. **Pendiente (requiere al operador):** llenar los valores reales de Vera
-  Pizzería en la tab — en especial `direccion`, `telefono_principal`, `whatsapp`, `instagram`,
-  `datos_transferencia`, `zona_delivery`, `horario_*` y `costo_delivery`. Cerrar este bug
-  cuando la tabla tenga la data real.
-- **Avance (2026-07-28):** `link_menu` ya quedó con su valor real
-  (`https://vera.plateo.cloud/menu_vera.pdf`). Sigue pendiente el resto.
-
----
-
 ## En observación
 
-Fixes ya aplicados cuya verificación final depende de tráfico real:
+Fixes ya aplicados cuya verificación final depende de tráfico real.
 
-- **BUG-033** — cobertura fuera de Bello. Las dos capas están aplicadas y verificadas por MCP
-  (RPC sin tarifa cuando `cubierto:false` + las 4 ediciones de n8n, publicadas y releídas del
-  workflow). Falta la prueba por WhatsApp, que es la única que ejercita al modelo:
+> **Campaña de pruebas 2026-09-09** — la Capa A (SQL determinista, `qa/sql/`) cerró las
+> verificaciones que no necesitaban una conversación real. Lo que sigue aquí es lo que **solo** se
+> puede comprobar hablando con el bot por WhatsApp. Resultados en `qa/RESULTADOS.md`.
+
+- **BUG-033** — cobertura fuera de Bello. ✅ **Capa SQL verificada** (`qa/sql/01-cobertura.sql`):
+  los 59 barrios resuelven con tarifa y tiempo, 295 variantes de escritura son consistentes, y los
+  10 municipios de fuera devuelven `cubierto:false` con costo y tiempo en NULL. Falta **solo** la
+  prueba por WhatsApp, que es la única que ejercita al modelo — y sigue siendo necesaria porque la
+  RPC ya devolvía bien el dato cuando el prompt mentía (edge-case §27):
   «¿Tienen servicio en Envigado?» y «¿Llegan a Sabaneta?» → debe decir que no llegan y ofrecer
   recoger, **sin precio ni tiempo**; «¿Llegan a Niquía?» → $7.500, 30 a 45 min; «estoy en niqia»
   → debe preguntar «¿te refieres a Niquía?»; «¿cuánto el domicilio al centro?» → $5.000; y un
@@ -238,19 +396,12 @@ Fixes ya aplicados cuya verificación final depende de tráfico real:
   convertirlo en pedido y, desde ese mismo teléfono, pedir otra cosa**. El producto debe entrar y el
   carrito quedar con los items nuevos (`select * from carritos where telefono = '...'`). Confirmar
   también que si la escritura falla el bot **no** muestra el 🛒 — antes lo cantaba igual.
-- **BUG-028** — el job `expirar-pedidos-pendientes` (pg_cron, 16:00 UTC) todavía no ha corrido
-  en producción. Confirmar en la primera ejecución que: (a) cierra solo los `pendiente` de días
-  anteriores y **no** toca los del turno en curso, y (b) el cliente recibe la cancelación con un
-  texto que se lee bien (*"Tu pedido fue cancelado, no alcanzamos a procesarlo antes del cierre
-  del día."*). Revisar con `SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 5`.
 - **BUG-025** — tras desplegar, confirmar en una noche real (19:00–24:00 Colombia) que el
   kanban muestra los pedidos que entran (antes se vaciaba en esa franja).
 - **BUG-023/024** — tras desplegar el build con `realtime.setAuth`, confirmar que el badge
   de soporte y el panel siguen actualizándose en vivo (las políticas `public` de
   `mensajes_soporte` ya no existen; todo el realtime va autenticado).
 
-- **BUG-007** — confirmar que el próximo pedido real del bot trae líneas:
-  `pedidos` recientes con `count(detalle_pedidos) = 0` debería dar vacío.
 - **BUG-005/009** — probar una cancelación de reserva real por WhatsApp: camino feliz
   y un intento con reserva ajena (debe responder "esta reserva no es tuya").
 - **pinData viejo (cosmético)** — `Sub — Crear Reserva` y `Sub — Cancelar Reserva` conservan

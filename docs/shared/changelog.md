@@ -14,6 +14,84 @@
 ```
 
 ---
+### 2026-09-09 — Campaña de pruebas: batería SQL determinista (`qa/`)
+
+**Contexto:** la parte operativa estaba hecha y faltaba asegurar que un cliente final no rompiera
+el flujo. No existía infraestructura de pruebas de ningún tipo, y por eso **7 fixes llevaban meses
+"en observación"** esperando tráfico real. El error a evitar era tratarlo como "probar el bot": el
+bot es una de tres capas, y la mayor parte de la lógica dura no vive en el LLM sino en Postgres.
+
+**Decisión:** probar cada caso **en la capa más barata que pueda detectarlo**, y reservar WhatsApp
+para lo que solo WhatsApp puede probar (ruteo del orquestador, obediencia a los prompts, redacción).
+Tres capas:
+
+| Capa | Qué prueba | Coste | Repetible |
+|---|---|---|---|
+| **A · SQL determinista** | funciones, triggers, constraints, RLS | ~0, sin LLM | sí |
+| **B · Conversación WhatsApp** | el modelo | alto | no |
+| **C · Vitest sobre utils puras** | agregados del dashboard | ~0 | sí |
+
+La Capa A quedó como **8 ficheros ejecutables en `qa/sql/`**, ~3.500 casos, con resultados y
+hallazgos en `qa/RESULTADOS.md`. Cada fichero devuelve **solo las filas que fallan** (vacío =
+verde) y los que escriben van dentro de `BEGIN … ROLLBACK` — validado que funciona por el MCP.
+
+**Qué encontró.** Cinco bugs nuevos, dos de ellos que ningún test manual habría dado:
+- **BUG-039 🔴** — `buscar_menu` empata el 94% del menú en similitud 1.000 (la palabra `"de"` pasa
+  el filtro de longitud), así que el bot **agrega al carrito, con plena confianza, un producto que
+  el cliente no pidió**. Fix simulado y medido: de 107/133 a 133/133.
+- **BUG-040 🟡** — una transposición de dos letras (`pardo`→Prado) deja a un cliente de Bello
+  fuera de cobertura. 21 de 59 barrios afectados. Fix por anagrama validado: 21/21 sin falsos
+  positivos.
+- **BUG-041 🟢** (`buscar_menu_categoria` devuelve categorías vecinas), **BUG-042 🟢** (recotizar
+  el domicilio con la misma tarifa se descarta), **BUG-043 🟡** (se puede sobrevender el salón: el
+  control de cupo solo corre en INSERT), **BUG-044 🟢** (el modal de reservas ofrece un estado y un
+  número de personas que la BD rechaza).
+
+**Qué cerró.** **BUG-028** (el job de expiración sí corre: 30/30, y las tres fronteras y el texto
+al cliente son correctos) · **BUG-007** (los 8 pedidos sin líneas son todos anteriores al
+2026-07-01; ningún pedido nuevo nace vacío) · la capa SQL de **BUG-033**. Y dejó en verde completo
+la maquinaria de totales (14/14, incluida la regresión §22), mitad y mitad (**3024 pares
+exhaustivos**, 0 fallos — cerraba el "falta probar" del changelog), el handoff con contexto (las
+cuatro trampas de §21) y el modelo de roles (el domiciliario ve 34 de 116 pedidos, todos suyos).
+
+**Impacto:** carpeta nueva `qa/` (8 baterías + `RESULTADOS.md`) · `docs/shared/bug-tracker.md`
+(5 bugs nuevos, 3 observaciones cerradas) · `docs/shared/edge-cases.md` §31 · `docs/database/schema.md`
+(documentado el índice `unique_pedido_cliente_minuto`, que no estaba) · `CLAUDE.md`.
+
+**Pendiente:** la batería `09-basura.sql`, la Capa B (11 guiones por WhatsApp desde el número de
+Juan, `573113298122`) y la Capa C (Vitest). El plan completo está en `qa/RESULTADOS.md`.
+
+---
+### 2026-09-09 — Datos reales del negocio en `info_negocio` (BUG-026 cerrado)
+
+**Contexto:** `info_negocio` llevaba desde el arranque con la semilla de plantilla de otro negocio
+—"La Pizzería Don Carlo", teléfonos `+58` de Venezuela, `datos_transferencia` = "CUENTA DE MI MAMA",
+instagram `@doncarlопizzeriaaaa` con caracteres cirílicos—. La tool `info_local` del Agente Soporte
+lee esa tabla, así que el bot respondía datos venezolanos a quien preguntara por el local. Salió a
+la luz al preparar la campaña de pruebas: probar el Agente Soporte contra esos datos habría medido
+basura en vez de flujo.
+
+**Decisión:** Juan cargó los valores reales desde la tab Configuración del dashboard. Verificado en
+vivo vía MCP el 2026-09-09: `nombre_negocio` = "La Vera Pizzería", `direccion` = "Parque de Bello
+Calle 54 # 52 -07", `telefono_principal` = "(604) 4799978", `whatsapp` = "+573233148517",
+`instagram` = "@laverapizzeria", `slogan` = "Sabor artesanal que te atrapa".
+
+De paso se resolvió una **contradicción entre capas**: la BD decía "CUENTA DE MI MAMA" mientras el
+PASO 5 del prompt del Agente Pedidos dictaba "Bancolombia ahorros 62500073329". Ahora
+`datos_transferencia` dice exactamente lo mismo que el prompt, así que la cuenta que canta el bot es
+la misma la lea de donde la lea.
+
+**Impacto:** tabla `info_negocio` (Supabase). Cierra **BUG-026**. Los campos `zona_delivery` y
+`costo_delivery` que la entrada original pedía llenar ya no aplican: se eliminaron el 2026-08-18
+cuando la cobertura pasó a `zonas_entrega`/`barrios`.
+
+**Pendiente relacionado, NO cubierto por este cierre:** `horario_semana` ("Lunes a Viernes 11:00am -
+10:00pm"), `horario_finsemana` y `horario_feriados` ("Cerrado") conservan los valores idénticos a los
+de la plantilla — hay que confirmar si son los reales. Y ojo a una incoherencia entre capas: el
+subworkflow de reservas valida **12:00–21:00**, pero `info_negocio` dice que el local cierra a las
+22:00 entre semana y 23:00 el finde.
+
+---
 ### 2026-09-01 (tarde) — Lo que salió de las pruebas en producción (BUG-037 y dos ajustes)
 
 **Contexto:** dos conversaciones reales por WhatsApp contra el flujo nuevo. El bug original murió
