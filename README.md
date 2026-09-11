@@ -56,6 +56,23 @@ npm run preview               # servir el build
 `src/lib/supabase.js` lanza al arrancar si faltan las `VITE_SUPABASE_*`. No hay test runner ni
 linter configurados. Toda variable es `VITE_`-prefijada (van al bundle del cliente).
 
+### Edge Functions
+
+`supabase/functions/` es el único código de servidor del repo, y **no** entra en `npm run build`:
+se despliega aparte con la CLI de Supabase. Hoy hay una, `admin-password`, que es la que permite a
+un admin cambiar la contraseña de otro usuario desde la tab Usuarios — existe precisamente porque
+la `service_role` que eso exige no puede viajar en el bundle.
+
+```bash
+npx supabase login                                    # una vez, abre el navegador
+npx supabase link --project-ref lwigogymjoyyzwiyewgi  # una vez, en este repo
+npx supabase functions deploy admin-password
+```
+
+Sin desplegarla, la tab Usuarios funciona entera salvo el botón de contraseña, que devuelve error.
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase sola: no
+hay secretos que configurar. Detalle en `docs/database/schema.md` §Edge Functions.
+
 ## Documentación
 
 La documentación completa —verificada contra n8n y Supabase reales vía MCP— vive en

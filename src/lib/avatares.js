@@ -29,7 +29,13 @@ export function validarAvatar(file) {
  *
  * La ruta es `<usuario_id>/<timestamp>.<ext>` porque la carpeta ES el permiso:
  * las políticas de `storage.objects` comparan `foldername(name)[1]` contra
- * `auth.uid()`. Cambiar esta convención rompe la seguridad, no solo el orden.
+ * `auth.uid()` **o** aceptan `es_admin()`. Cambiar esta convención rompe la
+ * seguridad, no solo el orden.
+ *
+ * Ese `OR es_admin()` es lo que permite pasar un `usuarioId` que no es el
+ * propio: un admin sube la foto de un mesero desde la pantalla de Usuarios y
+ * el archivo cae igual en la carpeta del dueño. Para cualquier otro rol la
+ * política rebota la subida.
  *
  * El timestamp en el nombre evita el caché: reusar `<uid>/avatar.jpg` deja al
  * navegador (y al CDN) mostrando la foto vieja tras cambiarla.

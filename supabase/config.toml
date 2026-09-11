@@ -1,0 +1,13 @@
+# Configuración del proyecto para la CLI de Supabase.
+#
+# Este repo NO gestiona el esquema con migraciones locales: las tablas, RLS,
+# triggers y RPC se aplican contra el proyecto remoto (ver docs/database/schema.md).
+# La CLI vive aquí por UNA razón: desplegar las Edge Functions de `supabase/functions`,
+# que es el único código de servidor del sistema que no está en n8n.
+project_id = "lwigogymjoyyzwiyewgi"
+
+# El gateway valida el JWT antes de que la función corra. Es la primera de dos
+# barreras: la segunda —que quien llama sea admin ACTIVO— la comprueba la propia
+# función, porque un JWT válido lo tiene también un domiciliario.
+[functions.admin-password]
+verify_jwt = true

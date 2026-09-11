@@ -11,6 +11,9 @@ const NAV_ITEMS = [
   { id: 'reservas',     label: 'Reservas',     icon: 'calendar' },
   { id: 'menu',         label: 'Menú',         icon: 'book' },
   { id: 'resenas',      label: 'Reseñas',      icon: 'star' },
+  // `shield` y no `users`: ese icono ya es Clientes, y repetirlo haría leer las
+  // dos entradas como la misma pantalla. Aquí lo que se administra son accesos.
+  { id: 'usuarios',     label: 'Usuarios',     icon: 'shield' },
   { id: 'configuracion', label: 'Configuración', icon: 'settings' },
 ]
 

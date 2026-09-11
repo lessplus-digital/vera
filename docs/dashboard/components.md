@@ -25,7 +25,8 @@ src/
 ├── components/
 │   ├── Icon.jsx                  ← Set de iconos SVG (name → path)
 │   ├── Avatar.jsx                ← Foto de perfil con fallback a la inicial
-│   ├── ProfileModal.jsx          ← "Mi perfil" (nombre, teléfono, foto) — para TODOS los roles
+│   ├── ProfileModal.jsx          ← "Mi perfil" (nombre, teléfono, foto, contraseña) — para TODOS los roles
+│   ├── PasswordModal.jsx         ← Cambio de contraseña; compartido por "Mi perfil" y la tab Usuarios
 │   ├── Toast.jsx                 ← Toast global del DS (con useToast; patrón .toast en index.css)
 │   ├── SortHeader.jsx            ← Encabezado de columna ordenable (patrón .sortable en index.css)
 │   └── layout/
@@ -46,12 +47,12 @@ src/
 │   ├── reservations/             ← ReservationsPage + ReservationModal + ReservationDetail
 │   ├── menu/                     ← MenuPage + ProductModal (disponibilidad del catálogo)
 │   ├── reviews/                  ← ReviewsPage + SatisfactionSummary + ReviewCard + ReplyModal + Stars + sentiment.js
-│   └── settings/                 ← SettingsPage (shell de 5 sub-vistas) + BusinessInfoSection
+│   ├── users/                    ← UsersPage (tab Usuarios, solo admin) + UserModal (foto/nombre/teléfono)
+│   └── settings/                 ← SettingsPage (shell de 4 sub-vistas) + BusinessInfoSection
 │                                    (info_negocio) + DeliveryZonesSection + ZoneModal
 │                                    (zonas_entrega + barrios)
 │                                    + FaqSection + FaqModal + faqLint.js (faq)
 │                                    + QuickRepliesSection + QuickReplyModal (respuestas_rapidas)
-│                                    + UsersSection (perfiles)
 │
 ├── hooks/
 │   ├── useAuth.jsx               ← AuthProvider + useAuth (sesión + PERFIL/ROL, signIn/signOut)
@@ -69,7 +70,7 @@ src/
 │   ├── useFaq.js                 ← `faq` CRUD + toggle activa (optimista) + reordenar (sin realtime)
 │   ├── useRespuestasRapidas.js   ← `respuestas_rapidas` CRUD + toggle + reordenar (sin realtime)
 │   ├── useDomiciliarios.js       ← Domiciliarios activos + asignarDomiciliario (solo admin)
-│   ├── useUsuarios.js            ← RPC listar_usuarios + cambiar rol / activar (solo admin)
+│   ├── useUsuarios.js            ← RPC listar_usuarios + rol/activo/datos/avatar + contraseña (solo admin)
 │   ├── useDeliveryHistory.js     ← Entregas pasadas de un domiciliario (período + paginado)
 │   ├── useOrderHistory.js        ← Pedidos server-side (rango+filtros+orden+página) + realtime *
 │   ├── useTheme.js               ← Toggle dark/light (localStorage)
@@ -78,7 +79,7 @@ src/
 │
 ├── utils/
 │   ├── constants.js              ← COLUMNS, METODO_LABEL, ESTADO_PAGO_LABEL, CLIENT_MODES, RESERVATION_*, MOTIVO_DEFECTO, CATEGORY_LABELS/categoryLabel, ORDER_STATES
-│   ├── formatters.js             ← timeAgoShort, timeAgo, formatPrice, formatPriceShort, formatPhone
+│   ├── formatters.js             ← timeAgoShort, timeAgo, formatPrice, formatPriceShort, formatPhone, nombreDeUsuario
 │   ├── quickReplies.js           ← Marcador {nombre} de las respuestas rápidas: aplicarNombre, usaNombre
 │   ├── permisos.js               ← Mapa rol→tabs/capacidades (UI). La frontera real es la RLS
 │   ├── exportHistory.js          ← Export del historial: CSV (BOM) + Excel con formato (exceljs lazy)
@@ -89,11 +90,12 @@ src/
 ├── lib/
 │   ├── supabase.js               ← Cliente Supabase (throws si faltan las VITE_SUPABASE_*)
 │   ├── avatares.js               ← Subida al bucket `avatares` + validación + limpieza
+│   ├── passwords.js              ← Contraseña propia (auth.updateUser) y ajena (Edge Function admin-password)
 │   └── whatsapp.js               ← sendWhatsAppMessage (texto) + sendWhatsAppTemplate (plantillas, fuera de 24h)
 │
 └── styles/
     ├── index.css                 ← Tokens CSS, base, animaciones, layout, tema
-    └── {auth,orders,support,statistics,clients,reservations,menu,settings,history,reviews,deliveries}.less
+    └── {auth,orders,support,statistics,clients,reservations,menu,settings,history,reviews,deliveries,users}.less
 ```
 
 ## Layout y navegación
@@ -101,7 +103,7 @@ src/
 `DashboardShell` (dentro de `App.jsx`) arma `Sidebar` + `Header` + la tab activa:
 
 - **`Sidebar`** — nav principal **filtrada por rol** (§0; `NAV_ITEMS`: Pedidos / Soporte / Estadísticas / Historial /
-  Clientes / Reservas / Menú / Reseñas / Configuración), badge de soporte, toggle de tema en el pie. `collapsed` (solo iconos) en tablet
+  Clientes / Reservas / Menú / Reseñas / Usuarios / Configuración), badge de soporte, toggle de tema en el pie. `collapsed` (solo iconos) en tablet
   (≤1024px) y `mobile-open` (cajón con backdrop) en móvil (≤768px), vía `useMediaQuery`.
 - **`Header`** — muestra `stats` del día y `lastUpdate`; en móvil enseña la hamburguesa que
   abre el cajón. Ya **no** contiene los tabs (migraron al Sidebar).
@@ -455,8 +457,8 @@ más de una página** a memoria.
 
 ### 8. Configuración (info del negocio + zonas + FAQ + respuestas rápidas)
 
-**Vista:** cinco sub-vistas en un control segmentado (`.settings-segmented`) — **Información del
-negocio**, **Zonas de domicilio**, **Preguntas frecuentes**, **Respuestas rápidas** y **Usuarios**
+**Vista:** cuatro sub-vistas en un control segmentado (`.settings-segmented`) — **Información del
+negocio**, **Zonas de domicilio**, **Preguntas frecuentes** y **Respuestas rápidas**
 **Datos:** `useBusinessInfo` (`info_negocio`) · `useDeliveryZones` (`zonas_entrega` + `barrios`) ·
 `useFaq` (`faq`) · `useRespuestasRapidas` (`respuestas_rapidas`)
 **Archivos:** `src/pages/settings/` (`SettingsPage` shell + `BusinessInfoSection` +
@@ -572,34 +574,17 @@ nombre ("Juan Pablo" → "Juan": el nombre completo suena a formulario) y, si no
 registrado, **borra el marcador junto con la coma que lo sigue** en vez de dejarlo crudo o
 sustituirlo por "cliente" — "Hola {nombre}, tu pedido…" → "Hola, tu pedido…".
 
-#### 8d. Usuarios (2026-08-12)
+#### 8d. Mi perfil (todos los roles)
 
-**Propósito:** repartir permisos. Es la única sub-vista que no configura texto que sale al
-cliente; va aquí porque para el restaurante la tab es "lo que administro yo", y de hecho solo
-existe para el admin — ni la RLS de `perfiles` ni `listar_usuarios()` le devuelven nada a nadie más.
+**Archivos:** `src/components/ProfileModal.jsx` · `src/components/PasswordModal.jsx` ·
+`src/components/Avatar.jsx` · `src/lib/avatares.js` · `src/lib/passwords.js` ·
+`useAuth().actualizarPerfil`
 
-- La lista viene del **RPC `listar_usuarios()`**, no de un `select` a `perfiles`: el email vive en
-  `auth.users`, que PostgREST no expone. La alternativa era denormalizarlo y que se desincronizara
-- Por fila: rol (`select`), acceso (switch) y **último acceso** — para detectar cuentas dormidas
-- **No hay botón "Crear usuario"**, y la pantalla explica por qué: el alta exige la admin API con
-  `service_role`, que no puede viajar en el bundle (mismo motivo que el token de WhatsApp). Las
-  cuentas se crean en Supabase y aparecen aquí al instante como `domiciliario` — el rol de menor
-  alcance — vía `trigger_crear_perfil`
-- **Editarse a uno mismo está bloqueado en la UI**, no en la BD: el trigger solo impide quedarse
-  *sin* admin, así que con dos admins uno podría degradarse y perder el acceso de golpe
-- Los errores de los triggers (`sin ningún administrador`, `Solo un administrador`) se traducen a
-  frases en `useUsuarios`; la frontera sigue siendo la BD
+Se abre desde el **menú de la barra superior**, no desde una tab: el mesero y el domiciliario no
+tienen la tab Usuarios y también necesitan poner su nombre, su foto y su contraseña. El menú
+superior es el único punto que todos los roles comparten.
 
-#### 8e. Mi perfil (todos los roles)
-
-**Archivos:** `src/components/ProfileModal.jsx` · `src/components/Avatar.jsx` ·
-`src/lib/avatares.js` · `useAuth().actualizarPerfil`
-
-Se abre desde el **menú de la barra superior**, no desde una sub-vista de Configuración: el
-domiciliario no tiene esa tab y también necesita poner su nombre y su foto. El menú superior es el
-único punto que todos los roles comparten.
-
-- Edita **nombre, teléfono y foto**. El rol se muestra pero no se edita — es de 8d, y
+- Edita **nombre, teléfono y foto**. El rol se muestra pero no se edita — es de la tab Usuarios, y
   `trigger_proteger_perfil` lo rechazaría igual. `actualizarPerfil` tampoco acepta `rol`/`activo`
   aunque se los pasen: dejar la puerta abierta invitaría a usarla desde otro punto
 - **Vista previa local antes de subir** (`URL.createObjectURL`): subir primero haría esperar al
@@ -608,6 +593,11 @@ domiciliario no tiene esa tab y también necesita poner su nombre y su foto. El 
   falla queda un archivo huérfano, que es mejor que quedarse sin foto porque el borrado se adelantó
 - `Avatar` cae a la inicial del nombre con `onError`. No es decorativo: el bucket es público y una
   URL puede quedar rota, y sin eso quedaría el icono de imagen partida en la barra superior
+- **La contraseña abre `PasswordModal`, no es un campo del formulario:** se aplica sola y al
+  instante, sin pasar por "Guardar". Con un campo aquí, escribirla y salir con "Cancelar" haría
+  creer que quedó cambiada. El botón es `secondary` porque el primary de la pantalla ya es
+  "Guardar" (DS §3). El camino propio es `auth.updateUser`, que la clave publicable sí permite —
+  no necesita la Edge Function
 
 ### 9. Reseñas (satisfacción + recuperación)
 
@@ -663,6 +653,51 @@ según el tono).
   del `<svg>` de Icon). Reutilizable
 - Empty state con explicación del flujo cuando no hay reseñas
 
+### 10. Usuarios y accesos (solo admin · 2026-09-01)
+
+**Vista:** lista de una fila por persona (avatar, identidad, último acceso, rol, switch de acceso,
+acciones) + tres modales — ficha, contraseña e historial de entregas
+**Datos:** `useUsuarios` (RPC `listar_usuarios` + `perfiles` + bucket `avatares` + Edge Function)
+**Archivos:** `src/pages/users/` (`UsersPage` + `UserModal`) · `src/components/PasswordModal.jsx` ·
+`src/hooks/useUsuarios.js` · `src/lib/passwords.js` · `src/lib/avatares.js` ·
+`supabase/functions/admin-password/` · `src/styles/users.less`
+
+**Estuvo dentro de Configuración hasta el 2026-09-01** (era la sub-vista 8d). Se sacó a tab propia
+porque no es lo mismo que las otras cuatro: aquellas editan texto que el bot recita, esta reparte
+accesos y cambia contraseñas. Escondida detrás de un sub-selector, la operación más delicada del
+panel era la más difícil de encontrar.
+
+- La lista viene del **RPC `listar_usuarios()`**, no de un `select` a `perfiles`: el email vive en
+  `auth.users`, que PostgREST no expone. La alternativa era denormalizarlo y que se desincronizara
+- Solo la ve el admin (`permisos.js`), pero eso es cortesía de UI: `listar_usuarios()` responde
+  **42501** a cualquier otro rol, así que la pantalla llegaría vacía igual
+- **Reparto de acciones:** la FILA lleva lo que se cambia de un golpe y en frío (rol, acceso); los
+  MODALES lo que hay que escribir y confirmar (identidad, contraseña). Así cada modal conserva su
+  único botón primary (DS §3) y la lista no tiene ninguno
+- **Editarse a uno mismo está bloqueado en la UI**, no en la BD: el trigger solo impide quedarse
+  *sin* admin, así que con dos admins uno podría degradarse y perder el acceso de golpe. El botón
+  de contraseña también se bloquea sobre uno mismo — la propia se cambia desde "Mi perfil"
+- Los errores de los triggers (`sin ningún administrador`, `Solo un administrador`) se traducen a
+  frases en `useUsuarios`; la frontera sigue siendo la BD
+
+**Foto de perfil de otro usuario.** No hizo falta ningún permiso nuevo: las tres políticas de
+`storage.objects` sobre el bucket `avatares` ya llevan `... OR es_admin()`. El archivo se sube
+igualmente a `<usuario_id>/<timestamp>.<ext>` — la carpeta **es** el permiso, y saltarse esa
+convención rompería la seguridad, no solo el orden. Mismo orden que en "Mi perfil": subir →
+apuntar el perfil → borrar la anterior (best-effort), nunca al revés.
+
+**Contraseña: lo único que no puede salir del navegador.** Ponerle la contraseña a otra cuenta
+exige la Admin API con `service_role`, y esa clave no puede viajar en el bundle (mismo motivo que
+el token de WhatsApp y que el alta de usuarios). El camino barato —`resetPasswordForEmail`— **no
+servía**: la mayoría del personal tiene un email interno inventado, sin bandeja donde recibir el
+enlace. Por eso existe la Edge Function `admin-password` (ver `docs/database/schema.md`), donde
+el `service_role` se queda en el servidor. El navegador solo manda `{usuario_id, password}` con
+su JWT.
+
+**No hay botón "Crear usuario"**, y la pantalla explica por qué: el alta sigue exigiendo la admin
+API. Las cuentas se crean en Supabase y aparecen aquí al instante como `domiciliario` — el rol de
+menor alcance — vía `trigger_crear_perfil`.
+
 ## Hooks — responsabilidades
 
 | Hook | Qué hace | Devuelve |
@@ -682,7 +717,7 @@ según el tono).
 | `useDeliveryZones` | CRUD de `zonas_entrega` + `barrios` (zonas con sus barrios embebidos) y la lista de **barrios sin zona** deducida de `pedidos` con `zona IS NULL`. Sin realtime (mismo criterio que `useFaq`). Traduce a texto los errores de `proteger_zona_base` y de la FK de barrios. **`addBarrios` carga un lote** (texto separado por coma, `;` o salto de línea) en un solo `upsert` con `ignoreDuplicates`: devuelve `{agregados, repetidos}` y **no mueve** un barrio que ya exista en otra zona — para eso está `moveBarrio` | `zonas, sinClasificar, loading, error, createZona, updateZona, deleteZona, setZonaActiva, addBarrios, moveBarrio, deleteBarrio, refetch` |
 | `useBarrioOptions` | *(mismo archivo)* Catálogo plano de barrios activos + `tarifaBase`, para los formularios que **crean** pedidos. Solo lectura. Expone la tarifa base para poder previsualizar el mismo número que va a cobrar la BD, en vez de re-quemar un 5000 en el front | `barrios, tarifaBase, loading` |
 | `useDeliveryHistory` | Entregas pasadas de un domiciliario: período (`getRange`), paginado de 20 y resumen vía RPC `resumen_entregas`. Sin comprobación de rol — la RLS decide qué filas existen | `entregas, resumen, loading, cargandoMas, hayMas, error, cargarMas, refetch` |
-| `useUsuarios` | Lista de usuarios vía RPC `listar_usuarios` (admin-only) + `cambiarRol` / `setActivo` / `actualizarDatos` sobre `perfiles`; traduce los errores de los triggers | `usuarios, loading, error, cambiarRol, setActivo, actualizarDatos, refetch` |
+| `useUsuarios` | Lista de usuarios vía RPC `listar_usuarios` (admin-only) + `cambiarRol` / `setActivo` / `actualizarDatos` / `actualizarAvatar` / `quitarAvatar` sobre `perfiles`; `cambiarPassword` sale a la Edge Function `admin-password`. Traduce los errores de los triggers | `usuarios, loading, error, cambiarRol, setActivo, actualizarDatos, actualizarAvatar, quitarAvatar, cambiarPassword, refetch` |
 | `useDomiciliarios` | Domiciliarios activos para el selector de asignación + `asignarDomiciliario(pedidoId, id)`. Solo devuelve filas para un admin (`perfiles_select` limita al resto a su propia fila); traduce los errores del trigger a texto legible | `domiciliarios, loading, refetch` |
 | `useRespuestasRapidas` | CRUD de `respuestas_rapidas` + `setActiva` optimista + `moveRespuesta` (misma renumeración); traduce CHECK e índice único a mensajes legibles. Lo usan **dos** pantallas: Configuración (CRUD) y Soporte (solo lectura) | `respuestas, loading, error, createRespuesta, updateRespuesta, deleteRespuesta, setActiva, moveRespuesta, refetch` |
 | `useOrderHistory` | Página de pedidos server-side (rango + filtros + orden + paginación como parámetros; resumen vía RPC `historial_resumen`), realtime `*`, correcciones de estado, export del conjunto filtrado | `orders, totalCount, summary, loading, error, range, marcarEntregado, cancelarPedido, fetchAllFiltered` |

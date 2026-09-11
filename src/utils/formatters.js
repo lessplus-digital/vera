@@ -40,3 +40,10 @@ export function formatPriceShort(amount) {
   if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1_000).toLocaleString('es-CO')}k`
   return `$${n.toLocaleString('es-CO')}`
 }
+
+// Nombre mostrable de un usuario del panel. Una cuenta recién creada en
+// Supabase existe antes de que nadie escriba su nombre, así que se cae al
+// email —sin el dominio, que es ruido— y solo entonces a un genérico.
+export function nombreDeUsuario(usuario) {
+  return usuario?.nombre || usuario?.email?.split('@')[0] || 'Usuario'
+}

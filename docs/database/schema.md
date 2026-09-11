@@ -418,7 +418,7 @@ WHERE p.pedido_id = v_pedido_id;
 | `marcar_entregado` | `(p_pedido_id text) → pedidos` | **Única vía de escritura del rol domiciliario.** Valida rol, asignación y estado; el UPDATE lo hace saltando RLS. Existe porque **RLS no puede limitar columnas** (ver §Modelo de permisos). **SECURITY DEFINER.** |
 | `validar_asignacion_domiciliario` | `() → trigger` | Trigger de `pedidos` (ver §Triggers). |
 | `resumen_entregas` | `(p_domiciliario uuid, p_desde timestamptz=null, p_hasta timestamptz=null) → (entregas, total, efectivo, primera, ultima)` | Totales del historial de entregas. Existe porque la lista está paginada y sumar solo lo cargado daría una cifra que crece al hacer scroll. **STABLE · SECURITY INVOKER** — al revés que el resto de RPC de este esquema: así hereda la RLS de `pedidos` y la autorización sale gratis (un domiciliario que pase el id de otro recibe ceros, porque esas filas no existen para él). |
-| `listar_usuarios` | `() → setof (usuario_id, nombre, email, rol, telefono, avatar_url, activo, ultimo_acceso, creado)` | Lista de usuarios para Configuración → Usuarios. Existe porque el email vive en `auth.users`, que PostgREST no expone; la alternativa era denormalizarlo en `perfiles` y que se desincronizara. **STABLE · SECURITY DEFINER** — autoriza ella misma (42501 si no eres admin). |
+| `listar_usuarios` | `() → setof (usuario_id, nombre, email, rol, telefono, avatar_url, activo, ultimo_acceso, creado)` | Lista de usuarios para la tab **Usuarios** (salió de Configuración el 2026-09-01). Existe porque el email vive en `auth.users`, que PostgREST no expone; la alternativa era denormalizarlo en `perfiles` y que se desincronizara. **STABLE · SECURITY DEFINER** — autoriza ella misma (42501 si no eres admin). |
 | `crear_perfil_nuevo_usuario` / `proteger_perfil` / `proteger_ultimo_admin` | `() → trigger` | Triggers de `auth.users` y `perfiles` (ver §Triggers). |
 | `limpiar_carritos_abandonados` / `limpiar_historial_chat` | `()` | Housekeeping. |
 
@@ -474,6 +474,7 @@ sostenidas por triggers, no por políticas:
 | Fijar `pedidos.costo_domicilio` desde el barrio | nadie lo escribe a mano en el alta | `trigger_tarifa_domicilio` (2026-08-18) |
 | Cambiar `perfiles.rol` / `perfiles.activo` | solo admin | `trigger_proteger_perfil` |
 | Pasar un pedido a `entregado` | admin, mesero, y el domiciliario **asignado** | RPC `marcar_entregado` (el domiciliario no tiene política de UPDATE) |
+| Cambiar la contraseña de **otro** usuario | solo admin | Edge Function `admin-password` — no es una columna de `perfiles` sino de `auth.users`, donde ninguna política llega (ver §Edge Functions) |
 
 `menu` conserva además `menu_lectura_publica` (SELECT para `public`): es la que usa el bot con la
 key publicable. Consecuencia: el menú lo lee cualquiera con esa key, incluido un usuario
@@ -616,8 +617,13 @@ no reutilizar `comprobantes`:** ese tiene una política de INSERT para `anon`, y
 avatares les daría esa misma puerta.
 
 > **La carpeta ES el permiso.** La ruta es `<usuario_id>/<timestamp>.<ext>` y las políticas
-> comparan `(storage.foldername(name))[1]` contra `auth.uid()`. Cambiar esa convención en
-> `src/lib/avatares.js` no rompe el orden de los archivos: rompe la seguridad.
+> comparan `(storage.foldername(name))[1]` contra `auth.uid()` **o** aceptan `es_admin()`.
+> Cambiar esa convención en `src/lib/avatares.js` no rompe el orden de los archivos: rompe la
+> seguridad.
+>
+> Ese `OR es_admin()` es lo que permite que un admin suba la foto de otro usuario desde la tab
+> Usuarios: el archivo cae igual en la carpeta del dueño. Para cualquier otro rol la política
+> rebota la subida. Verificado en `pg_policies` el 2026-09-01.
 >
 > El `timestamp` en el nombre evita el caché — reusar `<uid>/avatar.jpg` deja al navegador y al
 > CDN sirviendo la foto vieja tras cambiarla.
@@ -625,6 +631,48 @@ avatares les daría esa misma puerta.
 > **El tamaño y el tipo los valida el servidor** (`file_size_limit` y `allowed_mime_types` del
 > bucket). El formulario valida lo mismo antes de subir, pero eso es cortesía: quien llame a la
 > Storage API directo choca igual contra estos límites.
+
+## Edge Functions
+
+Único código de servidor del sistema que **no** vive en n8n. El código está en este repo, bajo
+`supabase/functions/`, y se despliega con la CLI (`npx supabase functions deploy <nombre>`).
+
+| Función | Llama | Qué hace |
+|---|---|---|
+| `admin-password` | El dashboard (tab Usuarios) | Cambia la contraseña de **otro** usuario vía `auth.admin.updateUserById` |
+
+### `admin-password` (2026-09-01)
+
+**Por qué existe.** Poner la contraseña de otra cuenta solo se puede con la Admin API, que exige
+`service_role`. Esa clave no puede vivir en el dashboard: todo lo que allí empieza por `VITE_`
+acaba dentro del bundle que descarga el navegador (mismo motivo por el que tampoco se crean
+cuentas desde el panel). Aquí el `service_role` se queda como secreto de la función.
+
+**Por qué no un email de recuperación.** `resetPasswordForEmail` no habría necesitado nada de
+esto, pero **no sirve para este restaurante**: la mayoría del personal (meseros y domiciliarios)
+tiene un email interno inventado, sin bandeja real donde recibir el enlace.
+
+**Dos barreras de autorización:**
+
+1. `verify_jwt = true` en `supabase/config.toml` — el gateway rechaza sin sesión válida.
+2. La función comprueba que quien llama sea **admin activo**: un JWT válido lo tiene también un
+   domiciliario. La comprobación **no** lee el rol del JWT (no viaja ahí y el cliente no es de
+   fiar): llama al RPC `mi_rol()` **con el token de quien llama**, la misma fuente que usa la RLS
+   y que devuelve NULL si la cuenta está desactivada.
+
+El `service_role` se usa **solo** para el paso final. Todo lo que decide "¿puede?" corre con los
+permisos de quien llama. Antes de escribir, además, comprueba que el destinatario exista en
+`perfiles`: sin eso, un admin podría cambiarle la contraseña a cualquier fila de `auth.users`
+pasando su UUID a mano.
+
+> **Secretos:** `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta
+> Supabase automáticamente en toda Edge Function. No hay que declararlos.
+
+> **Límite conocido: no cierra las sesiones abiertas.** `updateUserById` cambia la contraseña pero
+> **no revoca los refresh tokens** que ya existan. Sirve para "se le olvidó" y para "hay que darle
+> credenciales al que entra"; **no** basta por sí sola para "esta cuenta está comprometida" — en
+> ese caso, además, hay que **desactivar el usuario** desde la tab (el switch de acceso), que sí
+> corta al instante: `mi_rol()` devuelve NULL con `activo = false` y la RLS le vacía todo.
 
 ## Realtime
 
