@@ -14,6 +14,86 @@
 ```
 
 ---
+### 2026-09-12 — El flujo de reseñas lleva 51 días roto (BUG-050) + batería 10 y guiones de la Capa B
+
+**Contexto:** ninguna batería cubría el feedback, así que se montó `qa/sql/10-resenas.sql`. Al
+mirar el estado vivo apareció que no era un hueco de cobertura: era un incendio. **Último feedback
+registrado: 2026-07-23.** 51 días, 7 clientes atrapados en `modo='esperando_feedback'` y 9 filas
+zombis en la cola, la más vieja de 108 días — mientras el 100% de los pedidos entregados del último
+mes figuran como "feedback ya solicitado".
+
+**Causa (leída de la ejecución real de n8n `14816`, no inferida).** `feedback_pendiente` tiene
+**PK `telefono`** — un slot por cliente — y el nodo que la llena hace `POST` sin upsert. Con un
+cliente que ya tenía fila, Supabase responde `409 / 23505`; el nodo reintenta, vuelve a chocar y
+**mata la ejecución**. Lo grave es el orden de la cadena: `Marcar feedback_solicitado` y
+`Activar modo esperando_feedback` corren **antes** del POST que falla, y `Enviar WhatsApp`
+**después**. Así que el pedido queda marcado como preguntado para siempre, el cliente queda en un
+modo donde el bot solo sabe responder *"responde 1–5"*, y **la pregunta nunca sale**. Se escribe el
+efecto antes que la causa. → **BUG-050 🔴**.
+
+**Segundo hallazgo, BUG-051.** `Parsear calificación` coge el primer dígito 1–5 del texto. De 11
+mensajes realistas, **6 fabrican una calificación que nadie dio**: `10/10` se guarda como **1**, y
+`me demoraron 45 minutos` como **4** — con la ruta positiva, que le agradece al cliente y le pide
+una reseña en Google **por una queja**. Se agrava con BUG-050: el cliente atrapado solo tiene esa
+puerta, y su intento natural de pedir comida es justo la frase que el parser malinterpreta.
+
+**Lo que sí está bien:** los constraints de ambas tablas cumplen (`calificacion` 1–5,
+`UNIQUE(pedido_id)`, los FK, `estado` acotado) y la ventana 1–6 h del job es exacta en sus cuatro
+fronteras. El fix por upsert está **validado en T5**: una fila, apuntando al pedido nuevo.
+
+**Capa B desbloqueada a medias.** Se escribieron los 11 guiones (`qa/guiones-bot.md`) con mensajes
+exactos, respuesta esperada y SQL de verificación, cada uno anclado a un riesgo ya medido —
+G1 a BUG-039/045, G2 a BUG-032, G4 a BUG-038, G11 a BUG-050/051. **Ocho son ejecutables ya**;
+G3, G7 y G9 siguen bloqueados por las preguntas de negocio de la Fase 0.
+
+**Impacto:** `qa/sql/10-resenas.sql` y `qa/guiones-bot.md` (nuevos) · `qa/RESULTADOS.md` ·
+`docs/shared/bug-tracker.md` (BUG-050 🔴 y BUG-051; siguiente ID libre BUG-052) ·
+`docs/bot/feedback.md` (documentaba un workflow independiente que no existe: la rama vive dentro
+de `Pizzeria Vera`) · `CLAUDE.md`.
+
+---
+### 2026-09-12 — Batería 09 (entrada basura): cierra la Capa A de la campaña de pruebas
+
+**Contexto:** las ocho baterías anteriores prueban cada función contra **su** contrato: le dan lo
+que espera y comprueban que acierte. Faltaba la pregunta complementaria, que es la que un cliente
+real hace todos los días sin querer: **¿qué pasa cuando le llega algo que nadie diseñó?** El
+llamador de estas RPC no es un cliente de API disciplinado, es un LLM — manda `''` con la misma
+facilidad que `null`, manda `limite: -5` si el prompt dice "pocos", y repite literal lo que
+escribió el cliente aunque el cliente haya escrito `' OR 1=1 --`.
+
+**Decisión:** una novena batería que cruza **15 clases de basura × 14 RPC** (71 casos) contra tres
+invariantes explícitos: nada revienta sin control (una tool que lanza deja al cliente sin respuesta
+en WhatsApp), nada corrupto se persiste, y ninguna inyección se ejecuta — esto último **contado**,
+no supuesto. Resultado 64/71.
+
+**Qué aguantó.** Ninguna de las cuatro inyecciones hizo nada: las seis tablas y las 20 relaciones
+quedaron idénticas a la línea base. Y el mejor resultado de la campaña: el trigger
+`aplicar_tarifa_domicilio` **pisa al llamador** — un `costo_domicilio` de −5.000 o `NaN` entra al
+INSERT y queda guardado como la tarifa real de la zona, con el total exacto. Mismo patrón que
+`costo_motivo` en reservas: *el trigger ignora lo que mande el LLM*, que es justamente donde la
+arquitectura decidió poner la verdad. Los CHECK de dominio y el FK `detalle_pedidos → menu` (el que
+impide materializar el producto que el LLM inventa) también cumplen.
+
+**Qué encontró.** Cinco bugs nuevos, **BUG-045 a BUG-049**. El que pesa es **BUG-048**:
+`editar_pedido` acepta cantidad y precio negativos con `success: true` y deja el pedido con **total
+negativo** (medido: −25.000), porque `detalle_pedidos` no tiene ningún CHECK y el único guardarraíl
+es un `Math.max(1, …)` en React — exactamente donde la regla #1 de `CLAUDE.md` dice que la frontera
+*no* está. Le sigue **BUG-045**: el comodín `LIKE` del usuario no se escapa en tres funciones, y en
+`buscar_menu` un término vacío devuelve 5 productos con **similitud 0.850**, por encima del umbral
+0.5 que el prompt del Agente Menú usa para agregar al carrito sin confirmar — el mismo daño que
+BUG-039 por otra puerta, y un fix de BUG-039 que no toque la CAPA A no lo cierra.
+
+**Impacto:** `qa/sql/09-basura.sql` (nuevo) · `qa/RESULTADOS.md` · `docs/shared/bug-tracker.md`
+(5 entradas nuevas, siguiente ID libre BUG-050; BUG-041 cruzado con BUG-045b) ·
+`docs/shared/edge-cases.md` §32.
+
+**Estado de la campaña:** **Capa A cerrada** — 9 baterías, ~3.600 casos, 11 bugs (BUG-039…049),
+ninguno visible desde el código del dashboard. Sigue pendiente la **Capa B** (11 guiones por
+WhatsApp, bloqueada por los 5 puntos de la Fase 0: horarios sin confirmar, la incoherencia
+12:00-21:00 vs. el cierre a 22:00/23:00, la FAQ con una sola fila, los precios placeholder de
+`motivos_reserva` y el typo de `descripcion_general`) y la **Capa C** (Vitest sobre utils puras).
+
+---
 ### 2026-09-09 — Campaña de pruebas: batería SQL determinista (`qa/`)
 
 **Contexto:** la parte operativa estaba hecha y faltaba asegurar que un cliente final no rompiera
@@ -60,6 +140,7 @@ cuatro trampas de §21) y el modelo de roles (el domiciliario ve 34 de 116 pedid
 
 **Pendiente:** la batería `09-basura.sql`, la Capa B (11 guiones por WhatsApp desde el número de
 Juan, `573113298122`) y la Capa C (Vitest). El plan completo está en `qa/RESULTADOS.md`.
+*(La 09 se ejecutó el 2026-09-12 — ver la entrada de esa fecha.)*
 
 ---
 ### 2026-09-09 — Datos reales del negocio en `info_negocio` (BUG-026 cerrado)

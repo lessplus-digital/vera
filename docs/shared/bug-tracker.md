@@ -12,13 +12,92 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-045**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-052**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-050 · 🔴 Alta · 🔴 Abierto — el job de feedback muere en el cliente repetido, deja al cliente mudo y nunca le pregunta nada
+
+- **Componente:** n8n → workflow `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`), rama `trigger_feedback`
+  → nodo `feedback_pendiente` · tabla `feedback_pendiente` (PK = `telefono`).
+- **Síntoma medido (2026-09-12):** **no se registra un solo feedback desde el 2026-07-23** (51 días),
+  no entra una fila nueva en `feedback_pendiente` desde el 2026-08-13 (30 días), y sin embargo
+  **todos** los pedidos entregados de los últimos 30 días están marcados `feedback_solicitado = true`.
+  Es decir: el sistema cree que preguntó, y no preguntó.
+- **Causa (leída de la ejecución real `14816`, 2026-09-08, no inferida):** la cadena es
+
+  ```
+  Code — Preparar payload → Marcar pedido como solicitado → Activar modo esperando_feedback
+                          → feedback_pendiente → Enviar WhatsApp → Wait1
+  ```
+
+  `feedback_pendiente` tiene **PK `telefono`**, o sea **un solo slot por cliente**, y el nodo hace
+  `POST` sin upsert. Con un cliente que ya tenía fila, Supabase responde:
+
+  ```
+  409 · {"code":"23505","details":"Key (telefono)=(573184821317) already exists."}
+  body: {"telefono":"573184821317","pedido_id":"PED-245","cliente_id":"CLI-039", ...}
+  ```
+
+  El nodo tiene `retryOnFail: true` y `onError` por defecto (**detener workflow**), así que
+  reintenta, vuelve a chocar y **mata la ejecución**: `lastNodeExecuted: feedback_pendiente`.
+- **Por qué el daño es permanente y silencioso:** los dos nodos que ya corrieron **escriben antes
+  de la caída** y nadie los revierte:
+  1. `feedback_solicitado = true` → ese pedido **nunca volverá a entrar** en la búsqueda del job.
+  2. `modo = 'esperando_feedback'` → el `Router de modo` manda **todo** lo que escriba ese cliente
+     al listener de feedback, no a los agentes de pedidos.
+
+  Y `Enviar WhatsApp` **nunca llega a ejecutarse**. Resultado neto: al cliente **no se le preguntó
+  nada**, pero queda en un modo donde el bot solo sabe responder *"responde 1–5"*, y su pedido
+  quedó marcado como ya preguntado para siempre.
+- **Alcance medido hoy:** **7 clientes en `modo = 'esperando_feedback'`** (CLI-039 desde el
+  2026-09-08) y **9 filas zombis** en `feedback_pendiente`, la más vieja de **108 días** (PED-100,
+  del 2026-05-28). Ese cliente acumula 6 pedidos entregados marcados como "preguntados"
+  (PED-114, 115, 223, 228, 229, 245) y **cero feedback**.
+- **Envenenamiento del dato, además:** si CLI-039 responde ahora "5", el subworkflow lee la fila
+  zombi y escribe la calificación contra **PED-100 (mayo)**, no contra el pedido que acaba de
+  recibir. La nota queda pegada al pedido equivocado.
+- **Nada expira esa cola:** `cron.job` tiene 3 jobs (`limpiar-carritos-abandonados`,
+  `limpiar_historial_chat_semanal`, `expirar-pedidos-pendientes`) y **ninguno toca
+  `feedback_pendiente`**. Las filas zombis no caducan solas.
+- **Fix propuesto (tres piezas, la 1 es la que desangra):**
+  1. **Upsert en vez de POST**: cabecera `Prefer: resolution=merge-duplicates` (y
+     `return=minimal`), para que un cliente repetido **reemplace** su fila en vez de chocar.
+     Alternativa de fondo: que la PK sea `(telefono, pedido_id)` y la cola admita varios.
+  2. **Reordenar la cadena**: crear la fila pendiente y **enviar el WhatsApp primero**, y solo
+     después marcar `feedback_solicitado` y cambiar el modo. Hoy se marca el efecto antes de la
+     causa, que es lo que hace el daño irreversible.
+  3. **Job de expiración** de `feedback_pendiente` (>48 h → borrar fila y devolver `modo='bot'`),
+     al lado de los otros tres en `cron.job`.
+- **Limpieza del estado actual (aparte del fix):** las 9 filas zombis y los 7 clientes atrapados
+  hay que devolverlos a `modo='bot'` a mano; el fix no los arregla retroactivamente.
+- **Regresión:** `qa/sql/10-resenas.sql` T4/T5 cubren el choque de PK y la cola vencida.
+
+---
+
+### BUG-051 · 🟡 Media · 🔴 Abierto — «quiero 2 pizzas» se registra como una calificación de 2 estrellas
+
+- **Componente:** n8n → `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`), nodo `Parsear calificación`.
+- **Síntoma:** el parser toma **el primer dígito 1–5 que aparezca en el texto** (`/[1-5]/`). Un
+  cliente que está en `esperando_feedback` (ver BUG-050, hoy son 7) y escribe *"quiero 2 pizzas"*
+  no recibe su pedido: recibe un **2 de calificación** guardado en `feedback`, y como 2 ≤ 3 el flujo
+  lo manda por la **ruta negativa** y le pregunta *"¿qué pasó?"*.
+- **Por qué importa más de lo que parece:** el cliente atrapado en modo feedback **solo tiene esa
+  puerta**. Su intento natural de pedir comida es justo la frase que el parser malinterpreta, y el
+  resultado es una reseña negativa falsa contra un pedido que además puede ser el equivocado
+  (BUG-050). Las dos cosas juntas fabrican calificaciones de 1–3 estrellas que nadie dio.
+- **Fix propuesto:** exigir que el mensaje sea **solo** la nota (`/^\s*[1-5]\s*$/`), o aceptar
+  también «cinco/cuatro/…», y mandar cualquier otra cosa a `Pedir nota de nuevo`. Con el fix, "quiero
+  2 pizzas" cae en "responde solo 1–5" en vez de fabricar una reseña.
+- **Cabo suelto relacionado:** aun con el parser estricto, un cliente en modo feedback sigue sin
+  poder pedir. Convendría una salida: si el mensaje no es una nota **dos veces seguidas**, liberar
+  el modo a `'bot'` y seguir la conversación normal.
+
+---
 
 ### BUG-039 · 🔴 Alta · 🔴 Abierto — `buscar_menu` empata todo en 1.000 y el bot agrega el producto equivocado
 
@@ -93,6 +172,126 @@
   `bogota`, `copacabana`. El umbral 0.40 se queda como está.
 - **Sin resolver:** las 4 deleciones en nombres de ≤5 letras. Necesitarían distancia de edición —
   `fuzzystrmatch` está **disponible pero no instalada** en el proyecto.
+
+---
+
+### BUG-048 · 🟡 Media · 🔴 Abierto — `editar_pedido` acepta cantidad y precio negativos y deja el pedido con total negativo
+
+- **Componente:** BD → `editar_pedido()` y la tabla `detalle_pedidos` · llamado desde
+  `src/pages/dashboard/EditOrderModal.jsx:81`.
+- **Síntoma (medido con `qa/sql/09-basura.sql · T8b`, 2026-09-12):** con el pedido de prueba
+  (envío 5.000, un ítem de 30.000):
+
+  | Lo que se manda | Lo que devuelve | Total que queda |
+  |---|---|---|
+  | `cantidad: -3`, `precio_unitario: 10000` | `success: true` | **−25.000** |
+  | `cantidad: 1`, `precio_unitario: -10000` | `success: true` | **−5.000** |
+  | `cantidad: 0` | `success: true` | 5.000 (sólo el envío) |
+
+- **Causa:** `detalle_pedidos` **no tiene ningún CHECK**: ni `cantidad > 0` ni
+  `precio_unitario >= 0`. `editar_pedido` tampoco los valida — hace
+  `(v_item->>'cantidad')::INT * (v_item->>'precio_unitario')::NUMERIC` y escribe el resultado.
+  Y `pedidos` sólo protege `costo_domicilio >= 0`; **`total` no tiene CHECK**, así que el número
+  negativo se persiste sin que nada chille.
+- **Por qué importa aunque la UI no lo permita:** el único guardarraíl hoy es
+  `Math.max(1, item.cantidad + delta)` en `EditOrderModal.jsx:41` y el `disabled` del botón −.
+  Eso es React, y por la **regla #1 de `CLAUDE.md`** React no es la frontera de seguridad: el RPC
+  es `SECURITY DEFINER` y cualquier admin o mesero autenticado lo alcanza por REST con un cuerpo
+  a mano. Un solo pedido con total negativo desvía los ingresos de la pestaña Estadísticas, que
+  suma `pedidos.total` directamente.
+- **Fix propuesto (dos capas, la de BD primero):**
+  1. `ALTER TABLE detalle_pedidos ADD CONSTRAINT detalle_cantidad_chk CHECK (cantidad > 0)` y
+     `… precio_unitario >= 0`. Verificar antes que las 214 filas vivas los cumplen (lo hacen:
+     `detalles_invalidos = 0` en T11).
+  2. En `editar_pedido`, devolver `{success:false, error:'ITEM_INVALIDO'}` en vez de dejar que
+     reviente el CHECK — el resto de la función ya usa ese contrato.
+- **Regresión:** añadir los tres casos de T8b a `qa/sql/09-basura.sql`; el contador
+  `pedidos_total_negativo` de T11 es la red permanente.
+
+---
+
+### BUG-045 · 🟡 Media · 🔴 Abierto — el comodín `LIKE` del cliente nunca se escapa: término vacío o `%` devuelve el menú entero
+
+- **Componente:** BD → `buscar_menu()` (a), `buscar_menu_categoria()` (b), `historial_resumen()` (c).
+- **Síntoma (medido con `qa/sql/09-basura.sql · T2/T3/T10`, 2026-09-12):**
+
+  | Función | Entrada | Devuelve | Debería |
+  |---|---|---|---|
+  | `buscar_menu` | `''`, `'   '`, `'%'`, `'_'`, `'%_%'` | **5 productos con similitud 0.850** | 0 filas |
+  | `buscar_menu_categoria` | `''`, `'   '`, `'%'`, `'_'`, `null` | **130** (el menú disponible entero) | 0 filas |
+  | `historial_resumen` | `p_search='%'` o `'_'`, `p_search_digits='%'` | **116** (todos los pedidos) | 0 |
+
+- **Causa (leída de la definición viva):** las tres construyen el patrón concatenando el texto del
+  usuario sin escapar — `ILIKE '%' || termino || '%'`. Con el término vacío el patrón queda `'%%'`
+  y **todo** encaja; con `%` o `_` el cliente inyecta un comodín en el patrón. Raíz común:
+  `normalizar_texto(null)` devuelve **`''`, no `NULL`**, así que el guardarraíl obvio ("si es null,
+  no filtres") nunca se activa.
+- **Por qué (a) es el caso caro y no un detalle cosmético:** el prompt del Agente Menú usa la
+  similitud como criterio de confianza — *"≥0.5 → proceder sin confirmar"*. **0.850 está muy por
+  encima**, así que ante un término vacío el bot no pregunta: agrega al carrito el producto que le
+  tocó en el `LIMIT 5` (medido: *Limonada Tamarindo*, *Jugo Natural en Agua*…). Es el mismo daño
+  que **BUG-039** por otra puerta: allí empatan a 1.000 los productos que comparten una palabra,
+  aquí empata a 0.850 el menú completo. **Un fix de BUG-039 que no toque la CAPA A no cierra este.**
+- **Fix propuesto:** cortocircuitar antes de consultar —
+  `IF coalesce(nullif(btrim(termino_norm),''),'') = '' THEN RETURN; END IF;` — y escapar el
+  comodín en las tres: `replace(replace(t,'%','\%'),'_','\_')` con `ILIKE … ESCAPE '\'`.
+- **(c) no es una fuga:** `historial_resumen` **no** es `SECURITY DEFINER`, así que RLS sigue
+  filtrando las filas; lo único que miente es el contador del Historial cuando alguien teclea `%`.
+
+---
+
+### BUG-049 · 🟢 Baja · 🔴 Abierto — `reservas` acepta fechas pasadas y horas con el local cerrado
+
+- **Componente:** BD → tabla `reservas` (faltan CHECK) · escrito directo por el modal de reservas
+  del dashboard.
+- **Síntoma (medido con `qa/sql/09-basura.sql · T9`, 2026-09-12):** se aceptan sin rechistar una
+  reserva con `fecha = 2020-01-01` (cuatro años en el pasado), otra a las **04:00** y otra a las
+  **23:59**. Los CHECK que sí existen (`personas` 1-12, `origen`, `estado`) muerden correctamente.
+- **Causa:** la única validación de horario del sistema (12:00-21:00, máx 14 días, mín 5h de
+  anticipación) vive en el subworkflow n8n `OTQp2O8QDw1mMKOZ`, o sea **sólo protege el camino del
+  bot**. El dashboard hace `insert into reservas` directo y no pasa por ahí.
+- **Relación con BUG-044:** son el mismo hueco por los dos lados — allí el modal ofrece valores que
+  la BD rechaza; aquí la BD acepta valores que el negocio rechaza. Conviene arreglarlos juntos.
+- **Fix propuesto:** bajar la regla a la capa que comparten las tres — un CHECK de rango horario en
+  `reservas` y un trigger que rechace `fecha` anterior a hoy. Ojo antes: la ventana correcta
+  **no es 12:00-21:00** sino la que diga `info_negocio` (hoy el local cierra a 22:00/23:00, ver la
+  incoherencia abierta en la Fase 0 de `qa/RESULTADOS.md`); decidirla es prerrequisito del fix.
+
+---
+
+### BUG-046 · 🟢 Baja · 🔴 Abierto — un `limite` negativo revienta `buscar_menu` y `registrar_contexto_handoff`
+
+- **Componente:** BD → `buscar_menu()`, `registrar_contexto_handoff()`.
+- **Síntoma (medido, 2026-09-12):** `buscar_menu('pizza', 0.2, -5, true)` y
+  `registrar_contexto_handoff(tel, -5)` lanzan **2201W · "LIMIT must not be negative"**. El agente
+  recibe un error de Postgres, no algo que pueda contarle al cliente.
+- **Causa:** el parámetro se pasa crudo al `LIMIT`. `consultar_faq` hace exactamente lo que estas
+  dos no: `limit greatest(1, least(p_limite, 40))`.
+- **Fix propuesto:** copiar ese `greatest(1, least(...))`. Probabilidad baja (requiere que el LLM
+  invente un límite negativo), coste del fix ~1 línea por función.
+
+---
+
+### BUG-047 · 🟢 Baja · 🔴 Abierto — las RPC del bot rompen su propio contrato de error ante un dominio inválido
+
+- **Componente:** BD → `guardar_datos_pedido()`, `editar_pedido()`.
+- **Síntoma (medido, 2026-09-12):** estas funciones prometen `{ok:false, error:'CODIGO'}` y lo
+  cumplen para los casos previstos (`TELEFONO_REQUERIDO`, `SIN_ITEMS`, `PEDIDO_NO_ENCONTRADO`),
+  pero **escapan como excepción cruda** cuando el valor está fuera de dominio:
+
+  | Llamada | Devuelve |
+  |---|---|
+  | `guardar_datos_pedido(tel, p_tipo_pedido:='pizza')` | 💥 23514 `carritos_tipo_pedido_chk` |
+  | `guardar_datos_pedido(tel, p_metodo_pago:='nequi')` | 💥 23514 `carritos_metodo_pago_chk` |
+  | `editar_pedido(id, '{}'::jsonb)` | 💥 22023 *cannot get array length of a non-array* |
+  | `editar_pedido(id, '[{… sin cantidad}]')` | 💥 23502 |
+
+- **Por qué es baja pero no cero:** `'nequi'` no es basura teórica, es lo que dice medio Medellín.
+  Hoy el agente no recibe "ese método de pago no existe" sino un SQLSTATE, así que no puede
+  reconducir la conversación. El **dato no se corrompe** (el CHECK hace su trabajo) — lo que falla
+  es lo que el bot puede decir después.
+- **Fix propuesto:** validar el dominio al entrar y devolver `{ok:false, error:'METODO_PAGO_INVALIDO'}`
+  / `'TIPO_PEDIDO_INVALIDO'` / `'ITEMS_INVALIDOS'`, dejando el CHECK como última red.
 
 ---
 
@@ -191,6 +390,8 @@
   tiene **4**.
 - **Riesgo:** el bot puede listar una premium-especial como si fuera premium y cantar el precio de la
   categoría equivocada — choca con la regla global *"precios siempre exactos desde la BD"*.
+- **Misma línea de código que BUG-045b** (`ILIKE '%' || cat_norm || '%'`): aquí desborda a la
+  categoría vecina, allí al menú entero cuando `cat_norm` queda vacío. Un solo fix cierra los dos.
 
 ---
 

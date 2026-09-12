@@ -381,3 +381,39 @@ Y cuando pruebes ambos en la misma batería, di explícitamente cuál esperas en
 temporal creada por el superusuario (`permission denied for table …`). Haz los intentos mientras
 suplantas, `reset role`, y **lee el estado después** — no intentes acumular resultados dentro de
 la suplantación.
+
+---
+
+## 32. En una prueba de basura, el cero es el resultado más sospechoso que hay (2026-09-12)
+
+**Qué pasó.** Montando la batería de entrada basura (`qa/sql/09-basura.sql`) pasé ocho clases de
+texto hostil por `historial_resumen` — inyección, comodines, 10.000 caracteres, emoji — y las
+ocho devolvieron `total: 0`. Lo anoté como verde: *"falla cerrado, no devuelve nada que no deba"*.
+Era falso. El `WHERE` de la función es `fecha_pedido >= p_from AND fecha_pedido < p_to`, y yo
+estaba pasando `p_from`/`p_to` en NULL, así que **la cláusula entera era NULL y no había filas que
+contar**. El filtro de búsqueda que yo creía estar probando no llegó a evaluarse ni una vez.
+
+Con el rango puesto, los mismos casos: `p_search = '%'` → **116**, o sea todos los pedidos.
+El comodín no se escapa (BUG-045c). El verde tapaba justo el bug que la prueba buscaba.
+
+**Por qué es traicionero aquí y no en otras baterías.** En una batería de contrato, el resultado
+esperado es un valor concreto: si esperas 5.000 y sale 0, saltas. En una batería de basura el
+resultado esperado *es* "nada" — 0 filas, 0 coincidencias, respuesta vacía. Y "nada" es
+exactamente lo que devuelve también un test que no se ejecutó, un filtro que nunca se aplicó, o
+una consulta mal armada. **Los dos verdes son indistinguibles a simple vista.**
+
+**Lección.** Toda aserción de basura cuyo resultado esperado sea vacío necesita un **control
+positivo por el mismo camino**: una entrada legítima que *sí* devuelva filas, corrida con los
+mismos argumentos que el caso hostil salvo el que se está probando. Si el control también da 0, el
+0 del caso hostil no prueba nada. En `09-basura.sql` eso es el bloque `T10a`, y está antes de los
+casos de basura a propósito.
+
+Es la §31 en otra clave: allí un verde venía de preguntar por excepciones donde no las hay; aquí
+viene de leer un vacío sin comprobar que el camino que lo produjo era el que se quería probar.
+
+**Segunda trampa de la misma batería.** El orden en que muerden los guardarraíles esconde
+hallazgos. `detalle_pedidos.producto_id` tiene FK contra `menu`, así que un `producto_id` inventado
+revienta con 23503 **antes** de que se mire la cantidad. Tres casos de cantidad negativa parecían
+rechazados y en realidad nunca se probaron: al repetirlos con un `producto_id` real apareció
+BUG-048 (total negativo con `success: true`). Cuando pruebes un campo, deja **todos** los demás
+válidos — si no, estás midiendo el guardarraíl equivocado.

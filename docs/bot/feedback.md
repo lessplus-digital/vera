@@ -61,6 +61,26 @@ trigger_feedback (Schedule Trigger — cada 15 min)
                  └─ Vuelve a Split In Batches (siguiente lote)
 ```
 
+### 🔴 Estado real (verificado vía MCP el 2026-09-12) — este flujo NO funciona
+
+Lo de arriba describe el diseño. **En producción lleva roto desde el 2026-07-23** (último feedback
+registrado). Ver **BUG-050** y **BUG-051** en el bug-tracker y la batería `qa/sql/10-resenas.sql`.
+
+Tres correcciones al documento, además:
+
+1. **No es un workflow independiente.** La rama `trigger_feedback` vive **dentro** del workflow
+   principal `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`). No existe ningún workflow llamado
+   `TRIGGER JOB FEEDBACK`.
+2. **`feedback_pendiente` tiene PK `telefono`** — un solo slot por cliente. El nodo
+   `feedback_pendiente` hace `POST` sin upsert, así que con un cliente repetido devuelve
+   **409 / 23505** y, al ser `onError` = detener workflow, **mata la ejecución**.
+3. **El orden de la cadena hace el daño irreversible:** `Marcar pedido como solicitado` y
+   `Activar modo esperando_feedback` se ejecutan **antes** del POST que falla, y `Enviar WhatsApp`
+   **después**. Resultado: el pedido queda marcado como preguntado, el cliente atrapado en modo
+   feedback, y **la pregunta nunca sale**.
+
+El fix propuesto (upsert + reordenar + job de expiración de la cola) está detallado en BUG-050.
+
 ### Notas
 
 - **Idempotencia:** `feedback_solicitado = true` evita volver a pedir feedback del
@@ -159,6 +179,9 @@ evaluarse como expresión, y la variable del item es `$json`, no `json`):
 
 - **`Parsear calificación`** toma el **primer dígito 1–5** que aparezca en el texto
   (`/[1-5]/`). Un mensaje como "quiero 3 pizzas" se interpretaría como nota 3.
+  **Medido el 2026-09-12 (BUG-051): 6 de 11 mensajes realistas fabrican una nota que nadie dio.**
+  `10/10` → nota **1**; `me demoraron 45 minutos` → nota **4**, y con ella la ruta positiva, que
+  le agradece y le pide una reseña en Google **por una queja**.
 - **Credenciales:** este subworkflow usa la credencial de n8n `Supabase account`
   (no claves hardcodeadas) — patrón correcto, a diferencia de los nodos HTTP del job.
 

@@ -42,9 +42,18 @@ update clientes set modo = 'bot' where telefono = '573113298122';
 | `06-reservas.sql` | ✅ ejecutada | 12 | 10 | 2 (BUG-043, BUG-044) |
 | `07-housekeeping.sql` | ✅ ejecutada | 19 | **19** | **0** |
 | `08-roles-rls.sql` | ✅ ejecutada | 16 | **16** | **0** |
-| `09-basura.sql` | ⬜ pendiente | | | |
-| Capa B · 11 guiones WhatsApp | ⬜ bloqueada por Fase 0 | | | |
+| `09-basura.sql` | ✅ ejecutada | 71 | 64 | 7 (BUG-045…049) |
+| `10-resenas.sql` | ✅ ejecutada | 32 | 22 | 10 (BUG-050 🔴, BUG-051) |
+| Capa B · 11 guiones WhatsApp | 📝 escritos, 8/11 ejecutables | | | |
 | Capa C · Vitest | ⬜ pendiente | | | |
+
+**Capa A cerrada.** Las 10 baterías están ejecutadas: ~3.650 casos, 13 bugs encontrados
+(BUG-039…051), ninguno de ellos visible desde el código del dashboard.
+
+**Capa B lista para correr:** los 11 guiones están en [`guiones-bot.md`](guiones-bot.md) con los
+mensajes exactos, la respuesta esperada y el SQL de verificación. **G3, G7 y G9 siguen bloqueados**
+por las preguntas de negocio de la Fase 0 (horarios reales, ventana de reservas, precios de
+`motivos_reserva`, FAQ con una sola fila); los otros ocho se pueden ejecutar ya.
 
 ---
 
@@ -254,6 +263,118 @@ es público (`vera.plateo.cloud/menu_vera.pdf`), no es una fuga.
 > bloqueada por RLS **no lanza excepción** — afecta 0 filas y devuelve éxito. Un test que solo
 > pregunte "¿lanzó?" da verde aunque la política no exista. Para RLS se cuentan filas; para
 > triggers se atrapan códigos de error.
+
+---
+
+## 2026-09-12 · Batería 09 · Entrada basura — 64/71
+
+Las otras ocho baterías prueban cada función contra su contrato. Esta cruza las 15 clases de
+basura (inyección SQL, emoji, zero-width, RTL, 10.000 caracteres, comodines LIKE, NULL en todo,
+números fuera de rango, JSONB que no es un array) contra las 14 RPC. El llamador no es un cliente
+de API: es un LLM, y un LLM manda `''` con la misma facilidad que `null`.
+
+**Verde — lo que sí aguanta:**
+
+- **I3 · ninguna inyección ejecutó nada.** Contado, no supuesto: 116 pedidos · 214 detalles ·
+  35 clientes · 16 reservas · 133 menu · 20 tablas, idénticos a la línea base de la batería 08.
+  Las 4 inyecciones × 6 RPC de lectura se tratan como texto.
+- **El trigger `aplicar_tarifa_domicilio` pisa al llamador.** Un `costo_domicilio` de −5.000 o
+  `NaN` entra al INSERT de `pedidos` y queda guardado como **5.000**, la tarifa real de la zona;
+  el total sale exacto. Es el mismo patrón que `costo_motivo` en reservas: **el trigger ignora
+  lo que mande el LLM**. Es el mejor resultado de la batería.
+- Los CHECK de dominio muerden donde deben: `pedidos.estado`, `reservas.personas`,
+  `reservas.origen`, `carritos.tipo_pedido`/`metodo_pago`/`paso_flujo` → 23514.
+- El **FK `detalle_pedidos.producto_id → menu`** es el que impide materializar el producto que el
+  LLM inventa: 23503, no una línea fantasma.
+- `consultar_faq` es la única que sanea su `limite` (`greatest(1, least(p_limite, 40))`), y por eso
+  es la única que sobrevive a un límite negativo. **Ese es el patrón a copiar** en las otras dos.
+- Texto largo y unicode hostil (10k caracteres, emoji, zero-width, RTL, saltos de línea) se guarda
+  y se devuelve íntegro, sin truncar ni romper.
+
+**Rojo → BUG-045 (media), BUG-046 (baja), BUG-047 (baja), BUG-048 (media), BUG-049 (baja).**
+El que más pesa es **BUG-048**: `editar_pedido` acepta cantidad y precio negativos con
+`success:true` y deja el pedido con **total negativo** (medido: −25.000). El único guardarraíl es
+`Math.max(1, …)` en React — es decir, exactamente donde la regla #1 de `CLAUDE.md` dice que la
+frontera *no* está.
+
+> ⚠️ **Falso verde que mordió aquí y quedó documentado en `edge-cases.md` §32:**
+> `historial_resumen(null, null, …)` devuelve `total: 0` y lo leí como "fail-closed". No lo era: el
+> `WHERE` es `fecha_pedido >= p_from AND fecha_pedido < p_to`, así que con `p_from` NULL la
+> cláusula entera es NULL y no hay filas — el 0 no venía del filtro de búsqueda que yo creía estar
+> probando. Con el rango puesto, el mismo caso devuelve 116. **En una batería de basura el cero es
+> el resultado más sospechoso que hay**, porque es justo lo que devuelve un test que no llegó a
+> ejecutarse.
+
+> ⚠️ **Segunda trampa:** el FK contra `menu` dispara *antes* que cualquier validación de
+> cantidad/precio. Tres casos de cantidad negativa parecían "rechazados" y en realidad nunca se
+> habían probado — usaban un `producto_id` inventado. Con `PROD-019` real apareció BUG-048.
+
+---
+
+## 2026-09-12 · Batería 10 · Flujo de reseñas — 22/32 · **el flujo está roto en producción**
+
+Ninguna batería cubría el feedback. Al mirarlo apareció que **no es un riesgo teórico: lleva
+51 días sin funcionar.**
+
+**El síntoma, medido en vivo:**
+
+| Indicador | Valor |
+|---|---|
+| Último `feedback` registrado | **2026-07-23** (hace 51 días) |
+| Última fila nueva en `feedback_pendiente` | 2026-08-13 (hace 30 días) |
+| Pedidos entregados de los últimos 30 días **sin** `feedback_solicitado` | **0** — el sistema cree que preguntó |
+| Clientes atrapados en `modo='esperando_feedback'` | **7** |
+| Filas zombis en la cola | **9**, la más vieja de **108 días** |
+
+**La causa, leída de la ejecución real de n8n `14816` (2026-09-08), no inferida.** La cadena del
+job escribe **antes** de la operación que puede fallar:
+
+```
+Marcar feedback_solicitado ✓ → Activar modo esperando_feedback ✓ → POST feedback_pendiente 💥 → Enviar WhatsApp ✗
+```
+
+`feedback_pendiente` tiene **PK `telefono`** (un slot por cliente) y el nodo hace POST sin upsert.
+Con un cliente que ya tenía fila:
+
+```
+409 · {"code":"23505","details":"Key (telefono)=(573184821317) already exists."}
+```
+
+`retryOnFail` reintenta, vuelve a chocar y **mata la ejecución**. Los dos writes anteriores quedan
+confirmados y nadie los revierte: el pedido queda marcado como "ya preguntado" **para siempre**, el
+cliente queda en un modo donde el bot solo sabe decir *"responde 1–5"*, **y el WhatsApp nunca se
+envía**. Al cliente no se le preguntó nada. → **BUG-050 🔴**
+
+Y si ese cliente responde ahora, la nota se escribe contra el pedido de la fila zombi — CLI-039
+tiene 6 pedidos entregados marcados y **cero feedback**; su cola apunta a un pedido de mayo.
+
+**T5 valida el fix:** con `on conflict (telefono) do update` (que es lo que hace la cabecera
+`Prefer: resolution=merge-duplicates` de PostgREST) el upsert pasa, queda **1 fila apuntando al
+pedido nuevo** y el reloj se reinicia.
+
+**BUG-051, el segundo hallazgo:** `Parsear calificación` coge **el primer dígito 1–5 del texto**.
+De 11 mensajes realistas, **6 fabrican una calificación que nadie dio**:
+
+| El cliente escribe | Nota que queda registrada |
+|---|---|
+| `10/10` | **1** — da la nota máxima, se guarda la mínima |
+| `me demoraron 45 minutos` | **4** → ruta positiva: le agradece y le pide reseña en Google por una queja |
+| `quiero 2 pizzas` | **2** → ruta negativa: le pide explicaciones a quien solo quería comida |
+| `mi direccion es calle 52 # 3-21` | **5** |
+
+Las dos cosas se agravan entre sí: el cliente atrapado por BUG-050 **solo tiene esa puerta**, y su
+intento natural de pedir comida es justo la frase que el parser malinterpreta.
+
+**Verde:** los constraints de ambas tablas cumplen (`calificacion` 1–5, `UNIQUE(pedido_id)` impide
+dos reseñas del mismo pedido, los FK rechazan ids inventados, `estado` acotado) y la ventana 1–6 h
+del job es exacta en las cuatro fronteras.
+
+> ⚠️ **Dos trampas mordieron aquí, las dos ya documentadas y aun así reincidentes:**
+> (a) el `UNIQUE(pedido_id)` dispara **antes** que el FK de `cliente_id`, así que el caso del
+> cliente inventado medía el constraint equivocado — la misma familia que el FK de la batería 09;
+> hay que usar un pedido distinto. (b) leer `feedback_pendiente` en un subquery del mismo `SELECT`
+> que ejecuta el upsert devuelve el **snapshot previo**: el fix de T5 parecía no funcionar y
+> funcionaba. Es literalmente la trampa del encabezado de `04-flujo-pedido.sql`.
 
 ---
 

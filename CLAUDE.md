@@ -27,8 +27,8 @@ npm run preview   # serve the production build locally
 There is **no test runner, linter, or typecheck** configured. `package.json` has only
 `dev`/`build`/`preview`. Don't invent `npm test`/`npm run lint` — they don't exist.
 
-**But there IS a test suite** (2026-09-09), and it's not JavaScript: `qa/sql/` holds 8
-deterministic SQL batteries (~3.500 cases) covering the RPCs, triggers, constraints and RLS —
+**But there IS a test suite** (2026-09-09), and it's not JavaScript: `qa/sql/` holds 10
+deterministic SQL batteries (~3.650 cases) covering the RPCs, triggers, constraints and RLS —
 which is where most of the logic a customer can break actually lives. They run **through the
 Supabase MCP**, not through npm. Each file returns **only the rows that fail** (empty = green);
 the ones that write are wrapped in `BEGIN … ROLLBACK`. Before changing a function, a trigger or an
