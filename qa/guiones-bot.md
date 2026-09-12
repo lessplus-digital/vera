@@ -36,19 +36,22 @@ edge-case §27.
 
 ## ⛔ Bloqueo previo — Fase 0
 
-**G3, G7 y G9 no se pueden dar por buenos hasta que se respondan estas preguntas de negocio.**
-No es un detalle: si el horario de la BD es falso, el bot canta un horario falso *con total
-seguridad* y el guion saldría "verde" contra un dato equivocado.
+**Queda bloqueado solo G9.** G7 se desbloqueó el 2026-09-12 al confirmarse los horarios; G3 nunca
+dependió de ellos — solo de que el bot cuente bien lo que la RPC ya devuelve bien.
+
+El principio que justificaba el bloqueo sigue valiendo para lo que queda: **si el dato de la BD es
+falso, el guion sale "verde" contra un dato equivocado** y el bot canta la mentira con total
+seguridad. Por eso G9 no se corre hasta tener los precios reales de `motivos_reserva`.
 
 | # | Qué falta confirmar | Valor actual (verificado en vivo 2026-09-12) | Bloquea |
 |---|---|---|---|
-| 1 | **Horarios reales** | `horario_semana` = "Lunes a Viernes 11:00am - 10:00pm", `horario_finsemana` = "Sábados y Domingos 12:00pm - 11:00pm", `horario_feriados` = "Cerrado" — **idénticos a la plantilla de Don Carlo** | **G7** |
-| 2 | **Ventana de reservas** | el subworkflow valida **12:00–21:00**, pero el local cierra 22:00 / 23:00. Hoy no se puede reservar a una hora en que el local está abierto. Y el bloque dura 90 min: una reserva de 21:00 termina 22:30 | **G9**, y el fix de BUG-049 |
+| 1 | ~~Horarios reales~~ | ✅ **RESUELTO 2026-09-12** — Juan confirmó que los valores de la BD **son los reales**: L-V 11:00am-10:00pm, S-D 12:00pm-11:00pm, feriados cerrado. Coincidían con la plantilla por casualidad. **G7 desbloqueado** | — |
+| 2 | **Ventana de reservas** | ✅ **Decidido 2026-09-12**: la última reserva debe **caber completa antes del cierre**. Con bloques de 90 min → hasta **20:30** entre semana y **21:30** finde. Falta aplicarlo en el subworkflow `OTQp2O8QDw1mMKOZ` (hoy valida 12:00–21:00) y en el CHECK de BUG-049 | **G9** hasta aplicarlo |
 | 3 | **Precios de `motivos_reserva`** | los 6 siguen siendo el seed placeholder ($80.000 cumpleaños, $120.000 aniversario, $150.000 declaración, $90.000 grado, $200.000 empresarial) | **G9** |
-| 4 | **FAQ con una sola fila** | solo "¿Tienen parqueadero?". `consultar_faq` devuelve todas las activas y empareja el LLM → toda pregunta frecuente que no sea del parqueadero se responde improvisando | **G7** |
+| 4 | **FAQ con una sola fila** | solo "¿Tienen parqueadero?". `consultar_faq` devuelve todas las activas y empareja el LLM → toda pregunta frecuente que no sea del parqueadero se responde improvisando | — (**G7.6 mide justo eso**: cuánto improvisa) |
 | 5 | Typo en `descripcion_general` | "La pizza más **premiun**" | cosmético |
 
-Los otros ocho guiones (G1, G2, G4, G5, G6, G8, G10, G11) **se pueden correr ya**.
+Los otros diez guiones (G1, G2, G3, G4, G5, G6, G7, G8, G10, G11) **se pueden correr ya**.
 
 ---
 
@@ -99,7 +102,7 @@ select items, total, paso_flujo, updated_at from carritos where telefono = '5731
 
 ---
 
-## G3 · Cobertura: lo que la RPC acierta, el prompt lo puede contar mal — **BUG-033** ⛔ *(ver Fase 0 #1)*
+## G3 · Cobertura: lo que la RPC acierta, el prompt lo puede contar mal — **BUG-033**
 
 **Por qué existe:** la Capa A ya cerró esto en SQL (59 barrios, 295 variantes, 10 municipios de
 fuera con `cubierto:false`). Falta **solo** la mitad conversacional — y hace falta, porque la RPC
@@ -184,12 +187,12 @@ select rol, left(mensaje,60), fecha from mensajes_soporte
 
 ---
 
-## G7 · Soporte: datos del local y FAQ ⛔ *(ver Fase 0 #1 y #4)*
+## G7 · Soporte: datos del local y FAQ
 
 | # | Envía | El bot **debe** |
 |---|---|---|
 | 7.1 | `¿dónde quedan?` | Parque de Bello Calle 54 # 52-07 |
-| 7.2 | `¿a qué hora abren?` | **el horario REAL** — bloqueado hasta confirmarlo |
+| 7.2 | `¿a qué hora abren?` | L-V 11:00am-10:00pm · S-D 12:00pm-11:00pm (confirmados reales el 2026-09-12) |
 | 7.3 | `¿tienen parqueadero?` | la respuesta de la FAQ |
 | 7.4 | `¿aceptan tarjeta?` | Efectivo y transferencia. **No** debe inventar que aceptan tarjeta |
 | 7.5 | `¿me pasas los datos para transferir?` | Bancolombia ahorros 62500073329 |

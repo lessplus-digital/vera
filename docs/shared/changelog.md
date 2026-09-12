@@ -46,6 +46,15 @@ exactos, respuesta esperada y SQL de verificación, cada uno anclado a un riesgo
 G1 a BUG-039/045, G2 a BUG-032, G4 a BUG-038, G11 a BUG-050/051. **Ocho son ejecutables ya**;
 G3, G7 y G9 siguen bloqueados por las preguntas de negocio de la Fase 0.
 
+**Lo aplicado, y lo que falta.** En Supabase quedó **en vivo**: la limpieza (7 clientes devueltos a
+`modo='bot'`, 9 filas zombis borradas, las 19 reseñas reales intactas) y la pieza 3 del fix —
+`expirar_feedback_pendiente()` + cron diario, verificada contra una fila vencida y una fresca. En
+n8n quedaron **escritas pero sin publicar** las otras dos piezas (upsert con
+`Prefer: resolution=merge-duplicates` y el reorden de la cadena a *crear cola → enviar WhatsApp →
+marcar → cambiar modo*) y el parser estricto de BUG-051: el publish lo bloqueó el clasificador por
+ser un despliegue a producción. **Hasta que se pulse Publicar en n8n, el bot sigue corriendo las
+versiones viejas.**
+
 **Impacto:** `qa/sql/10-resenas.sql` y `qa/guiones-bot.md` (nuevos) · `qa/RESULTADOS.md` ·
 `docs/shared/bug-tracker.md` (BUG-050 🔴 y BUG-051; siguiente ID libre BUG-052) ·
 `docs/bot/feedback.md` (documentaba un workflow independiente que no existe: la rama vive dentro

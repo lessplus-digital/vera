@@ -20,7 +20,21 @@
 
 ## Abiertos
 
-### BUG-050 · 🔴 Alta · 🔴 Abierto — el job de feedback muere en el cliente repetido, deja al cliente mudo y nunca le pregunta nada
+### BUG-050 · 🔴 Alta · 🟠 En progreso — el job de feedback muere en el cliente repetido, deja al cliente mudo y nunca le pregunta nada
+
+> **Estado 2026-09-12:**
+> - ✅ **Limpieza aplicada en vivo** — 7 clientes devueltos a `modo='bot'`, 9 filas zombis
+>   borradas. Las 19 reseñas reales, intactas.
+> - ✅ **Pieza 3 aplicada en vivo** — función `expirar_feedback_pendiente()` + cron
+>   `expirar-feedback-pendiente` (diario 02:30 Colombia). Verificada: borra la fila vencida y
+>   devuelve el modo a `bot`, sin tocar la fresca ni un `modo='humano'` en curso.
+> - ⚠️ **Piezas 1 y 2 escritas pero SIN PUBLICAR.** El workflow `Pizzeria Vera` tiene el cambio
+>   guardado como borrador (`versionId` 09029f4e…) pero la versión **activa** sigue siendo
+>   6391e1ea…, que conserva el orden viejo y `Prefer: return=minimal`. **Producción sigue rota
+>   hasta que alguien pulse Publicar en n8n.**
+> - Riesgo mientras tanto: con la cola vacía, el primer pedido de cada cliente sí se procesa; el
+>   fallo vuelve cuando un cliente recibe **un segundo pedido dentro de las 48 h** de uno sin
+>   responder.
 
 - **Componente:** n8n → workflow `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`), rama `trigger_feedback`
   → nodo `feedback_pendiente` · tabla `feedback_pendiente` (PK = `telefono`).
@@ -79,7 +93,18 @@
 
 ---
 
-### BUG-051 · 🟡 Media · 🔴 Abierto — «quiero 2 pizzas» se registra como una calificación de 2 estrellas
+### BUG-051 · 🟡 Media · 🟠 En progreso — «quiero 2 pizzas» se registra como una calificación de 2 estrellas
+
+> **Estado 2026-09-12:** parser estricto escrito en `Sub — Feedback Pendiente` → `Parsear
+> calificación` (versión `cb2ff4b5…`), **pero SIN PUBLICAR**: la versión activa sigue siendo
+> `75e3fd55…` con el `texto.match(/[1-5]/)` viejo. Falta pulsar Publicar en n8n.
+>
+> El parser nuevo exige que el mensaje **sea** la nota: quita adornos (puntuación, emoji,
+> espacios) y lo que queda debe ser un dígito 1-5 o una palabra `uno`..`cinco`. Probado contra
+> los 19 casos de `qa/sql/10-resenas.sql · T8` + variantes: acepta `5`, `  4 `, `5!`, `5 ⭐`,
+> `cinco`, `CINCO`; rechaza los 6 que fabricaban notas (`10/10`, `quiero 2 pizzas`,
+> `me demoraron 45 minutos`, `mi direccion es calle 52 # 3-21`, …) mandándolos a
+> `Pedir nota de nuevo`, que es literalmente lo que ese mensaje pide.
 
 - **Componente:** n8n → `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`), nodo `Parsear calificación`.
 - **Síntoma:** el parser toma **el primer dígito 1–5 que aparezca en el texto** (`/[1-5]/`). Un
