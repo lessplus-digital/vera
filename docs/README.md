@@ -33,9 +33,10 @@ docs/
 Fuera de `docs/` hay una carpeta más que forma parte de la base de conocimiento:
 
 ```
-qa/                        ← campaña de pruebas (2026-09-09)
-├── RESULTADOS.md          ← estado por batería, hallazgos y el plan de las 3 capas
-└── sql/                   ← 8 baterías deterministas, ejecutables vía el MCP de Supabase
+qa/                        ← campaña de pruebas (2026-09-09 · última sesión 2026-09-12)
+├── RESULTADOS.md          ← EMPIEZA AQUÍ: estado por batería, hallazgos, y "Por dónde seguir"
+├── guiones-bot.md         ← Capa B: los 11 guiones de conversación por WhatsApp
+└── sql/                   ← 10 baterías deterministas, ejecutables vía el MCP de Supabase
 ```
 
 **Antes de tocar una función, un trigger o una RPC, mira si hay una batería que la cubra** y

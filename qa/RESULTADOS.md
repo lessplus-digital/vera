@@ -40,20 +40,74 @@ update clientes set modo = 'bot' where telefono = '573113298122';
 | `04-flujo-pedido.sql` | ✅ ejecutada | 12 | 11 | 1 (BUG-042) |
 | `05-totales.sql` | ✅ ejecutada | 14 | **14** | **0** |
 | `06-reservas.sql` | ✅ ejecutada | 12 | 10 | 2 (BUG-043, BUG-044) |
-| `07-housekeeping.sql` | ✅ ejecutada | 19 | **19** | **0** |
+| `07-housekeeping.sql` | ✅ ejecutada · re-ejecutada 2026-09-12 | 20 | 19 | 1 (BUG-052 🔴, caso T5b) |
 | `08-roles-rls.sql` | ✅ ejecutada | 16 | **16** | **0** |
 | `09-basura.sql` | ✅ ejecutada | 71 | 64 | 7 (BUG-045…049) |
 | `10-resenas.sql` | ✅ ejecutada | 32 | 22 | 10 (BUG-050 🔴, BUG-051) |
-| Capa B · 11 guiones WhatsApp | 📝 escritos, 8/11 ejecutables | | | |
+| Capa B · 11 guiones WhatsApp | 📝 escritos, **10/11 ejecutables** | | | |
 | Capa C · Vitest | ⬜ pendiente | | | |
 
-**Capa A cerrada.** Las 10 baterías están ejecutadas: ~3.650 casos, 13 bugs encontrados
-(BUG-039…051), ninguno de ellos visible desde el código del dashboard.
+**Capa A cerrada.** Las 10 baterías están ejecutadas: ~3.650 casos, **14 bugs encontrados
+(BUG-039…052)**, ninguno de ellos visible desde el código del dashboard.
 
 **Capa B lista para correr:** los 11 guiones están en [`guiones-bot.md`](guiones-bot.md) con los
-mensajes exactos, la respuesta esperada y el SQL de verificación. **G3, G7 y G9 siguen bloqueados**
-por las preguntas de negocio de la Fase 0 (horarios reales, ventana de reservas, precios de
-`motivos_reserva`, FAQ con una sola fila); los otros ocho se pueden ejecutar ya.
+mensajes exactos, la respuesta esperada y el SQL de verificación. **Solo G9 sigue bloqueado**
+(ventana de reservas por aplicar + precios placeholder de `motivos_reserva`); los otros diez se
+pueden ejecutar ya.
+
+---
+
+## ▶️ Por dónde seguir (última sesión: 2026-09-12)
+
+Orden sugerido para retomar. Lo de arriba es contexto; esto es la lista de trabajo.
+
+### 1. Dos acciones de 1 minuto que cierran cosas ya hechas
+
+- [ ] **Publicar `Sub — Feedback Pendiente`** (`xGsKJf2u3bFmL6mA`) en n8n → cierra **BUG-051**.
+      El parser estricto está escrito y probado en la versión `cb2ff4b5…`, pero la **activa** sigue
+      siendo `75e3fd55…` con el `texto.match(/[1-5]/)` viejo. En n8n cada workflow se publica por
+      separado y éste quedó fuera cuando se publicó `Pizzeria Vera`.
+      **Verificar después:** `activeVersionId` debe pasar a ser `cb2ff4b5…` — no basta con que el
+      editor diga que guardó.
+- [ ] **Correr el guion G11** (`guiones-bot.md`) → cierra la verificación de **BUG-050**, que está
+      en vivo pero solo comprobado en estructura, no en comportamiento.
+
+### 2. Dos decisiones de negocio que bloquean fixes
+
+- [ ] **BUG-052** — ¿el job de expiración **excluye** los pedidos con comprobante, o los **cancela
+      marcando el reembolso**? Sin esto no se puede escribir el fix. Y aparte: qué se hace con los
+      **$130.500** de PED-240 y PED-242, que son de un cliente real.
+- [ ] **Ventana de reservas** — ya se decidió *"la última reserva debe caber completa antes del
+      cierre"* (20:30 entre semana, 21:30 finde), pero **falta aplicarlo**: en el subworkflow
+      `OTQp2O8QDw1mMKOZ` (hoy valida 12:00-21:00) y como CHECK en `reservas` (BUG-049). Desbloquea
+      **G9** y con él la Capa B entera. Falta también confirmar los 6 precios de `motivos_reserva`,
+      que siguen siendo el seed placeholder.
+
+### 3. Trabajo de QA pendiente, por valor
+
+- [ ] **Correr los 10 guiones ejecutables de la Capa B.** Es lo único que prueba al modelo. Los más
+      cargados de riesgo ya medido: **G1** (BUG-039/045, el bot agrega el producto equivocado con
+      plena confianza), **G4** (BUG-038, no le da el número de pedido al cliente) y **G11**.
+- [ ] **Fixes de BD acotados y ya medidos**, listos para implementar: **BUG-048** (CHECK de
+      `cantidad > 0` y `precio_unitario >= 0` en `detalle_pedidos`), **BUG-045** (escapar el
+      comodín LIKE en `buscar_menu`, `buscar_menu_categoria` e `historial_resumen`), **BUG-046**
+      (`greatest(1, least(...))` en el `limite`), **BUG-039/040** (fixes simulados y medidos, en el
+      tracker).
+- [ ] **Capa C (Vitest)** sobre utils puras del dashboard — sin empezar.
+- [ ] **Barridos de estado vivo periódicos.** Encontraron los dos bugs 🔴 de esta semana (BUG-050 y
+      BUG-052) y ninguna batería los habría visto. Ver §33 de `edge-cases.md` para los tres filtros
+      obligatorios antes de convertir un hallazgo en bug.
+
+### 4. Lo que NO hay que volver a investigar
+
+Ya se descartó, con evidencia, en el barrido del 2026-09-12: los 88 domicilios sin barrio
+(pre-migración), las 37 transferencias sin comprobante (32 son semilla), los 8 pedidos sin líneas
+(BUG-007, cerrado), PED-235 con 31 días en `en_camino` (**dato de prueba manual de Juan**), los ids
+`RSV-M…` (dashboard viejo) y el webhook de estado disparando en cada UPDATE (`If1` sí filtra).
+
+> **Recordatorio para la próxima sesión:** de los 116 pedidos, **80 son semilla**, y además Juan
+> manipula filas a mano para probar. Ningún agregado sobre `pedidos` significa lo que parece hasta
+> partirlo por origen del dato.
 
 ---
 

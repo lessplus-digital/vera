@@ -165,7 +165,7 @@ significant change — don't re-derive what's already written:
 | **Database** (Supabase) | `docs/database/schema.md` |
 | **Dashboard** (this repo) | `docs/dashboard/components.md`, `docs/dashboard/design-system.md` |
 | Cross-layer | `docs/shared/bug-tracker.md` (open bugs), `docs/shared/backlog.md` (pending features), `docs/shared/changelog.md` (done), `docs/shared/edge-cases.md` (lessons) |
-| **Tests** | `qa/RESULTADOS.md` (status + findings), `qa/sql/` (the batteries themselves) |
+| **Tests** | `qa/RESULTADOS.md` (status, findings, **and "Por dónde seguir"** — start here), `qa/sql/` (the batteries), `qa/guiones-bot.md` (Layer B: the WhatsApp conversation scripts) |
 
 When you make a significant change, update the matching doc:
 
