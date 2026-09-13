@@ -417,3 +417,58 @@ revienta con 23503 **antes** de que se mire la cantidad. Tres casos de cantidad 
 rechazados y en realidad nunca se probaron: al repetirlos con un `producto_id` real apareció
 BUG-048 (total negativo con `success: true`). Cuando pruebes un campo, deja **todos** los demás
 válidos — si no, estás midiendo el guardarraíl equivocado.
+
+---
+
+## 33. Una batería en verde prueba que el código hace lo que dice, no que lo que dice sea correcto (2026-09-12)
+
+**Qué pasó.** `qa/sql/07-housekeeping.sql` cerró el job de expiración de pedidos con **19/19 en
+verde**: las tres fronteras temporales exactas, ningún pendiente viejo sin cerrar, y el texto de
+cancelación encajando en la plantilla de WhatsApp. Cerró BUG-028 con eso. Un mes después, un
+barrido del estado vivo encontró que ese mismo job había cancelado **dos pedidos que el cliente ya
+había pagado** —PED-242 y PED-240, $130.500 de un cliente habitual que transfirió 32 y 86 segundos
+después de pedir— mandándoles *"no alcanzamos a procesarlo antes del cierre del día"*.
+
+**Por qué el verde no lo vio.** Cada aserción de la batería estaba bien escrita y era cierta. La
+batería preguntaba *"¿cancela los pendientes de días anteriores y solo esos?"* y la respuesta era
+sí. La pregunta que nadie hizo es **"¿debería cancelar TODOS los pendientes de días anteriores?"**.
+El `WHERE` del job mira `estado` y `fecha_pedido`; no mira `comprobante_url`. Para el job, un
+pedido abandonado y uno pagado son la misma fila.
+
+Una batería se escribe **leyendo la función**, y por eso hereda sus puntos ciegos: si la función
+ignora una columna, el test tiende a ignorarla también. El verde certifica la implementación
+contra sí misma.
+
+**Lección.** Para todo proceso automático que **destruye o cierra** algo, la prueba no puede
+limitarse a las fronteras de su propio criterio. Hay que enumerar aparte **qué estados del mundo
+real caen dentro de ese criterio** y preguntarse uno por uno si merecen el mismo trato: aquí, un
+pendiente con comprobante, con pago confirmado, con reserva asociada. La pregunta útil no es *"¿el
+job hace lo que promete?"* sino *"¿a quién le hace daño cuando acierta?"*.
+
+Corolario práctico: los barridos de estado vivo encuentran lo que las baterías no pueden, porque
+parten del resultado y no del código. Conviene correrlos periódicamente, no solo al escribir tests.
+
+**Segunda trampa: los datos semilla envenenan todo barrido de estado vivo.** En el mismo barrido,
+"37 transferencias sin comprobante ya en cocina, $6.3M en juego" parecía un incendio. 32 de las 37
+eran filas semilla (`5730000000xx`), que nunca tuvieron comprobante porque nadie se lo puso. El
+número real era 5. Lo mismo con "88 domicilios sin barrio": todos anteriores a la migración de
+cobertura del 2026-08-18. **De 116 pedidos, 80 son ficción.** Cualquier consulta agregada sobre
+`pedidos` mezcla las dos cosas. Antes de dar por bueno un hallazgo de un barrido, hay que partirlo
+por origen del dato — y es justo el paso que la prisa se salta.
+
+**Y un tercer filtro que no se ve en los datos: lo que alguien tocó a mano para probar.** En el
+mismo barrido apareció PED-235 llevando *31 días en `en_camino`*, que parecía un pedido atascado.
+Es de "ZZ Cliente Prueba Roles", una fila creada para probar el modelo de permisos y dejada a
+medias a propósito. No hay columna que lo diga: la única forma de saberlo fue que Juan lo avisara.
+
+Por eso, antes de escribir un bug a partir de un barrido, hay que **buscar la huella de autoría en
+vez de suponerla**. En este caso funcionó: BUG-052 se sostuvo porque una cancelación manual desde
+el dashboard escribe *siempre* `estado_pago = 'rechazado'` y uno de los cinco motivos del
+`RejectModal`, mientras que PED-240 y PED-242 tenían `estado_pago = 'pendiente'` y el texto literal
+del `COALESCE` de la función — más el cron corriendo a las 16:00 UTC del día siguiente a cada uno.
+Tres huellas independientes apuntando al job. Sin ese contraste, el hallazgo habría sido una
+acusación a un proceso por algo que hizo una persona.
+
+Regla: **todo hallazgo de un barrido pasa por tres filtros antes de ser un bug** — ¿es dato
+semilla?, ¿es anterior a una migración?, ¿lo tocó alguien a mano? Y el tercero casi nunca se
+responde mirando la fila: se responde encontrando qué escribe cada camino posible.

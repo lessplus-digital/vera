@@ -12,7 +12,7 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-052**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-053**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
@@ -20,84 +20,62 @@
 
 ## Abiertos
 
-### BUG-050 · 🔴 Alta · 🟠 En progreso — el job de feedback muere en el cliente repetido, deja al cliente mudo y nunca le pregunta nada
+### BUG-052 · 🔴 Alta · 🔴 Abierto — el job de expiración cancela pedidos que el cliente YA PAGÓ, y nada marca el reembolso
 
-> **Estado 2026-09-12:**
-> - ✅ **Limpieza aplicada en vivo** — 7 clientes devueltos a `modo='bot'`, 9 filas zombis
->   borradas. Las 19 reseñas reales, intactas.
-> - ✅ **Pieza 3 aplicada en vivo** — función `expirar_feedback_pendiente()` + cron
->   `expirar-feedback-pendiente` (diario 02:30 Colombia). Verificada: borra la fila vencida y
->   devuelve el modo a `bot`, sin tocar la fresca ni un `modo='humano'` en curso.
-> - ⚠️ **Piezas 1 y 2 escritas pero SIN PUBLICAR.** El workflow `Pizzeria Vera` tiene el cambio
->   guardado como borrador (`versionId` 09029f4e…) pero la versión **activa** sigue siendo
->   6391e1ea…, que conserva el orden viejo y `Prefer: return=minimal`. **Producción sigue rota
->   hasta que alguien pulse Publicar en n8n.**
-> - Riesgo mientras tanto: con la cola vacía, el primer pedido de cada cliente sí se procesa; el
->   fallo vuelve cuando un cliente recibe **un segundo pedido dentro de las 48 h** de uno sin
->   responder.
+- **Componente:** BD → `expirar_pedidos_pendientes()` (cron `expirar-pedidos-pendientes`, diario 16:00 UTC).
+- **Síntoma medido (2026-09-12, datos reales, no semilla):** dos pedidos de un cliente habitual
+  (`573184821317`, 6 entregas a su nombre) con **comprobante de transferencia subido** fueron
+  cancelados por el job, y al cliente le llegó *"❌ Tu pedido fue cancelado, no alcanzamos a
+  procesarlo antes del cierre del día."*
 
-- **Componente:** n8n → workflow `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`), rama `trigger_feedback`
-  → nodo `feedback_pendiente` · tabla `feedback_pendiente` (PK = `telefono`).
-- **Síntoma medido (2026-09-12):** **no se registra un solo feedback desde el 2026-07-23** (51 días),
-  no entra una fila nueva en `feedback_pendiente` desde el 2026-08-13 (30 días), y sin embargo
-  **todos** los pedidos entregados de los últimos 30 días están marcados `feedback_solicitado = true`.
-  Es decir: el sistema cree que preguntó, y no preguntó.
-- **Causa (leída de la ejecución real `14816`, 2026-09-08, no inferida):** la cadena es
+  | Pedido | Creado | Comprobante subido | Δ | Total | Estado final | `estado_pago` |
+  |---|---|---|---|---|---|---|
+  | PED-242 | 2026-09-01 21:56:33 | 2026-09-01 21:57:05 | **+32 s** | $42.500 | cancelado | `pendiente` |
+  | PED-240 | 2026-08-21 17:39:23 | 2026-08-21 17:40:49 | **+86 s** | $88.000 | cancelado | `pendiente` |
 
-  ```
-  Code — Preparar payload → Marcar pedido como solicitado → Activar modo esperando_feedback
-                          → feedback_pendiente → Enviar WhatsApp → Wait1
-  ```
-
-  `feedback_pendiente` tiene **PK `telefono`**, o sea **un solo slot por cliente**, y el nodo hace
-  `POST` sin upsert. Con un cliente que ya tenía fila, Supabase responde:
-
-  ```
-  409 · {"code":"23505","details":"Key (telefono)=(573184821317) already exists."}
-  body: {"telefono":"573184821317","pedido_id":"PED-245","cliente_id":"CLI-039", ...}
-  ```
-
-  El nodo tiene `retryOnFail: true` y `onError` por defecto (**detener workflow**), así que
-  reintenta, vuelve a chocar y **mata la ejecución**: `lastNodeExecuted: feedback_pendiente`.
-- **Por qué el daño es permanente y silencioso:** los dos nodos que ya corrieron **escriben antes
-  de la caída** y nadie los revierte:
-  1. `feedback_solicitado = true` → ese pedido **nunca volverá a entrar** en la búsqueda del job.
-  2. `modo = 'esperando_feedback'` → el `Router de modo` manda **todo** lo que escriba ese cliente
-     al listener de feedback, no a los agentes de pedidos.
-
-  Y `Enviar WhatsApp` **nunca llega a ejecutarse**. Resultado neto: al cliente **no se le preguntó
-  nada**, pero queda en un modo donde el bot solo sabe responder *"responde 1–5"*, y su pedido
-  quedó marcado como ya preguntado para siempre.
-- **Alcance medido hoy:** **7 clientes en `modo = 'esperando_feedback'`** (CLI-039 desde el
-  2026-09-08) y **9 filas zombis** en `feedback_pendiente`, la más vieja de **108 días** (PED-100,
-  del 2026-05-28). Ese cliente acumula 6 pedidos entregados marcados como "preguntados"
-  (PED-114, 115, 223, 228, 229, 245) y **cero feedback**.
-- **Envenenamiento del dato, además:** si CLI-039 responde ahora "5", el subworkflow lee la fila
-  zombi y escribe la calificación contra **PED-100 (mayo)**, no contra el pedido que acaba de
-  recibir. La nota queda pegada al pedido equivocado.
-- **Nada expira esa cola:** `cron.job` tiene 3 jobs (`limpiar-carritos-abandonados`,
-  `limpiar_historial_chat_semanal`, `expirar-pedidos-pendientes`) y **ninguno toca
-  `feedback_pendiente`**. Las filas zombis no caducan solas.
-- **Fix propuesto (tres piezas, la 1 es la que desangra):**
-  1. **Upsert en vez de POST**: cabecera `Prefer: resolution=merge-duplicates` (y
-     `return=minimal`), para que un cliente repetido **reemplace** su fila en vez de chocar.
-     Alternativa de fondo: que la PK sea `(telefono, pedido_id)` y la cola admita varios.
-  2. **Reordenar la cadena**: crear la fila pendiente y **enviar el WhatsApp primero**, y solo
-     después marcar `feedback_solicitado` y cambiar el modo. Hoy se marca el efecto antes de la
-     causa, que es lo que hace el daño irreversible.
-  3. **Job de expiración** de `feedback_pendiente` (>48 h → borrar fila y devolver `modo='bot'`),
-     al lado de los otros tres en `cron.job`.
-- **Limpieza del estado actual (aparte del fix):** las 9 filas zombis y los 7 clientes atrapados
-  hay que devolverlos a `modo='bot'` a mano; el fix no los arregla retroactivamente.
-- **Regresión:** `qa/sql/10-resenas.sql` T4/T5 cubren el choque de PK y la cola vencida.
+  **$130.500** transferidos por un cliente real al que el bot le dijo que su pedido no se pudo
+  procesar. `motivo_rechazo` en ambos es exactamente el texto por defecto del job, así que la
+  autoría es del job, no de una cancelación manual.
+- **Causa:** el `WHERE` del job es solo `estado = 'pendiente' AND fecha_pedido < v_inicio_dia`.
+  **No mira `comprobante_url` ni `estado_pago`.** Para el job, un pedido pagado y uno abandonado
+  son indistinguibles.
+- **Lo que agrava el daño:** `estado_pago` se queda en `'pendiente'`, así que **ningún indicador
+  del dashboard señala que hay dinero recibido por un pedido cancelado**. La plata entró, el
+  pedido no existe, y nada lo cruza. Se descubre solo si el cliente reclama.
+- **No es un fallo de la interfaz:** `OrderCard.jsx:184` sí muestra el botón "Ver comprobante de
+  pago" y `:177` avisa cuando falta. El comprobante estaba visible; lo que falló es que el job
+  pasó por encima sin preguntar.
+- **Por qué las pruebas no lo vieron:** `qa/sql/07-housekeeping.sql` verificó del job las tres
+  fronteras temporales, que no queda ningún pendiente viejo sin cerrar y que el texto encaja en la
+  plantilla de WhatsApp — **19/19 verde**. Todo correcto, y aun así el bug estaba ahí: la batería
+  comprobó que el job *hace lo que dice*, nunca que *lo que dice sea lo correcto para un pedido
+  pagado*. Ver `edge-cases.md` §33.
+- **Fix propuesto — requiere decisión de negocio** (cuál de los dos):
+  1. **Excluir y escalar** (recomendado): el job no toca pedidos con `comprobante_url is not null`;
+     quedan visibles como pendientes para que alguien los resuelva a mano. Riesgo: si nadie los
+     mira, se quedan ahí para siempre.
+  2. **Cancelar pero marcar**: se cancelan igual, pero con `motivo_rechazo` propio
+     ("pago recibido, pendiente de reembolso"), un `estado_pago = 'rechazado'` que los haga
+     visibles, y un mensaje distinto al cliente que mencione la devolución — nunca el genérico
+     actual.
+- **Aparte del fix, hay dos casos vivos que atender:** PED-240 y PED-242 son dinero real de un
+  cliente real. Hay que decidir reembolso o reposición con él.
+- **Regresión:** añadir a `qa/sql/07-housekeeping.sql` el caso "pendiente viejo **con
+  comprobante**" — hoy se cancela; con el fix no debe, o debe salir con el motivo nuevo.
 
 ---
 
 ### BUG-051 · 🟡 Media · 🟠 En progreso — «quiero 2 pizzas» se registra como una calificación de 2 estrellas
 
-> **Estado 2026-09-12:** parser estricto escrito en `Sub — Feedback Pendiente` → `Parsear
-> calificación` (versión `cb2ff4b5…`), **pero SIN PUBLICAR**: la versión activa sigue siendo
-> `75e3fd55…` con el `texto.match(/[1-5]/)` viejo. Falta pulsar Publicar en n8n.
+> ⚠️ **Estado 2026-09-12, verificado tras el despliegue: sigue SIN PUBLICAR.** Se publicó
+> `Pizzeria Vera` (BUG-050 ya está en vivo) pero **no** este subworkflow: su `versionId` es
+> `cb2ff4b5…` y su `activeVersionId` sigue siendo `75e3fd55…`, cuyo `Parsear calificación` aún
+> contiene `texto.match(/[1-5]/)`. En n8n **cada workflow se publica por separado** y este quedó
+> fuera. Falta abrir `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`) y pulsar Publicar ahí.
+>
+> Mientras tanto el riesgo es menor que antes —ya casi nadie queda atrapado en modo feedback, que
+> era lo que multiplicaba este bug— pero un cliente que responda `10/10` sigue quedando con **1
+> estrella**.
 >
 > El parser nuevo exige que el mensaje **sea** la nota: quita adornos (puntuación, emoji,
 > espacios) y lo que queda debe ser un dígito 1-5 o una palabra `uno`..`cinco`. Probado contra
@@ -108,7 +86,8 @@
 
 - **Componente:** n8n → `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`), nodo `Parsear calificación`.
 - **Síntoma:** el parser toma **el primer dígito 1–5 que aparezca en el texto** (`/[1-5]/`). Un
-  cliente que está en `esperando_feedback` (ver BUG-050, hoy son 7) y escribe *"quiero 2 pizzas"*
+  cliente que está en `esperando_feedback` (antes de arreglar BUG-050 había 7 atrapados a la vez)
+  y escribe *"quiero 2 pizzas"*
   no recibe su pedido: recibe un **2 de calificación** guardado en `feedback`, y como 2 ≤ 3 el flujo
   lo manda por la **ruta negativa** y le pregunta *"¿qué pasó?"*.
 - **Por qué importa más de lo que parece:** el cliente atrapado en modo feedback **solo tiene esa
@@ -602,6 +581,20 @@
 ## En observación
 
 Fixes ya aplicados cuya verificación final depende de tráfico real.
+
+- **BUG-050 (flujo de reseñas) — las tres piezas EN VIVO desde el 2026-09-12.** Verificado tras el
+  despliegue: `Pizzeria Vera` tiene `versionId == activeVersionId` (`6c5b09b3…`), con la cadena
+  reordenada (*crear cola → enviar WhatsApp → marcar → cambiar modo*) y la cabecera
+  `Prefer: resolution=merge-duplicates,return=minimal` en la versión **activa**. Más el cron
+  `expirar-feedback-pendiente` y la limpieza de los 7 clientes atrapados.
+  **Qué falta confirmar con tráfico real** — nada de esto lo prueba el SQL:
+  1. Que a un cliente **con entrega reciente le LLEGUE** el WhatsApp pidiendo la nota. El síntoma
+     original era justamente que no llegaba: 51 días sin un solo feedback.
+  2. Que a un **cliente repetido** (segundo pedido entregado dentro de las 48 h) le llegue también,
+     y que su fila de cola apunte al pedido **nuevo** — ése era el caso que mataba la ejecución.
+  3. Que la nota quede guardada contra el pedido correcto y el modo vuelva a `'bot'`.
+  Es el guion **G11** de `qa/guiones-bot.md`. Hasta correrlo, el fix está verificado en estructura
+  pero no en comportamiento.
 
 > **Campaña de pruebas 2026-09-09** — la Capa A (SQL determinista, `qa/sql/`) cerró las
 > verificaciones que no necesitaban una conversación real. Lo que sigue aquí es lo que **solo** se

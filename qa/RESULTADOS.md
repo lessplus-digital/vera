@@ -378,6 +378,56 @@ del job es exacta en las cuatro fronteras.
 
 ---
 
+## 2026-09-12 · Barrido de estado vivo — **BUG-052** (el job cancela pedidos ya pagados)
+
+Tras lo de reseñas quedó claro que **los barridos de estado vivo encuentran lo que las baterías no
+pueden**, porque parten del resultado y no del código. Se pasó uno a todo el sistema: 8 chequeos de
+coherencia sobre pedidos, reservas, pagos y comprobantes, más los errores de n8n y las respuestas
+del webhook de estado.
+
+**El hallazgo: BUG-052 🔴.** `expirar_pedidos_pendientes()` canceló **dos pedidos que el cliente ya
+había pagado**, y le mandó el genérico *"no alcanzamos a procesarlo antes del cierre del día"*:
+
+| Pedido | Creado | Comprobante | Δ | Total |
+|---|---|---|---|---|
+| PED-242 | 2026-09-01 21:56:33 | 21:57:05 | **+32 s** | $42.500 |
+| PED-240 | 2026-08-21 17:39:23 | 17:40:49 | **+86 s** | $88.000 |
+
+$130.500 de un cliente habitual, con `estado_pago` en `'pendiente'` — nada en el dashboard señala
+que hay dinero recibido por un pedido que ya no existe. El `WHERE` del job solo mira `estado` y
+`fecha_pedido`; **no mira `comprobante_url`**.
+
+Lo que esto dice de la campaña: la batería 07 dejó ese job en **19/19 verde** — fronteras
+temporales exactas, ningún pendiente sin cerrar, texto encajando en la plantilla. Todo cierto, y el
+bug estaba ahí. La batería comprobó que el job *hace lo que dice*, no que *lo que dice sea correcto
+para un pedido pagado*. Queda como **edge-case §33** y como caso de regresión **T5b** en
+`07-housekeeping.sql` (verificado: hoy reproduce el fallo).
+
+**Lo que NO era un bug** — y costó tanto descartarlo como encontrar el bueno:
+
+| Señal del barrido | Veredicto |
+|---|---|
+| 88 domicilios sin `barrio` | Histórico: anteriores a la migración de cobertura del 2026-08-18. Desde septiembre, 4 de 4 con barrio y zona |
+| 37 transferencias sin comprobante ya en cocina, $6.3M | **32 son filas semilla.** El número real es 5 |
+| 8 pedidos sin líneas / total descuadrado | Los mismos 8 de BUG-007, ya cerrado: todos anteriores al 2026-07-01 |
+| PED-235 llevando 31 días `en_camino` | **Dato de prueba manual** ("ZZ Cliente Prueba Roles"). Lo avisó Juan; no hay columna que lo diga |
+| `RSV-M<timestamp>` junto a `RES-NNN` | El dashboard viejo generaba el id en el cliente; ya corregido |
+| Webhook `notificar-estado-pedido` disparando en cada UPDATE | `If1` filtra por `estado != old.estado`. Correcto |
+
+> ⚠️ **De ahí la regla nueva (§33): todo hallazgo de un barrido pasa por tres filtros antes de ser
+> un bug** — ¿es dato semilla?, ¿es anterior a una migración?, ¿lo tocó alguien a mano? De 116
+> pedidos, **80 son ficción**. El tercer filtro casi nunca se responde mirando la fila: hay que
+> encontrar qué escribe cada camino posible. BUG-052 sobrevivió justo por eso — una cancelación
+> manual escribe *siempre* `estado_pago='rechazado'` y uno de los cinco motivos del `RejectModal`,
+> y estos dos tenían `'pendiente'` y el texto literal del `COALESCE` de la función, con el cron
+> corriendo a las 16:00 UTC del día siguiente a cada uno. Tres huellas independientes.
+
+**Observación estructural (no es bug todavía):** solo hay job de expiración para `pendiente`. Un
+pedido abandonado en `en_cocina` o `en_camino` no lo cierra nadie. El único caso vivo hoy es el de
+prueba, así que no da para bug — pero conviene decidir si debe existir.
+
+---
+
 # Bugs nuevos
 
 ## BUG-039 · 🔴 Alta — `buscar_menu` empata todo en 1.000 y el bot agrega el producto equivocado

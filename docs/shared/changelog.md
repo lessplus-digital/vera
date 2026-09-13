@@ -14,6 +14,44 @@
 ```
 
 ---
+### 2026-09-12 — Barrido de estado vivo: el job de expiración cancela pedidos ya pagados (BUG-052)
+
+**Contexto:** encontrar lo de reseñas mirando el estado real —y no el código— dejó una conclusión:
+**los barridos de estado vivo encuentran lo que las baterías no pueden**, porque parten del
+resultado. Se pasó uno a todo el sistema (coherencia de pedidos, reservas, pagos y comprobantes +
+errores de n8n + respuestas del webhook de estado).
+
+**Hallazgo: BUG-052 🔴.** `expirar_pedidos_pendientes()` canceló **dos pedidos que el cliente ya
+había pagado** —PED-242 ($42.500, comprobante subido **32 s** después de pedir) y PED-240 ($88.000,
+**86 s**)— y les mandó el genérico *"no alcanzamos a procesarlo antes del cierre del día"*. Son
+$130.500 de un cliente habitual, y `estado_pago` quedó en `'pendiente'`, así que **nada en el
+dashboard señala que hay dinero recibido por un pedido que ya no existe**. El `WHERE` del job mira
+`estado` y `fecha_pedido`; no mira `comprobante_url`. El fix requiere decisión de negocio (excluir
+y escalar, o cancelar marcando el reembolso), así que queda propuesto, no aplicado.
+
+**Lo que dice de la campaña de pruebas.** La batería 07 había dejado ese job en **19/19 verde**:
+las tres fronteras temporales, ningún pendiente viejo sin cerrar, el texto encajando en la
+plantilla. Todo cierto — y el bug estaba ahí. Una batería se escribe leyendo la función, así que
+hereda sus puntos ciegos: si la función ignora una columna, el test tiende a ignorarla también. El
+verde certifica la implementación **contra sí misma**. → **edge-case §33**, y caso de regresión
+**T5b** en `07-housekeeping.sql`.
+
+**La otra mitad del trabajo fue descartar.** El barrido escupió seis señales más y **ninguna era un
+bug**: 88 domicilios sin barrio (anteriores a la migración del 2026-08-18), 37 transferencias sin
+comprobante por $6.3M (32 eran filas semilla; el real es 5), los 8 pedidos sin líneas de BUG-007,
+un pedido con 31 días en `en_camino` (dato de prueba manual, lo avisó Juan), los ids `RSV-M…` del
+dashboard viejo y el webhook de estado disparando en cada UPDATE (`If1` sí filtra). **De 116
+pedidos, 80 son ficción.** De ahí la regla de §33: todo hallazgo pasa por tres filtros —¿semilla?,
+¿pre-migración?, ¿tocado a mano?— y el tercero no se responde mirando la fila, sino averiguando qué
+escribe cada camino posible. BUG-052 sobrevivió por eso: una cancelación manual escribe *siempre*
+`estado_pago='rechazado'` y uno de los cinco motivos del `RejectModal`, mientras estos dos tenían
+`'pendiente'`, el texto literal del `COALESCE` de la función, y el cron corriendo a las 16:00 UTC
+del día siguiente a cada uno.
+
+**Impacto:** `docs/shared/bug-tracker.md` (BUG-052; siguiente ID libre BUG-053) ·
+`docs/shared/edge-cases.md` §33 · `qa/sql/07-housekeeping.sql` (T5b) · `qa/RESULTADOS.md`.
+
+---
 ### 2026-09-12 — El flujo de reseñas lleva 51 días roto (BUG-050) + batería 10 y guiones de la Capa B
 
 **Contexto:** ninguna batería cubría el feedback, así que se montó `qa/sql/10-resenas.sql`. Al
@@ -46,14 +84,20 @@ exactos, respuesta esperada y SQL de verificación, cada uno anclado a un riesgo
 G1 a BUG-039/045, G2 a BUG-032, G4 a BUG-038, G11 a BUG-050/051. **Ocho son ejecutables ya**;
 G3, G7 y G9 siguen bloqueados por las preguntas de negocio de la Fase 0.
 
-**Lo aplicado, y lo que falta.** En Supabase quedó **en vivo**: la limpieza (7 clientes devueltos a
-`modo='bot'`, 9 filas zombis borradas, las 19 reseñas reales intactas) y la pieza 3 del fix —
-`expirar_feedback_pendiente()` + cron diario, verificada contra una fila vencida y una fresca. En
-n8n quedaron **escritas pero sin publicar** las otras dos piezas (upsert con
-`Prefer: resolution=merge-duplicates` y el reorden de la cadena a *crear cola → enviar WhatsApp →
-marcar → cambiar modo*) y el parser estricto de BUG-051: el publish lo bloqueó el clasificador por
-ser un despliegue a producción. **Hasta que se pulse Publicar en n8n, el bot sigue corriendo las
-versiones viejas.**
+**BUG-050 cerrado — las tres piezas en vivo.** En Supabase: la limpieza (7 clientes devueltos a
+`modo='bot'`, 9 filas zombis borradas, las 19 reseñas reales intactas) y `expirar_feedback_pendiente()`
++ cron diario, verificado contra una fila vencida y una fresca. En n8n, `Pizzeria Vera` quedó
+publicado el mismo día con el **upsert** (`Prefer: resolution=merge-duplicates,return=minimal`) y la
+cadena reordenada a *crear cola → enviar WhatsApp → marcar solicitado → cambiar modo*, de forma que
+nada se marque antes de que la pregunta haya salido. Comprobado leyendo la versión **activa**
+(`versionId == activeVersionId == 6c5b09b3…`), no el borrador — que es justo el error que se cometió
+en el primer intento de despliegue.
+
+**BUG-051 sigue abierto por un despliegue parcial.** El parser estricto está escrito y probado
+(`cb2ff4b5…`) pero `Sub — Feedback Pendiente` **no se publicó**: su `activeVersionId` sigue siendo
+`75e3fd55…` con el `texto.match(/[1-5]/)` viejo. En n8n cada workflow se publica por separado y el
+subworkflow quedó fuera. Lección operativa: **un fix repartido entre varios workflows no está
+desplegado hasta que se verifica el `activeVersionId` de cada uno.**
 
 **Impacto:** `qa/sql/10-resenas.sql` y `qa/guiones-bot.md` (nuevos) · `qa/RESULTADOS.md` ·
 `docs/shared/bug-tracker.md` (BUG-050 🔴 y BUG-051; siguiente ID libre BUG-052) ·
