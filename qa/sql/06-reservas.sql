@@ -3,6 +3,7 @@
 -- Cubre: trigger_validar_cupo, trigger_costo_motivo, constraints de `reservas`
 -- Todo dentro de BEGIN…ROLLBACK. Usa fechas current_date+400 para no chocar
 -- con reservas reales. Estado 2026-09-09: 10/11 verde, T4 falla (BUG-043).
+-- Estado 2026-09-15: BUG-043 corregido → T4a/T4b ahora esperan el rechazo (+ control T4c).
 --
 -- NOTA: `consultar_disponibilidad` (horario 12:00-21:00, máx 14 días, mín 5h de
 -- anticipación) vive en el subworkflow n8n `OTQp2O8QDw1mMKOZ`, NO en la BD.
@@ -59,20 +60,37 @@ exception when others then
 end $$;
 
 -- ---------------------------------------------------------------------------
--- T4 · SOBREVENTA (BUG-043). El trigger es BEFORE **INSERT** solamente, así que
---      cualquier UPDATE se salta el control de cupo. Dos vías reales:
+-- T4 · SOBREVENTA (BUG-043, ✅ corregido 2026-09-15). Hasta entonces el trigger era
+--      BEFORE **INSERT** solamente y cualquier UPDATE se saltaba el control de
+--      cupo. Dos vías reales:
 --        a) reactivar una reserva cancelada (estado → 'confirmada')
 --        b) mover una reserva a una franja ya llena (cambiar fecha/hora)
---      Ambas dejan 9 confirmadas con 8 mesas.
+--      Ambas dejaban 9 confirmadas con 8 mesas. Ahora el UPDATE revienta con
+--      P0001 'No hay mesas…' y el conteo se queda en 8.
+--      ⚠️ El UPDATE va dentro de un bloque con EXCEPTION: sin él, el rechazo
+--      aborta la transacción y todo lo que sigue da "current transaction is aborted".
 -- ---------------------------------------------------------------------------
 update reservas set estado = 'cancelada'
  where reserva_id = (select min(reserva_id) from reservas where fecha = (select d from t) and hora = '19:00');
 insert into reservas(telefono, nombre_cliente, fecha, hora, personas, estado, origen)
  values ('573000000901', 'QA-relleno', (select d from t), '19:00', 2, 'confirmada', 'whatsapp');
-update reservas set estado = 'confirmada' where estado = 'cancelada' and fecha = (select d from t);
+do $$ begin
+  update reservas set estado = 'confirmada' where estado = 'cancelada' and fecha = (select d from t);
+  insert into qa_out(paso, esperado, valor) values ('T4a reactivar cancelada rechaza', 'cupo_agotado', 'NO REVENTO');
+exception when others then
+  insert into qa_out(paso, esperado, valor) values ('T4a reactivar cancelada rechaza', 'cupo_agotado',
+    case when sqlerrm like 'No hay mesas%' then 'cupo_agotado' else sqlstate || ' ' || left(sqlerrm, 60) end);
+end $$;
 insert into qa_out(paso, esperado, valor)
-select 'T4a reactivar cancelada', '8', count(*)::text
+select 'T4a confirmadas a las 19:00', '8', count(*)::text
 from reservas where fecha = (select d from t) and hora = '19:00' and estado = 'confirmada';
+-- Control: lo que NO cambia la ocupación debe seguir pasando en una franja llena.
+do $$ begin
+  update reservas set nombre_cliente = 'QA renombrado' where nombre_cliente = 'QA-relleno';
+  insert into qa_out(paso, esperado, valor) values ('T4c renombrar en franja llena', 'entra', 'entra');
+exception when others then
+  insert into qa_out(paso, esperado, valor) values ('T4c renombrar en franja llena', 'entra', 'REVENTO ' || left(sqlerrm, 50));
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- T5/T6 · costo_motivo lo escribe el trigger, NUNCA el LLM ni el dashboard.
@@ -140,9 +158,15 @@ end $$;
 insert into reservas(reserva_id, telefono, nombre_cliente, fecha, hora, personas, estado, origen)
  values ('RES-MOVE', '573000000902', 'QA a mover', (select d from t2), '13:00', 4, 'confirmada', 'whatsapp');
 
-update reservas set hora = '19:00' where reserva_id = 'RES-MOVE';   -- un admin la mueve
+create temp table r4b(res text) on commit drop;
+do $$ begin
+  update reservas set hora = '19:00' where reserva_id = 'RES-MOVE';   -- un admin la mueve
+  insert into r4b values ('NO REVENTO');
+exception when others then
+  insert into r4b values (case when sqlerrm like 'No hay mesas%' then 'cupo_agotado' else sqlstate end);
+end $$;
 
-select 'T4b mover a franja llena' as caso, '8 (tope)' as esperado,
-       count(*)::text || ' confirmadas a las 19:00' as valor
+select 'T4b mover a franja llena' as caso, 'cupo_agotado · 8 confirmadas a las 19:00' as esperado,
+       (select res from r4b) || ' · ' || count(*)::text || ' confirmadas a las 19:00' as valor
 from reservas where fecha = (select d from t2) and hora = '19:00' and estado = 'confirmada';
 rollback;

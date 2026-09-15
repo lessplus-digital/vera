@@ -40,6 +40,8 @@ export default function ReservationModal({ initial, onSave, onClose }) {
     && selectedClient
     && fecha && hora
     && Number(personas) >= 1
+    // `reservas_personas_check` es 1–12; más de 12 se escala a un humano (igual que el bot).
+    && Number(personas) <= 12
 
   async function handleSave() {
     if (!canSave) return
@@ -153,7 +155,7 @@ export default function ReservationModal({ initial, onSave, onClose }) {
               <input
                 type="number"
                 min={1}
-                max={30}
+                max={12}
                 value={personas}
                 onChange={e => setPersonas(e.target.value)}
               />

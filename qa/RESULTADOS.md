@@ -38,20 +38,22 @@ update clientes set modo = 'bot' where telefono = '573113298122';
 Ningún bug cerrado se reabrió y ningún verde pasó a rojo por un cambio del sistema. Sí aparecieron
 **3 fallos de los propios tests** (corregidos) y **2 bugs nuevos** (BUG-053, BUG-054). Detalle abajo.
 
-| Batería | Estado | Casos | Verde | Rojo |
-|---|---|---|---|---|
-| `01-cobertura.sql` | ✅ re-ejecutada 2026-09-15 | 236 + 46 | 211 + 44 | 25 (BUG-040) + 2 (`navara` BUG-040, eco BUG-054) |
-| `02-menu.sql` | ✅ re-ejecutada 2026-09-15 | 133 × 3 + 39 | — | BUG-039 (crítico), BUG-041 — sin cambios |
-| `03-mitad-y-mitad.sql` | ✅ re-ejecutada 2026-09-15 | 3024 + 23 | **3047** | **0** |
-| `04-flujo-pedido.sql` | ✅ re-ejecutada 2026-09-15 | 12 | 11 | 1 (BUG-042) |
-| `05-totales.sql` | ✅ re-ejecutada 2026-09-15 | 14 | **14** | **0** |
-| `06-reservas.sql` | ✅ re-ejecutada 2026-09-15 | 12 | 10 | 2 (BUG-043, BUG-044) |
-| `07-housekeeping.sql` | ✅ re-ejecutada 2026-09-15 | 20 | 19 | 1 (BUG-052 🔴, T5b) · T7 era falso verde, corregido |
-| `08-roles-rls.sql` | ✅ re-ejecutada 2026-09-15 | 16 | **16** | **0** |
-| `09-basura.sql` | ✅ re-ejecutada 2026-09-15 | 71 | 64 | 7 (BUG-045…049) |
-| `10-resenas.sql` | ✅ re-ejecutada 2026-09-15 · +T9 (3 casos) | 35 | T1 · T2 · T5 · T9 verdes; **T6/T7 pasan a verde** | T4 (repro BUG-050, simulación) · T8 (BUG-051, sin publicar) — no re-ejecutados, no dependen de la BD |
-| Capa B · 11 guiones WhatsApp | 📝 escritos, **10/11 ejecutables** | | | |
-| Capa C · Vitest | ⬜ pendiente | | | |
+**Tanda de fixes 2026-09-15 (tarde):** 16 bugs cerrados; el estado de abajo ya los incluye.
+
+| Batería | Tras los fixes del 2026-09-15 (tarde) | Rojo que queda |
+|---|---|---|
+| `01-cobertura.sql` | T1–T6 verdes · barrido de erratas **236/236** (antes 211) | — |
+| `02-menu.sql` | T1 **0/133** fuera del top-5 (antes 26) · T3 · T4 · **T5** · T6 · **T7** verdes · +**T8** banda de confianza | T2 = 19 empates legítimos (ver comentario) |
+| `03-mitad-y-mitad.sql` | **3047/3047** | — |
+| `04-flujo-pedido.sql` | 12/12 · +T4b (otra zona con precio viejo) | — |
+| `05-totales.sql` | **14/14** (re-ejecutada tras tocar `editar_pedido`) | — |
+| `06-reservas.sql` | **12/12** tal cual está el fichero · T4a/T4b ahora esperan el **rechazo** · +T4c control | — |
+| `07-housekeeping.sql` | 19/20 | T5b = BUG-052 🔴 (decisión de negocio) |
+| `08-roles-rls.sql` | **16/16** | — |
+| `09-basura.sql` | nulos, inyección, límites y JSONB basura sin SQLSTATE crudo; 0 filas corruptas | T9 = BUG-049 (decisión de horario) |
+| `10-resenas.sql` | T1 · T2 · T5 · T6 · T7 · T9 verdes | T8 es réplica documental; el parser real está en vivo → G11 |
+| Capa B · 11 guiones WhatsApp | G1 corrido (antes del fix de menú) · G2 bloqueado por BUG-055 | G9 bloqueado (horario) |
+| Capa C · Vitest | ⬜ pendiente | |
 
 **Capa A cerrada.** Las 10 baterías están ejecutadas: ~3.650 casos, **14 bugs encontrados
 (BUG-039…052)**, ninguno de ellos visible desde el código del dashboard.
@@ -67,21 +69,21 @@ pueden ejecutar ya.
 
 Orden sugerido para retomar. Lo de arriba es contexto; esto es la lista de trabajo.
 
-### 1. Acciones cortas que cierran cosas ya hechas
+### 1. Hecho el 2026-09-15 (tarde) — lo que queda es verificarlo hablando con el bot
 
-- [ ] **Limpiar el buffer antes de cualquier guion** —
-      `delete from n8n_mensajes_pendientes where telefono = '573113298122';` Hay una fila huérfana
-      del 2026-09-12 (BUG-053) que se pegaría delante del primer mensaje de G1. Ya está en el reset.
-- [ ] **Publicar `Sub — Feedback Pendiente`** (`xGsKJf2u3bFmL6mA`) en n8n → cierra **BUG-051**.
-      **Re-verificado 2026-09-15: sigue sin publicar** (`activeVersionId` = `75e3fd55…`, el parser
-      viejo). El estricto está en la versión `cb2ff4b5…`.
-      **Verificar después:** `activeVersionId` debe pasar a ser `cb2ff4b5…` — no basta con que el
-      editor diga que guardó.
-- [ ] **Correr el guion G11** (`guiones-bot.md`) → cierra la verificación de **BUG-050**. Las
-      métricas vivas ya están en verde (cola 0, atrapados 0, job de expiración 3/3 OK), pero **no
-      entra un pedido desde el 2026-09-08**: nadie ha pasado todavía por el camino arreglado.
-- [ ] **BUG-053 · `retryOnFail`** en los 4 nodos del buffer (a mano, por BUG-030) y/o cron de
-      limpieza de `n8n_mensajes_pendientes` (vía BD, no depende de BUG-030).
+**16 bugs corregidos** (detalle en `changelog.md`): BUG-038 · 039 · 040 · 041 · 042 · 043 · 044 ·
+045 · 046 · 047 · 048 · 051 · 053 · 054 + BUG-027. Siguen abiertos solo los que esperan una decisión
+(052, 049) y **BUG-055**, que registró Juan durante G2.
+
+- [x] ~~Limpiar el buffer~~ → cron `limpiar-mensajes-pendientes` cada 5 min + `retryOnFail` en n8n.
+- [x] ~~Publicar `Sub — Feedback Pendiente`~~ → publicado (`cb2ff4b5…`, luego `61dd4711…` con BUG-027).
+- [ ] **Re-correr G1.** El G1 de esta tarde corrió **antes** del cambio de `buscar_menu` (se aplicó
+      después de *"si asi"*). Ahora `pan de ajo`, `una copa de vino`, `lasaña de pollo` y
+      `una limonada de mango` deben entrar sin preguntar; `pizza de pollo` debería ofrecer opciones.
+- [ ] **G4** (número de pedido, BUG-038) y **G11** (reseñas, BUG-050/051/027) — ambos desbloqueados
+      en la tool; G4 depende además de BUG-055.
+- [x] ~~Re-ejecutar `06-reservas.sql` tal cual~~ → 12/12 tras el mantenimiento de Supabase (21:45 UTC).
+      Y de paso: `02 · T8` 20/20, `01 · T4` 7/7, job `limpiar-mensajes-pendientes` 9/9 corridas OK.
 
 ### 2. Dos decisiones de negocio que bloquean fixes
 
@@ -96,14 +98,15 @@ Orden sugerido para retomar. Lo de arriba es contexto; esto es la lista de traba
 
 ### 3. Trabajo de QA pendiente, por valor
 
+- [ ] **G2 bloqueado por BUG-055 (intento 2026-09-15, `573184821317`).** No llegó ni al paso 1: el
+      agente de menú preguntó *"¿te la dejo?"* sin crear el carrito, y el *"sí"* cayó en soporte,
+      que inventó el carrito y dejó la conversación sin salida. **Fix de prompts publicado el
+      2026-09-15 (`f1f5f902`)**: ahora hay que repetir la conversación tras un reset. Tras
+      `Estofada y familiar`, `carritos` debe tener PROD-038, y el `Si` no debe ir a `soporte`.
+      Luego G2 completo y G4.
 - [ ] **Correr los 10 guiones ejecutables de la Capa B.** Es lo único que prueba al modelo. Los más
       cargados de riesgo ya medido: **G1** (BUG-039/045, el bot agrega el producto equivocado con
       plena confianza), **G4** (BUG-038, no le da el número de pedido al cliente) y **G11**.
-- [ ] **Fixes de BD acotados y ya medidos**, listos para implementar: **BUG-048** (CHECK de
-      `cantidad > 0` y `precio_unitario >= 0` en `detalle_pedidos`), **BUG-045** (escapar el
-      comodín LIKE en `buscar_menu`, `buscar_menu_categoria` e `historial_resumen`), **BUG-046**
-      (`greatest(1, least(...))` en el `limite`), **BUG-039/040** (fixes simulados y medidos, en el
-      tracker).
 - [ ] **Capa C (Vitest)** sobre utils puras del dashboard — sin empezar.
 - [ ] **Barridos de estado vivo periódicos.** Encontraron los dos bugs 🔴 de esta semana (BUG-050 y
       BUG-052) y ninguna batería los habría visto. Ver §33 de `edge-cases.md` para los tres filtros
@@ -178,8 +181,8 @@ secciones hay que pasarlas por bloques.
 - **BUG-054 🟢** — `consultar_cobertura` devuelve el texto del cliente sin truncar (300 chars) y lo
   incrusta dentro de su instrucción al LLM. Lo marcaba el criterio de `01 · T5`, que el 09-09 se
   registró como verde.
-- **BUG-040 ampliado:** `navara` → *Navarra* tampoco sugiere nada. La deleción no afecta solo a
-  nombres de ≤5 letras.
+- ~~**BUG-040 ampliado:** `navara` → *Navarra* tampoco sugiere nada.~~ **Retirado esa misma tarde:
+  Navarra no es un barrio de la tabla**; el test esperaba algo imposible (edge-case §34).
 
 **Observación para la Capa B (no es bug todavía):** en la conversación del 12-09, a *"asi está
 bien"* el bot respondió *"te lo preparo para domicilio entonces 🛵"* sin que en ese tramo el

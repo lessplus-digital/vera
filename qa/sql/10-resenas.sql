@@ -259,6 +259,11 @@ select
 --        "mi direccion es calle 52 # 3-21" → 5
 --      El parser estricto acierta los 11: las notas reales pasan, el resto cae en
 --      "responde solo 1–5". Nota: "cinco" y "👍" no los resuelve ninguno de los dos.
+--      2026-09-15: el parser estricto ESTÁ EN VIVO (`Sub — Feedback Pendiente`,
+--      activeVersionId `cb2ff4b5…` y luego `61dd4711…`). El de producción es más
+--      amplio que este regex: quita puntuación/emoji y acepta también uno..cinco
+--      ("cinco" sí pasa). Esta réplica SQL queda como documentación del bug; la
+--      prueba del parser real es G11.
 -- ---------------------------------------------------------------------------
 select mensaje,
        substring(mensaje from '[1-5]')                    as parser_actual,

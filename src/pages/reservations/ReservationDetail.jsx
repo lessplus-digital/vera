@@ -8,7 +8,10 @@ export default function ReservationDetail({ reservation: r, legible, onDelete, o
   const [deleting,   setDeleting]   = useState(false)
   const { reasons } = useReservationReasons()
 
-  const estado = RESERVATION_STATES.find(s => s.value === r.estado) || RESERVATION_STATES[0]
+  // Fallback neutro: antes caía en RESERVATION_STATES[0] y pintaba "Pendiente" en ámbar,
+  // un estado que la BD no admite (BUG-044).
+  const estado = RESERVATION_STATES.find(s => s.value === r.estado)
+    || { value: r.estado, label: r.estado || 'Sin estado', short: r.estado || 'Sin estado', cls: '' }
 
   // El nombre visible sale de `motivos_reserva`; el costo se lee de la RESERVA
   // (es la foto del precio al crearla), no del catálogo, que pudo haber cambiado.

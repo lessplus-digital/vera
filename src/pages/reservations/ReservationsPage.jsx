@@ -169,7 +169,7 @@ export default function ReservationsPage() {
             longPressThreshold={150}
             onSelectSlot={handleSelectSlot}
             onSelectEvent={event => setDetail(event.resource)}
-            eventPropGetter={event => ({ className: `rsv-ev ${event.resource?.estado || 'pendiente'}` })}
+            eventPropGetter={event => ({ className: `rsv-ev ${event.resource?.estado || ''}` })}
             min={new Date(0, 0, 0, 10, 0)}
             max={new Date(0, 0, 0, 23, 30)}
             scrollToTime={new Date(0, 0, 0, 17, 0)}

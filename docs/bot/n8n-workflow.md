@@ -155,6 +155,15 @@ Switch (texto)  ·  y también Switch (tap de botón) → Normalizar tap
       └─ TRUE → Continuar ↓
 ```
 
+> **Reintentos (2026-09-15, BUG-053).** `Crear mensaje pendiente`, `Obtener ultimo mensaje`,
+> `Obtener ultimo mensaje1` y `Eliminar temp de pendientes` tienen `retryOnFail` (3 intentos, 1 s).
+> Antes un 504 pasajero de Supabase mataba el turno: el cliente no recibía respuesta y su fila
+> quedaba en el buffer, y como `Combinar mensajes` une **todos** los pendientes sin mirar la edad,
+> reaparecía pegada a su siguiente mensaje días después (se reprodujo en vivo). Red de seguridad en
+> BD: cron `limpiar-mensajes-pendientes` borra filas de más de 5 min. Contrapartida aceptada: si el
+> INSERT se escribió pero se perdió la respuesta, el reintento duplica la fila y el mensaje llega
+> repetido — preferible a perderlo.
+
 ### Fase 2: Combinar mensajes acumulados
 
 ```

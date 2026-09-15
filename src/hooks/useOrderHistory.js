@@ -42,10 +42,11 @@ export function useOrderHistory({
     [preset, customFrom, customTo]
   )
 
-  // Resuelve el término de búsqueda: saneo (comas/paréntesis/porcentajes romperían
-  // el or()) + lookup de nombres → cliente_id (clientes es chica; solo al buscar).
+  // Resuelve el término de búsqueda: saneo (comas/paréntesis romperían el or();
+  // `%`, `_` y `*` son comodines de LIKE/PostgREST y harían que "_" encaje con todo
+  // — BUG-045c) + lookup de nombres → cliente_id (clientes es chica; solo al buscar).
   const buildSearchParts = useCallback(async () => {
-    const q = search.trim().replace(/[,()%]/g, '')
+    const q = search.trim().replace(/[,()%_*\\]/g, '')
     const qDigits = q.replace(/[^\d]/g, '')
     let clienteIds = []
     if (q) {

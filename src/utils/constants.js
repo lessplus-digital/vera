@@ -92,8 +92,9 @@ export const ORDER_STATES = {
   cancelado: { label: 'Cancelado',     cls: 'red'    },
 }
 
+// Solo los dos que acepta `reservas_estado_check` (BUG-044: 'pendiente' se ofrecía y la
+// BD lo rechazaba). Si algún día se añade un estado, va primero en el CHECK.
 export const RESERVATION_STATES = [
-  { value: 'pendiente',  label: 'Pendiente',  short: 'Pendiente',  cls: 'amber' },
   { value: 'confirmada', label: 'Confirmada', short: 'Confirmada', cls: 'green' },
   { value: 'cancelada',  label: 'Cancelada',  short: 'Cancelada',  cls: 'red'   },
 ]

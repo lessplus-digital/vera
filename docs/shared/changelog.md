@@ -14,6 +14,54 @@
 ```
 
 ---
+### 2026-09-15 — Tanda de fixes de la campaña de pruebas: 16 bugs (BUG-038…054)
+
+**Contexto:** con la Capa A cerrada y re-ejecutada en verde de regresión, quedaban 16 bugs abiertos
+medidos por las baterías que no necesitaban decisión de negocio. Se aplicaron mientras Juan corría
+los guiones de WhatsApp, así que el orden fue: primero lo que no cambia lo que dice el bot, luego
+lo que sí, **después** de que terminara G1.
+
+**BD (9 migraciones, cada una verificada con su batería, dentro de `BEGIN … ROLLBACK`):**
+
+| Bug | Qué se hizo | Verificación |
+|---|---|---|
+| **039** 🔴 | `buscar_menu` puntúa por **cobertura** de la búsqueda (promedio sobre todas sus palabras, al cuadrado) en vez de `GREATEST` de cualquier palabra; stopwords fuera; singular; desempate por nombre exacto | `02 · T1` 26→**0** fuera del top-5 y 133/133 primeros por su nombre; `T7` 5→**0**; productos distintos a ≥0.5 en 20 frases reales: 15–27 → 0–5 |
+| **045a/b** | `buscar_menu` corta si no hay letra ni dígito y usa `strpos` (el texto del cliente nunca es patrón); `buscar_menu_categoria` corta en vacío | `''`, `%`, `_`: 5 filas a 0.85 / 130 filas → **0** |
+| **041** | `buscar_menu_categoria`: si la categoría existe tal cual, solo esa; si no, prefijo por palabra | `02 · T5` sin fallos: `pizza_premium` 36→24, `adicion` 14→4 |
+| **045c** | `historial_resumen` escapa `\ % _`; `useOrderHistory` también quita `_ * \` | `%`/`_` 116→0 con la lista y el contador de acuerdo |
+| **046** | `LIMIT greatest(1, least(…))` en `buscar_menu` y `registrar_contexto_handoff` | `-5` ya no revienta |
+| **048** | CHECK `cantidad > 0` y `precio_unitario >= 0 AND <> 'NaN'` en `detalle_pedidos`; `editar_pedido` valida cada ítem **antes** del DELETE → `ITEM_INVALIDO` | `−3 × 10.000`: total −25.000 → rechazado con el pedido intacto; `05` 14/14 |
+| **047** | `editar_pedido`: forma no-array → `ITEMS_INVALIDOS`; `guardar_datos_pedido` traduce el CHECK a `TIPO_PEDIDO_INVALIDO` / `METODO_PAGO_INVALIDO` / `PASO_FLUJO_INVALIDO` / `COSTO_DOMICILIO_INVALIDO`; CHECK de envío ≥0 en `carritos` | los 14 SQLSTATE crudos de `09 · T5/T8` → códigos |
+| **043** | `trigger_validar_cupo` en `INSERT OR UPDATE OF fecha, hora, estado` | reactivar y mover a franja llena → rechazados; renombrar y cancelar siguen pasando |
+| **042** | el trigger de carritos contrasta con la tarifa real del barrio nuevo (`resolver_barrio`) en vez de inferir por el precio | misma zona recotizada → se respeta; otra zona con precio viejo → se sigue invalidando |
+| **040** | segunda pasada de sugerencias (anagrama, ±1 letra) solo si trigram no sugiere | erratas sin sugerencia 47/295 → **0**, cada una a un único barrio; 0 sugerencias para los municipios de fuera |
+| **054** | eco del barrio acotado a 60 chars | 300 → 60 |
+| **053** | cron `limpiar-mensajes-pendientes` cada 5 min | job activo |
+
+**n8n (3 publicaciones, `activeVersionId` verificado en cada una):** `Sub — Feedback Pendiente`
+(BUG-051 parser estricto, que llevaba escrito desde el 12-09 sin publicar; y BUG-027 saltos de
+línea reales), `Sub — Crear_orden_completa` (BUG-038 devuelve `pedido_id`, sin `total` a propósito)
+y `Pizzeria Vera` (BUG-053 `retryOnFail` ×3 en los 4 nodos del buffer, vía MCP nativo).
+
+**Dashboard:** BUG-044 — `RESERVATION_STATES` sin `pendiente`, fallback neutro en
+`ReservationDetail`, `personas` máx 12 en el modal. BUG-045c en `useOrderHistory`. `npm run build` OK.
+
+**Correcciones a lo documentado:** el caso `navara → Navarra` de `01 · T4` esperaba un barrio que
+**no existe** en la tabla (y se anotó por error como ampliación de BUG-040). Y el caso de
+`09 · T10a` `p_search_digits='%'` con `p_search` NULL no prueba nada: sin término no hay filtro.
+
+**Pendiente:** BUG-052 y BUG-049 (decisiones de negocio). La verificación conversacional de 038,
+039, 051, 027 y 053 queda en "En observación".
+
+**Impacto:** migraciones `bug048_bug047_validacion_items_y_dominio`, `bug046_handoff_limite_acotado`,
+`bug043_cupo_tambien_en_update`, `bug053_limpiar_buffer_mensajes_pendientes`,
+`bug039_bug041_bug045ab_bug046_busqueda_menu`, `bug040_bug054_cobertura_erratas_y_eco`,
+`bug045c_historial_resumen_escapa_comodin`, `bug042_recotizar_misma_tarifa` · n8n `xGsKJf2u3bFmL6mA`,
+`a94A2VKvFC0ugkD3`, `8LI3J7PLi35zf4EJ` · `src/hooks/useOrderHistory.js`, `src/utils/constants.js`,
+`src/pages/reservations/{ReservationModal,ReservationDetail,ReservationsPage}.jsx` ·
+`docs/shared/bug-tracker.md`, `docs/database/schema.md`, `qa/`.
+
+---
 ### 2026-09-12 — Barrido de estado vivo: el job de expiración cancela pedidos ya pagados (BUG-052)
 
 **Contexto:** encontrar lo de reseñas mirando el estado real —y no el código— dejó una conclusión:

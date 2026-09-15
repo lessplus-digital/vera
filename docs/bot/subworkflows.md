@@ -46,14 +46,13 @@ en que el producto realmente no está en la carta.
 
 - **ID:** `a94A2VKvFC0ugkD3` · **Tool:** `crear_orden_completa` (Agente Pedidos)
 - **Inputs:** `cliente_id`, `telefono`, `filtro` (JSON string del pedido)
-- **Salida:** `{ ok: true, mensaje }` o `{ ok: false, error, message }`
+- **Salida:** `{ ok: true, pedido_id, mensaje }` o `{ ok: false, error, message }`
 
-> ⚠️ **La salida NO incluye `pedido_id` ni `total` (BUG-038).** El nodo `Respuesta de salida` está
-> hardcodeado y descarta el `pedidoId` que `Code in JavaScript` ya calculó. El PASO 5 del prompt
-> del Agente Pedidos pide `#[pedido_id]`, así que el cliente recibe *"Tu número de pedido es #no
-> disponible en este momento"*. Al arreglarlo, **no** devuelvas el `total` de esa fila: en ese
-> punto todavía no incluye el domicilio (`trigger_actualizar_total` es AFTER INSERT sobre
-> `detalle_pedidos`). Ver [`../shared/bug-tracker.md`](../shared/bug-tracker.md).
+> **`pedido_id` en la salida desde 2026-09-15 (BUG-038).** Antes `Respuesta de salida` devolvía un
+> texto fijo y el cliente recibía *"Tu número de pedido es #no disponible en este momento"*.
+> **La salida sigue sin `total` a propósito:** en ese punto la fila del INSERT todavía no incluye
+> el domicilio (`trigger_actualizar_total` es AFTER INSERT sobre `detalle_pedidos`). Si algún día
+> se devuelve, hay que releer el pedido después del INSERT de detalles.
 
 ```
 When Executed (cliente_id, telefono, filtro)
@@ -70,7 +69,7 @@ When Executed (cliente_id, telefono, filtro)
        └─ Code in JavaScript — arma `detalles` con el pedido_id devuelto (+ `mitades`)
        └─ INSERT detalle_pedidos (HTTP POST — credencial `Supabase account`)
        └─ Limpiar carrito (HTTP DELETE /carritos?telefono — credencial `Supabase account`)
-       └─ Respuesta de salida → { ok: true }
+       └─ Respuesta de salida → { ok: true, pedido_id }
 ```
 
 **Notas:**

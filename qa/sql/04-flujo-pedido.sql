@@ -78,6 +78,8 @@ from carritos where telefono = '573000000777';
 -- T4 · Cambio de barrio RECOTIZANDO la misma tarifa (dos barrios de la misma
 --      zona). La recotización debería respetarse. Estado 2026-09-09: FALLA
 --      (BUG-042) — se descarta y `faltantes` vuelve a pedir 'cobertura'.
+--      Estado 2026-09-15: ✅ verde. El trigger contrasta con la tarifa real del
+--      barrio nuevo en vez de inferir "recotizó" de que el precio cambie.
 -- ---------------------------------------------------------------------------
 insert into carritos(telefono, items, total, tipo_pedido, barrio, costo_domicilio, cobertura_ok)
  values ('573000000778', '[{"x":1}]'::jsonb, 1000, 'domicilio', 'Centro', 5000, true);
@@ -88,6 +90,20 @@ select 'T4 Centro->La Milagrosa recotizando 5000', 'barrio=La Milagrosa costo=50
        'barrio='||coalesce(barrio,'∅')||' costo='||coalesce(costo_domicilio::text,'∅')||
        ' cobertura='||coalesce(cobertura_ok::text,'∅')
 from carritos where telefono = '573000000778';
+
+-- T4b · La otra cara del fix de BUG-042, la que la regla vieja protegía: pasar a
+--       un barrio de OTRA zona repitiendo el precio viejo (el agente no recotizó
+--       y reenvía lo que tenía). Centro $5.000 → Niquía $7.500 con costo=5000 y
+--       cobertura_ok=true → debe invalidarse, o se cobraría la tarifa equivocada.
+insert into carritos(telefono, items, total, tipo_pedido, barrio, costo_domicilio, cobertura_ok)
+ values ('573000000781', '[{"x":1}]'::jsonb, 1000, 'domicilio', 'Centro', 5000, true);
+select guardar_datos_pedido('573000000781', p_barrio := 'Niquía',
+                            p_costo_domicilio := 5000, p_cobertura_ok := true);
+insert into qa_out(paso, esperado, valor)
+select 'T4b Centro->Niquía con precio VIEJO', 'barrio=Niquía costo=∅ cobertura=∅',
+       'barrio='||coalesce(barrio,'∅')||' costo='||coalesce(costo_domicilio::text,'∅')||
+       ' cobertura='||coalesce(cobertura_ok::text,'∅')
+from carritos where telefono = '573000000781';
 
 -- ---------------------------------------------------------------------------
 -- T5 · Cambio de barrio SIN recotizar debe invalidar la tarifa anterior.

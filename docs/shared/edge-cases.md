@@ -503,3 +503,31 @@ id libre `unique_pedido_cliente_minuto` → ✓.
 `sugerencias->0->>'nombre'` sobre un array de strings. Ninguno ocultaba un bug, pero un rojo
 permanente que "ya se sabe que es falso" entrena a ignorar el rojo, y ese es el paso previo a
 dejar pasar uno de verdad. Un test que falla por su cuenta se arregla, no se lee a ojo.
+
+**Y un tercero, del mismo día, que yo mismo convertí en bug:** `01 · T4` esperaba que `navara`
+sugiriera *Navarra*, falló, y lo anoté como "BUG-040 ampliado: la deleción no afecta solo a nombres
+cortos". **Navarra no es un barrio de la tabla.** El esperado de un test también es un dato, y hay
+que comprobar que existe antes de culpar a la función. `T4` ahora lo verifica en su propio `CASE`.
+
+---
+
+## 35. Una puntuación de confianza hecha con `GREATEST` miente justo cuando más importa (2026-09-15)
+
+**Qué pasó.** `buscar_menu` combinaba varias señales con `GREATEST(...)`, y una de ellas era "mejor
+parecido palabra a palabra". Bastaba **una** palabra compartida para dar 1.000: `pan de ajo` puntuaba
+1.000 contra *Limonada de Vino Tinto* por el "de". El prompt del Agente Menú usa esa cifra como
+confianza (≥0.5 → agregar sin preguntar), así que el bot agregaba con total seguridad un producto
+que el cliente no pidió. BUG-039.
+
+**Por qué engaña.** Cada señal por separado es razonable, y los tests de "¿aparece el producto
+correcto en el top-5?" pasaban el 80%. Pero el consumidor no era un top-5: `Sub — Consultar_menu`
+pedía 30 filas y las **agrupaba por categoría**, así que el orden se perdía y el agente decidía por
+el número. Un ranking que acierta el primero puede seguir mintiendo en la puntuación de los demás.
+
+**Lección.** Si una puntuación se usa como **umbral de decisión** —no solo para ordenar—, tiene que
+medir **cuánto de la pregunta explica cada respuesta**, no si comparte algo con ella. Aquí: promedio
+del mejor parecido de *cada* palabra de la búsqueda, al cuadrado. `arepa de pollo` contra *Pollo
+Champiñon* cubre la mitad → 0.25, que cae en "confirmar". Y el test que importa no es el ranking,
+es la banda: **¿algún producto que no pidieron llega a ≥0.5?** (`02-menu.sql · T8`). Antes de tocar
+una función que alimenta a un LLM, lee cómo la consume el workflow: el mismo arreglo diseñado para
+un top-5 no habría servido.

@@ -10,6 +10,8 @@
 -- ---------------------------------------------------------------------------
 -- T1 · Todo producto debe aparecer en el top-5 al buscarlo por su nombre exacto.
 --      Estado 2026-09-09: FALLAN 26 de 133 (ver BUG-039).
+--      Estado 2026-09-15 (tras el fix de BUG-039): 0 de 133, y los 133 salen PRIMEROS
+--      por su nombre.
 -- ---------------------------------------------------------------------------
 select 'T1' as test, m.producto_id, m.nombre, m.categoria, m.variante,
        (select round(max(b.similitud)::numeric, 3)
@@ -27,6 +29,9 @@ order by m.categoria, m.nombre;
 --      de 1 competidor de nombre distinto. El prompt dice "similitud >= 0.5 →
 --      proceder sin confirmar": con empates a 1.000 el bot agrega lo que no es.
 --      Estado 2026-09-09: 125 de 133 empatan (ver BUG-039).
+--      Estado 2026-09-15: 19. No es 0 ni debe serlo: son nombres contenidos en otros
+--      ("Hawaiana" ⊂ "Premium Hawaiana", "Pollo" en varias) donde la ambigüedad es
+--      real. Lo que importa es T8: que lo NO pedido no llegue a ≥0.5.
 -- ---------------------------------------------------------------------------
 select 'T2' as test, m.producto_id, m.nombre,
        (select count(*) from buscar_menu(m.nombre, 0.2, 200, false) b
@@ -106,3 +111,36 @@ from (values ('quiero una hawaiana', 'Hawaiana'),
      ) as t(frase, esperado)
 where not coalesce((select bool_or(b.nombre = t.esperado)
                       from buscar_menu(t.frase, 0.2, 5, false) b), false);
+
+-- ---------------------------------------------------------------------------
+-- T8 · La BANDA DE CONFIANZA, que es lo que de verdad decide qué hace el bot.
+--      `Sub — Consultar_menu` pide 30 resultados y los AGRUPA POR CATEGORÍA, así
+--      que el orden global se pierde: el agente decide mirando `similitud`, y su
+--      prompt dice ≥0.5 → agregar sin confirmar. Verde = el producto pedido sale
+--      primero y a ≥0.5, y ningún producto que NO comparta todas las palabras de
+--      la búsqueda llega a ≥0.5.
+--      Añadido 2026-09-15 con el fix de BUG-039. Antes del fix, la columna
+--      `otros_ge_05` daba 15–27 en casi todas estas frases (bastaba un "de").
+--      Tras el fix: 0–5, y los que quedan comparten todas las palabras.
+-- ---------------------------------------------------------------------------
+with frases(frase, esperado) as (values
+  ('quiero una hawaiana', 'Hawaiana'), ('dame 2 patatas mexicanas', 'Patatas Mexicanas'),
+  ('una limonada de mango', 'Limonada Mango Biche'), ('lasaña de pollo', 'Lasaña Pollo'),
+  ('pan de ajo', 'Pan de Ajo'), ('la vera pizza', 'Vera Pizza'),
+  ('algo con pepperoni', 'Pepperoni'), ('una copa de vino', 'Copa de Vino'),
+  ('arepa de pollo', 'Arepa Rellena Pollo'), ('pizza hawaiana grande', 'Hawaiana'),
+  ('hawaina', 'Hawaiana'), ('pepperonni', 'Pepperoni'), ('limonada de coco', 'Limonada Coco'),
+  ('calzone hawaiano', 'Calzone Hawaiano'), ('canelones de pollo', 'Canelones Pollo'),
+  ('hamburguesa de pollo', 'Hamburguesa Artesanal Pollo'), ('papas mexicanas', 'Patatas Mexicanas'),
+  ('aguila light', 'Aguila Light'), ('coca cola', 'Coca Cola 400ml'), ('menu la vera', 'Menu La Vera')
+)
+select 'T8' as test, f.frase, f.esperado,
+       (select b.nombre from buscar_menu(f.frase, 0.2, 1, false) b) as primero,
+       (select round(max(b.similitud)::numeric, 2) from buscar_menu(f.frase, 0.2, 30, false) b
+         where b.nombre = f.esperado) as sim_esperado,
+       (select string_agg(distinct b.nombre, ' | ') from buscar_menu(f.frase, 0.2, 30, false) b
+         where b.nombre <> f.esperado and b.similitud >= 0.5) as otros_ge_05
+from frases f
+where (select b.nombre from buscar_menu(f.frase, 0.2, 1, false) b) is distinct from f.esperado
+   or coalesce((select max(b.similitud) from buscar_menu(f.frase, 0.2, 30, false) b
+                 where b.nombre = f.esperado), 0) < 0.5;

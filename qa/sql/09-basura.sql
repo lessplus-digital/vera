@@ -3,6 +3,21 @@
 -- Oráculo: no hay uno. Esta batería no comprueba que las RPC acierten, sino que
 -- **no se rompan ni escriban porquería** cuando les llega algo que nadie diseñó.
 -- Estado 2026-09-12: 71 casos · 64 verde · 7 rojo (BUG-045, BUG-046, BUG-047).
+-- Estado 2026-09-15: corregidos BUG-045/046/047/048. Sigue rojo solo BUG-049 (T9,
+--   reservas en el pasado / con el local cerrado: espera la decisión de horario).
+--   Lo que cambia al leer los resultados de abajo:
+--     T1  buscar_menu_categoria(null,null) → 0 (antes 130)
+--     T2  '', '   ', '%_%' → 0 en menu y categoria (antes 5 / 130)
+--     T3  sin filas (antes 5 productos a 0.850)
+--     T4  limite -5 → 1 fila en buscar_menu y 0 en handoff, sin 2201W
+--     T5  'pizza' / 'bitcoin' / 'nequi' → {ok:false, TIPO_PEDIDO_INVALIDO | METODO_PAGO_INVALIDO};
+--         envío -5000 / NaN → COSTO_DOMICILIO_INVALIDO (1e30 sigue entrando: sin tope)
+--     T6  PASO_FLUJO_INVALIDO en vez de 23514
+--     T8a ITEMS_INVALIDOS / ITEM_INVALIDO en vez de 22023 / 23502 / 22P02 / 22003 / 23503 / 23505
+--     T8b cantidad 0 / -3 y precio -10000 → success:false y el total se queda en 35000.00
+--     T10a `digitos_comodin` (p_search NULL + p_search_digits '%') no filtra NADA por diseño:
+--         sin término de búsqueda no hay filtro. El caso que prueba el escape es
+--         p_search='x', p_search_digits='%' → 0.
 --
 -- Las otras ocho baterías prueban cada función contra SU contrato. Esta las cruza
 -- todas contra las mismas 15 clases de basura, porque el que llama a estas
@@ -418,9 +433,9 @@ with r as (select timestamp '2020-01-01' as f, timestamp '2030-01-01' as t)
 select (historial_resumen(f,t,null,null,null,null,null)->>'total')   as sin_filtro      -- 116
      , (historial_resumen(f,t,null,null,'PED-0',null,null)->>'total') as busca_ped0      -- 4
      , (historial_resumen(f,t,null,null,'zzzz',null,null)->>'total')  as busca_nada      -- 0
-     , (historial_resumen(f,t,null,null,'%',null,null)->>'total')     as comodin_pct     -- 116 ← BUG-045c
-     , (historial_resumen(f,t,null,null,'_',null,null)->>'total')     as comodin_guion   -- 116 ← BUG-045c
-     , (historial_resumen(f,t,null,null,null,'%',null)->>'total')     as digitos_comodin -- 116 ← BUG-045c
+     , (historial_resumen(f,t,null,null,'%',null,null)->>'total')     as comodin_pct     -- 0 (116 antes de BUG-045c)
+     , (historial_resumen(f,t,null,null,'_',null,null)->>'total')     as comodin_guion   -- 0 (116 antes de BUG-045c)
+     , (historial_resumen(f,t,null,null,'x','%',null)->>'total')      as digitos_comodin -- 0 (con p_search NULL no hay filtro: ver encabezado)
      , (historial_resumen(t,f,null,null,null,null,null)->>'total')    as rango_invertido -- 0
 from r;
 
