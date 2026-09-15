@@ -76,14 +76,23 @@ from pedidos where pedido_id = 'PED-QH1';
 -- T7 · Anti doble-confirmación: `unique_pedido_cliente_minuto` sobre
 --      (telefono, date_trunc('minute', fecha_pedido)). Es lo que salva de que
 --      un cliente impaciente diga "confirmo" dos veces y le entren 2 pedidos.
+--
+-- ⚠️ FALSO VERDE (detectado 2026-09-15): cuando se añadió T5b (2026-09-12) se usó
+--    el id `PED-QH5`, que T7 ya usaba. Desde entonces T7 rebotaba por `pedidos_pkey`
+--    y no por el constraint que dice probar — verde por la razón equivocada. Ahora
+--    usa un id libre y exige el NOMBRE del constraint, no solo "que lance".
+--    Verificado 2026-09-15: con id limpio rebota por `unique_pedido_cliente_minuto`.
 -- ---------------------------------------------------------------------------
 do $$ begin
   insert into pedidos(pedido_id, cliente_id, telefono, tipo_pedido, metodo_pago, estado, fecha_pedido)
-  values ('PED-QH5', 'CLI-QAH', '573000000903', 'recoger', 'Efectivo', 'pendiente',
+  values ('PED-QH7', 'CLI-QAH', '573000000903', 'recoger', 'Efectivo', 'pendiente',
           (select fecha_pedido from pedidos where pedido_id = 'PED-QH3'));
-  insert into qa_out(paso, esperado, valor) values ('T7 2o pedido en el mismo minuto', 'rechaza', 'NO REVENTO');
-exception when others then
-  insert into qa_out(paso, esperado, valor) values ('T7 2o pedido en el mismo minuto', 'rechaza', 'rechaza');
+  insert into qa_out(paso, esperado, valor) values ('T7 2o pedido en el mismo minuto', 'unique_pedido_cliente_minuto', 'NO REVENTO');
+exception when unique_violation then
+  declare c text; begin
+    get stacked diagnostics c = constraint_name;
+    insert into qa_out(paso, esperado, valor) values ('T7 2o pedido en el mismo minuto', 'unique_pedido_cliente_minuto', c);
+  end;
 end $$;
 
 -- ---------------------------------------------------------------------------

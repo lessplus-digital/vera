@@ -26,24 +26,30 @@ algo lanzó excepción.
 
 ```sql
 delete from carritos where telefono = '573113298122';
+delete from feedback_pendiente where telefono = '573113298122';
+delete from n8n_mensajes_pendientes where telefono = '573113298122';  -- BUG-053
 delete from n8n_chat_histories where session_id in ('573113298122','orq:573113298122');
 update clientes set modo = 'bot' where telefono = '573113298122';
 ```
 
 ## Estado
 
+**Última regresión completa: 2026-09-15** — las 10 baterías re-ejecutadas contra la BD viva.
+Ningún bug cerrado se reabrió y ningún verde pasó a rojo por un cambio del sistema. Sí aparecieron
+**3 fallos de los propios tests** (corregidos) y **2 bugs nuevos** (BUG-053, BUG-054). Detalle abajo.
+
 | Batería | Estado | Casos | Verde | Rojo |
 |---|---|---|---|---|
-| `01-cobertura.sql` | ✅ ejecutada | 236 + 46 | 211 + 46 | 25 (BUG-040) |
-| `02-menu.sql` | ✅ ejecutada | 133 × 3 + 39 | — | BUG-039 (crítico), BUG-041 |
-| `03-mitad-y-mitad.sql` | ✅ ejecutada | 3024 + 23 | **3047** | **0** |
-| `04-flujo-pedido.sql` | ✅ ejecutada | 12 | 11 | 1 (BUG-042) |
-| `05-totales.sql` | ✅ ejecutada | 14 | **14** | **0** |
-| `06-reservas.sql` | ✅ ejecutada | 12 | 10 | 2 (BUG-043, BUG-044) |
-| `07-housekeeping.sql` | ✅ ejecutada · re-ejecutada 2026-09-12 | 20 | 19 | 1 (BUG-052 🔴, caso T5b) |
-| `08-roles-rls.sql` | ✅ ejecutada | 16 | **16** | **0** |
-| `09-basura.sql` | ✅ ejecutada | 71 | 64 | 7 (BUG-045…049) |
-| `10-resenas.sql` | ✅ ejecutada | 32 | 22 | 10 (BUG-050 🔴, BUG-051) |
+| `01-cobertura.sql` | ✅ re-ejecutada 2026-09-15 | 236 + 46 | 211 + 44 | 25 (BUG-040) + 2 (`navara` BUG-040, eco BUG-054) |
+| `02-menu.sql` | ✅ re-ejecutada 2026-09-15 | 133 × 3 + 39 | — | BUG-039 (crítico), BUG-041 — sin cambios |
+| `03-mitad-y-mitad.sql` | ✅ re-ejecutada 2026-09-15 | 3024 + 23 | **3047** | **0** |
+| `04-flujo-pedido.sql` | ✅ re-ejecutada 2026-09-15 | 12 | 11 | 1 (BUG-042) |
+| `05-totales.sql` | ✅ re-ejecutada 2026-09-15 | 14 | **14** | **0** |
+| `06-reservas.sql` | ✅ re-ejecutada 2026-09-15 | 12 | 10 | 2 (BUG-043, BUG-044) |
+| `07-housekeeping.sql` | ✅ re-ejecutada 2026-09-15 | 20 | 19 | 1 (BUG-052 🔴, T5b) · T7 era falso verde, corregido |
+| `08-roles-rls.sql` | ✅ re-ejecutada 2026-09-15 | 16 | **16** | **0** |
+| `09-basura.sql` | ✅ re-ejecutada 2026-09-15 | 71 | 64 | 7 (BUG-045…049) |
+| `10-resenas.sql` | ✅ re-ejecutada 2026-09-15 · +T9 (3 casos) | 35 | T1 · T2 · T5 · T9 verdes; **T6/T7 pasan a verde** | T4 (repro BUG-050, simulación) · T8 (BUG-051, sin publicar) — no re-ejecutados, no dependen de la BD |
 | Capa B · 11 guiones WhatsApp | 📝 escritos, **10/11 ejecutables** | | | |
 | Capa C · Vitest | ⬜ pendiente | | | |
 
@@ -57,20 +63,25 @@ pueden ejecutar ya.
 
 ---
 
-## ▶️ Por dónde seguir (última sesión: 2026-09-12)
+## ▶️ Por dónde seguir (última sesión: 2026-09-15)
 
 Orden sugerido para retomar. Lo de arriba es contexto; esto es la lista de trabajo.
 
-### 1. Dos acciones de 1 minuto que cierran cosas ya hechas
+### 1. Acciones cortas que cierran cosas ya hechas
 
+- [ ] **Limpiar el buffer antes de cualquier guion** —
+      `delete from n8n_mensajes_pendientes where telefono = '573113298122';` Hay una fila huérfana
+      del 2026-09-12 (BUG-053) que se pegaría delante del primer mensaje de G1. Ya está en el reset.
 - [ ] **Publicar `Sub — Feedback Pendiente`** (`xGsKJf2u3bFmL6mA`) en n8n → cierra **BUG-051**.
-      El parser estricto está escrito y probado en la versión `cb2ff4b5…`, pero la **activa** sigue
-      siendo `75e3fd55…` con el `texto.match(/[1-5]/)` viejo. En n8n cada workflow se publica por
-      separado y éste quedó fuera cuando se publicó `Pizzeria Vera`.
+      **Re-verificado 2026-09-15: sigue sin publicar** (`activeVersionId` = `75e3fd55…`, el parser
+      viejo). El estricto está en la versión `cb2ff4b5…`.
       **Verificar después:** `activeVersionId` debe pasar a ser `cb2ff4b5…` — no basta con que el
       editor diga que guardó.
-- [ ] **Correr el guion G11** (`guiones-bot.md`) → cierra la verificación de **BUG-050**, que está
-      en vivo pero solo comprobado en estructura, no en comportamiento.
+- [ ] **Correr el guion G11** (`guiones-bot.md`) → cierra la verificación de **BUG-050**. Las
+      métricas vivas ya están en verde (cola 0, atrapados 0, job de expiración 3/3 OK), pero **no
+      entra un pedido desde el 2026-09-08**: nadie ha pasado todavía por el camino arreglado.
+- [ ] **BUG-053 · `retryOnFail`** en los 4 nodos del buffer (a mano, por BUG-030) y/o cron de
+      limpieza de `n8n_mensajes_pendientes` (vía BD, no depende de BUG-030).
 
 ### 2. Dos decisiones de negocio que bloquean fixes
 
@@ -108,6 +119,72 @@ Ya se descartó, con evidencia, en el barrido del 2026-09-12: los 88 domicilios 
 > **Recordatorio para la próxima sesión:** de los 116 pedidos, **80 son semilla**, y además Juan
 > manipula filas a mano para probar. Ningún agregado sobre `pedidos` significa lo que parece hasta
 > partirlo por origen del dato.
+
+---
+
+## 2026-09-15 · Regresión completa de la Capa A + barrido de estado vivo
+
+**Por qué:** tres días sin tocar la BD (última migración `expirar_feedback_pendiente`, 2026-09-12)
+y con BUG-050 recién desplegado. Una regresión barata antes de invertir tiempo en la Capa B.
+
+**Resultado del sistema: sin regresiones.** Cada batería da exactamente los rojos conocidos. Las
+cifras de visibilidad por rol (08) son idénticas a las del 09-09 (domiciliario 34 / 17 / 71, todo
+suyo), los 3024 pares de mitad y mitad siguen exactos, y la línea base de I3 (116 · 214 · 35 · 16 ·
+133 · 20 tablas, 0 filas corruptas) no se movió.
+
+**BUG-050 en vivo — métricas en verde, comportamiento sin probar:**
+
+| Indicador | 2026-09-12 | 2026-09-15 |
+|---|---|---|
+| Filas en `feedback_pendiente` | 9 (la más vieja, 108 días) | **0** |
+| Clientes en `esperando_feedback` | 7 | **0** |
+| Cola con pedido ya calificado | 4 | **0** |
+| Job `expirar-feedback-pendiente` | no existía | **3/3 OK** (07:30 UTC) |
+| Ejecuciones del job de solicitud (cada 15 min) | fallaba con 409 | **todas `success`** |
+
+Y un caso nuevo, **T9**, que cubre el job de expiración con las tres fronteras que importan: 49 h
+se borra y devuelve el modo a `bot`, 47 h sigue esperando, y 49 h con un operador en `humano`
+se borra **sin quitarle el modo a la conversación en curso**. Verde.
+
+> ⚠️ Por §32: **estos ceros no prueban que el flujo funcione.** El último pedido es del 2026-09-08,
+> así que el job de solicitud lleva días corriendo sin trabajo — un job arreglado y uno sin nada
+> que hacer se ven igual. La prueba de comportamiento sigue siendo G11.
+
+**Tres fallos de los tests, no del sistema (corregidos en los ficheros):**
+
+| Batería · caso | Qué pasaba | Tipo |
+|---|---|---|
+| `07 · T7` | reutilizaba `PED-QH5`, el id que T5b añadió el 12-09 → rebotaba por **`pedidos_pkey`**, no por `unique_pedido_cliente_minuto` | **falso verde** — ver edge-case §34 |
+| `04 · T1.1–T1.5` | comparaba jsonb como texto (`["a","b"]` ≠ `["a", "b"]`) | falso rojo |
+| `01 · T4` | leía `sugerencias->0->>'nombre'`, pero es un array de strings | falso rojo |
+
+El de T7 es el que importa: el constraint **sí** existe y **sí** muerde (verificado con id limpio),
+pero desde el 12-09 el test habría seguido verde aunque alguien lo borrara. Ahora afirma el nombre
+del constraint, y se comprobó con control negativo que el id repetido da ✗.
+
+Dos trampas más de ejecución, anotadas en los encabezados: en `08`, `reset role` no borra
+`request.jwt.claims` (T6 da un falso *"no autorizado"* si va detrás de una suplantación); y el MCP
+de Supabase solo devuelve el resultado de la **última** sentencia, así que las baterías de varias
+secciones hay que pasarlas por bloques.
+
+**Bugs nuevos:**
+
+- **BUG-053 🟡** — encontrado en el barrido de ejecuciones de n8n, no por una batería. La ejecución
+  `15306` (prueba de Juan, 12-09 23:13) murió por un **504 de Supabase** en `Obtener ultimo mensaje`:
+  el mensaje con la dirección nunca llegó al bot, el cliente se quedó sin respuesta, y **la fila
+  sigue en el buffer**. Como `Combinar mensajes` une todos los pendientes sin mirar la antigüedad,
+  el próximo mensaje de ese número llegará con la dirección vieja delante. Ningún nodo del buffer
+  reintenta y ningún cron limpia la tabla.
+- **BUG-054 🟢** — `consultar_cobertura` devuelve el texto del cliente sin truncar (300 chars) y lo
+  incrusta dentro de su instrucción al LLM. Lo marcaba el criterio de `01 · T5`, que el 09-09 se
+  registró como verde.
+- **BUG-040 ampliado:** `navara` → *Navarra* tampoco sugiere nada. La deleción no afecta solo a
+  nombres de ≤5 letras.
+
+**Observación para la Capa B (no es bug todavía):** en la conversación del 12-09, a *"asi está
+bien"* el bot respondió *"te lo preparo para domicilio entonces 🛵"* sin que en ese tramo el
+cliente hubiera dicho domicilio. Puede venir de un carrito previo (ya borrado por el job de 24 h,
+así que no se puede comprobar). Vigilarlo en G1/G4: **el tipo de pedido no debe asumirse**.
 
 ---
 

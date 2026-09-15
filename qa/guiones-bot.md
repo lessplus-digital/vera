@@ -17,6 +17,7 @@ agrupador, no el guion.
 ```sql
 delete from carritos              where telefono = '573113298122';
 delete from feedback_pendiente    where telefono = '573113298122';
+delete from n8n_mensajes_pendientes where telefono = '573113298122';  -- BUG-053: un turno muerto deja la fila y se pega al siguiente mensaje
 delete from n8n_chat_histories    where session_id in ('573113298122','orq:573113298122');
 update clientes set modo = 'bot'  where telefono = '573113298122';
 ```

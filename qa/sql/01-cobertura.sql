@@ -74,14 +74,18 @@ order by m.txt;
 -- ---------------------------------------------------------------------------
 -- T4 · Typos: deben resolver directo o devolver sugerencias para que el bot
 --      pregunte "¿te refieres a…?" (caso literal de BUG-033).
+--      ⚠️ `sugerencias` es un array de STRINGS (["Niquía"]), no de objetos. Hasta
+--      el 2026-09-15 este test leía `->0->>'nombre'`, que siempre es NULL, así que
+--      marcaba FALLA en todo lo que no resolvía directo. Se lee con `->>0`.
+--      Estado 2026-09-15: 5/6 · `navara` → [] (deleción en nombre de 7 letras, BUG-040).
 -- ---------------------------------------------------------------------------
 select 'T4' as test, m.txt as entrada, m.esperado,
        (r->>'cubierto')::bool as cubierto,
        coalesce(jsonb_array_length(r->'sugerencias'), 0) as n_sugerencias,
-       r->'sugerencias'->0->>'nombre' as primera_sugerencia,
+       r->'sugerencias'->>0 as primera_sugerencia,
        case when (r->>'cubierto')::bool is true and r->>'barrio' = m.esperado
               then 'ok (resolvió directo)'
-            when r->'sugerencias'->0->>'nombre' = m.esperado
+            when r->'sugerencias'->>0 = m.esperado
               then 'ok (sugerencia)'
             else 'FALLA: ni resuelve ni sugiere' end as veredicto
 from (values ('niqia', 'Niquía'), ('cabañítas', 'Cabañas'), ('milagroza', 'La Milagrosa'),
@@ -92,7 +96,8 @@ order by m.txt;
 
 -- ---------------------------------------------------------------------------
 -- T5 · Entrada basura. Nada debe reventar; todo lo no-cubierto debe traer mensaje.
---      OJO: '' y '   ' hoy devuelven un objeto MUDO → el LLM improvisa (QA-001).
+--      ('' y '   ' devuelven modo:'listado', que es correcto: no hay objeto mudo.)
+--      Estado 2026-09-15: 9/10 · repeat('a',300) vuelve con eco de 300 chars (BUG-054).
 -- ---------------------------------------------------------------------------
 select 'T5' as test, left(m.txt, 30) as entrada,
        r->>'modo'     as modo,

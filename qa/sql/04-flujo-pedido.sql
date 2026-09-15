@@ -10,6 +10,11 @@
 --    Postgres evalúa el subquery con el snapshot PREVIO y devuelve el valor viejo,
 --    lo que parece un bug del trigger y no lo es. Escribe en una sentencia y lee
 --    en la siguiente.
+--
+-- ⚠️ SEGUNDA TRAMPA (mordió el 2026-09-15): `faltantes` es jsonb y Postgres lo
+--    serializa con espacio tras la coma (`["a", "b"]`). Comparado como texto contra
+--    `'["a","b"]'` da ✗ aunque sea idéntico. El veredicto compara como jsonb cuando
+--    el esperado es JSON, y T1.1 espera NULL (sin carrito no hay estado).
 -- ============================================================================
 
 begin;
@@ -23,7 +28,7 @@ delete from carritos where telefono like '5730000007%';
 --      Estado 2026-09-09: verde.
 -- ---------------------------------------------------------------------------
 insert into qa_out(paso, esperado, valor)
-select 'T1.1 sin carrito', '(sin fila)', guardar_datos_pedido('573000000777')->'estado'->>'faltantes';
+select 'T1.1 sin carrito', null, guardar_datos_pedido('573000000777')->'estado'->>'faltantes';
 
 insert into carritos(telefono, items, total)
  values ('573000000777', '[{"producto_id":"PROD-019","cantidad":1,"precio_unitario":24500}]'::jsonb, 24500);
@@ -107,7 +112,11 @@ insert into qa_out(paso, esperado, valor)
 select 'T6 carrito vaciado -> paso_flujo', 'armando', paso_flujo
 from carritos where telefono = '573000000780';
 
-select paso, esperado, valor, case when valor = esperado then '✓' else '✗' end as ok
+select paso, esperado, valor,
+       case when esperado is null and valor is null then '✓'
+            when left(esperado, 1) = '[' and valor::jsonb = esperado::jsonb then '✓'
+            when valor = esperado then '✓'
+            else '✗' end as ok
 from qa_out order by n;
 
 rollback;

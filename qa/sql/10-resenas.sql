@@ -201,10 +201,13 @@ rollback;
 
 
 -- ---------------------------------------------------------------------------
--- T6 · 🔴 BUG-050 · La cola no caduca. Verde = 0 filas vencidas; hoy NO lo es.
+-- T6 · BUG-050 · La cola no caduca. Verde = 0 filas vencidas.
 --      Medido 2026-09-12 contra datos vivos: 9 filas, la más vieja de 108 días,
---      y 7 clientes atrapados en 'esperando_feedback'. Ningún job las toca
---      (cron.job tiene 3 jobs y ninguno es de feedback).
+--      y 7 clientes atrapados en 'esperando_feedback'. Ningún job las tocaba.
+--      Medido 2026-09-15: **0 filas · 0 atrapados** — con el job
+--      `expirar-feedback-pendiente` (30 7 * * *) corriendo 3/3 OK. OJO: no entra
+--      ningún pedido desde el 2026-09-08, así que este verde prueba que la cola se
+--      vació, NO que el job de solicitud ya no la atasque (eso lo prueba G11).
 --      Este SELECT es la red permanente: en verde debe devolver 0 filas.
 -- ---------------------------------------------------------------------------
 select fp.telefono, fp.pedido_id, fp.estado,
@@ -219,6 +222,7 @@ order by fp.fecha_solicitud;
 -- ---------------------------------------------------------------------------
 -- T7 · Coherencia del estado vivo. Los cuatro contadores deben ser 0.
 --      Medido 2026-09-12: **9 / 0 / 4 / 0** — (a) y (c) son BUG-050.
+--      Medido 2026-09-15: **0 / 0 / 0 / 0**.
 --      (b)=0 es verde real: no hay modo huérfano, porque el problema es el
 --      contrario — hay cola de sobra, y apuntando al pedido equivocado.
 --      Además: 7 clientes en 'esperando_feedback' ahora mismo.
@@ -274,3 +278,43 @@ from (values
   ('👍'),
   ('cinco')
 ) v(mensaje);
+
+
+-- ---------------------------------------------------------------------------
+-- T9 · Fix 3 de BUG-050 · `expirar_feedback_pendiente()` (cron 30 7 * * *).
+--      Cuatro clientes, cuatro casos que el job NO puede confundir:
+--        QF1 · fila de 49 h, modo esperando_feedback → se borra y vuelve a 'bot'
+--        QF2 · fila de 47 h, modo esperando_feedback → intacta (sigue esperando)
+--        QF3 · fila de 49 h, modo 'humano'           → se borra, pero el modo NO
+--              se pisa: hay un operador atendiendo (§33: ¿a quién daña cuando acierta?)
+--      Medido 2026-09-15: devuelto=1 · QF1 cola=0 modo=bot · QF2 cola=1
+--      modo=esperando_feedback · QF3 cola=0 modo=humano. Verde.
+--      Ojo: la función devuelve el ROW_COUNT del UPDATE de clientes (1), no las
+--      filas borradas de la cola (2). No es un bug, pero no lo leas como "borró 1".
+-- ---------------------------------------------------------------------------
+begin;
+insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo) values
+ ('CLI-QF1','573000000981','QA 49h espera', now(),'esperando_feedback'),
+ ('CLI-QF2','573000000982','QA 47h espera', now(),'esperando_feedback'),
+ ('CLI-QF3','573000000983','QA 49h humano', now(),'humano');
+insert into pedidos (pedido_id, cliente_id, telefono, tipo_pedido, estado, metodo_pago, fecha_pedido, fecha_entrega) values
+ ('PED-QF1','CLI-QF1','573000000981','recoger','entregado','Efectivo', now()-interval '3 days', now()-interval '3 days'),
+ ('PED-QF2','CLI-QF2','573000000982','recoger','entregado','Efectivo', now()-interval '2 days', now()-interval '2 days'),
+ ('PED-QF3','CLI-QF3','573000000983','recoger','entregado','Efectivo', now()-interval '3 days', now()-interval '3 days');
+insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado,fecha_solicitud) values
+ ('573000000981','PED-QF1','CLI-QF1','esperando_nota',       now()-interval '49 hours'),
+ ('573000000982','PED-QF2','CLI-QF2','esperando_nota',       now()-interval '47 hours'),
+ ('573000000983','PED-QF3','CLI-QF3','esperando_comentario', now()-interval '49 hours');
+-- escribe en una sentencia, lee en la siguiente (trampa de 04-flujo-pedido.sql)
+create temp table r9(n text) on commit drop;
+insert into r9 select expirar_feedback_pendiente()::text;
+select c.cliente_id,
+       (select count(*) from feedback_pendiente fp where fp.cliente_id = c.cliente_id) as cola,
+       c.modo,
+       case c.cliente_id
+         when 'CLI-QF1' then 'cola=0 modo=bot'
+         when 'CLI-QF2' then 'cola=1 modo=esperando_feedback'
+         when 'CLI-QF3' then 'cola=0 modo=humano' end as esperado,
+       (select n from r9) as devuelto
+from clientes c where c.cliente_id like 'CLI-QF%' order by c.cliente_id;
+rollback;

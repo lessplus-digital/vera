@@ -78,7 +78,7 @@ union all
 select 'mesero se hace admin', '42501',
        pg_temp.intento($$update perfiles set rol='admin' where usuario_id='e31bdee5-3b5b-494e-8d81-fdbb527d2a34'$$)
 union all
-select 'domiciliario: listar_usuarios', '42501',
+select 'mesero: listar_usuarios', '42501',   -- (la sesión es la de Laura; antes decía "domiciliario")
        pg_temp.intento($$select * from listar_usuarios()$$);
 rollback;
 
@@ -126,6 +126,10 @@ rollback;
 --      `auth.uid() IS NULL → dejar pasar`, para que el bot (service_role, sin
 --      JWT de usuario) siga funcionando. Sin sesión, las tools deben responder.
 --      Medido: mi_rol()=NULL y las cuatro tools funcionan.
+--      ⚠️ Si esto se corre DENTRO de una transacción que antes suplantó a alguien,
+--      `reset role` NO borra `request.jwt.claims`: auth.uid() sigue devolviendo el
+--      último `sub` y guardar_datos_pedido lanza 'no autorizado' (falso rojo,
+--      2026-09-15). Hay que hacer también `set local request.jwt.claims to ''`.
 -- ---------------------------------------------------------------------------
 select 'sin sesion (n8n/service_role)' as quien,
        mi_rol() as mi_rol,

@@ -472,3 +472,34 @@ acusación a un proceso por algo que hizo una persona.
 Regla: **todo hallazgo de un barrido pasa por tres filtros antes de ser un bug** — ¿es dato
 semilla?, ¿es anterior a una migración?, ¿lo tocó alguien a mano? Y el tercero casi nunca se
 responde mirando la fila: se responde encontrando qué escribe cada camino posible.
+
+---
+
+## 34. "Que lance" no es una aserción: añadir un caso rompió otro en silencio, y siguió en verde (2026-09-15)
+
+**Qué pasó.** Re-ejecutando las baterías, `07-housekeeping.sql · T7` seguía en verde: *"el 2º
+pedido del mismo cliente en el mismo minuto se rechaza"*, que es lo que prueba el constraint
+`unique_pedido_cliente_minuto`. Pero el 2026-09-12 se había añadido el caso T5b con el id
+`PED-QH5`, **el mismo que T7 usaba para su inserción duplicada**. Desde ese día T7 rebotaba por
+`pedidos_pkey` — el id ya existía — y el test, que solo preguntaba `exception when others`, lo
+contaba como éxito. El constraint podía haber desaparecido y T7 habría seguido verde.
+
+**Por qué es traicionero.** Nadie tocó T7. El test estaba bien el día que se escribió y dejó de
+medir lo que dice por un cambio **en otro caso**, tres días después. Una batería que comparte
+fixtures entre casos tiene esa fragilidad de serie, y `when others` la vuelve invisible: cualquier
+error, incluido uno de preparación, cuenta como el rechazo esperado.
+
+Es la familia de la §32 (el FK que dispara antes que la validación que querías probar), pero peor:
+allí el guardarraíl equivocado estaba ahí desde el principio; aquí apareció después.
+
+**Lección.** Un test de rechazo debe afirmar **qué** lo rechazó: el `constraint_name` (vía
+`get stacked diagnostics`), el SQLSTATE concreto, o el texto del `RAISE` — nunca solo que hubo
+excepción. Y corre un **control negativo** del propio test: el mismo caso con el guardarraíl
+equivocado debe dar ✗. En la re-ejecución, T7 con el id repetido da `pedidos_pkey` → ✗, y con un
+id libre `unique_pedido_cliente_minuto` → ✓.
+
+**Mismo día, dos falsos rojos por comparar mal:** `04 · T1` comparaba `faltantes` como texto
+(`'["a","b"]'` contra `["a", "b"]`, que es como Postgres serializa jsonb) y `01 · T4` leía
+`sugerencias->0->>'nombre'` sobre un array de strings. Ninguno ocultaba un bug, pero un rojo
+permanente que "ya se sabe que es falso" entrena a ignorar el rojo, y ese es el paso previo a
+dejar pasar uno de verdad. Un test que falla por su cuenta se arregla, no se lee a ojo.
