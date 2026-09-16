@@ -12,13 +12,166 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-056**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-061**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-057 · 🔴 Alta · 🟠 En progreso (BD + n8n **publicados** · falta verificar por WhatsApp) — el cliente responde la calificación y el bot **no contesta nada**: `Guardar calificación` choca con 409 y mata el subworkflow (y deja al cliente atrapado para siempre)
+
+- **Componente:** n8n `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`) → `Guardar calificación`
+  (INSERT a `feedback`).
+- **Síntoma reportado y reproducido (2026-09-15, `573113298122` / `CLI-038`):** el job pregunta a
+  las 18:30 (hora CO); el cliente responde `5` a las 18:57 y otra vez a las 18:59. **Silencio
+  absoluto las dos veces.** En la BD queda en `modo = 'esperando_feedback'`.
+- **Causa (verificada vía MCP — ejecuciones `15687`/`15688` y `15689`/`15690`, ambas `error`):**
+  `Guardar calificación` es un INSERT plano y `feedback_id` se construye como `FB-{{ pedido_id }}`,
+  o sea **PK determinista por pedido**. Para `PED-246` ya existía `FB-PED-246` (lo insertó la
+  ejecución `15674` una hora antes). Resultado:
+  `409 - {"code":"23505", "details":"Key (feedback_id)=(FB-PED-246) already exists."}`.
+  El nodo no tiene `onError`, así que **el subworkflow muere ahí** y arrastra al workflow padre —
+  no hay WhatsApp de salida, no se limpia `feedback_pendiente`, no se restaura `modo`.
+- **Lo grave no es el 409, es el estado que deja:** el cliente queda en `esperando_feedback` con
+  fila viva en `feedback_pendiente`. El `Router de modo` manda **todos** sus mensajes siguientes al
+  subworkflow → los que parezcan nota 1–5 vuelven a chocar con el mismo 409. **El cliente queda
+  fuera del bot de forma permanente**, sin ningún job que lo rescate (BUG-050 dejó pendiente el job
+  de expiración de la cola).
+- **Cómo llegó a haber dos solicitudes para el mismo pedido:** cadena BUG-058 + BUG-059 + el upsert
+  de `feedback_pendiente`. Ver esas dos entradas.
+- **Diagnóstico de fondo:** BUG-057, 058 y 059 no son tres bugs sueltos, son tres variantes del
+  mismo fallo de diseño — **la máquina de estados vivía repartida en ~20 nodos de n8n sin
+  transacción**, y cada paso podía fallar en silencio (un filtro PostgREST que no matchea responde
+  204, n8n lo da por éxito). Parchear los tres nodos lo arreglaba hoy y dejaba intacta la clase de
+  bug. Por eso el fix no es de nodos, es de capa.
+- **Fix — capa BD ✅ aplicada y probada (2026-09-16):**
+  1. `procesar_respuesta_feedback(p_telefono, p_mensaje) → jsonb` — puerta única para todo mensaje
+     de un cliente en `esperando_feedback`. Lee la cola con `FOR UPDATE`, parsea la nota (regla
+     estricta de BUG-051, ahora en SQL), hace **UPSERT** en `feedback`, cierra o pide comentario,
+     restaura el modo — **en una transacción** — y devuelve `{accion}` ∈ `positiva` ·
+     `pedir_comentario` · `agradecer` · `nota_invalida` · `sin_pendiente`.
+  2. `solicitar_feedback_lote(p_limite) → table` — elige pedidos elegibles y, en la misma
+     transacción, marca `feedback_solicitado`, encola y cambia el modo. Guarda nueva: **no toma un
+     pedido que ya tenga `feedback`** aunque el flag mienta. `FOR UPDATE SKIP LOCKED` contra ticks
+     solapados.
+  3. `expirar_feedback_pendiente()`: umbral **48 h → 6 h**, cron **diario → horario** (`7 * * * *`).
+     Con 48 h y un job diario un cliente atrapado podía pasar ~3 días sin bot.
+  4. Las dos funciones nuevas: `SECURITY DEFINER`, `EXECUTE` revocado a `public/anon/authenticated`,
+     solo `service_role`.
+  - **Probado:** `qa/sql/10-resenas.sql` T10–T15, verde entero (T11 = este 409 exacto, ya no revienta).
+- **Fix — capa n8n ✅ publicada (2026-09-16):**
+  - `Sub — Feedback Pendiente` → `activeVersionId 05b3415f…`: de 20 nodos a 7 —
+    `trigger → Procesar respuesta (RPC) → ¿Qué contestar? (Switch sobre accion) → 4 WhatsApp`. El
+    fallback del Switch (`sin_pendiente`) queda sin conectar a propósito, con nota en el nodo.
+  - `Pizzeria Vera` → `activeVersionId 1f351a3b…`: `Buscar pedidos…` pasa a
+    `Solicitar lote de feedback (RPC)` (`p_limite 20`); quitados `feedback_pendiente`,
+    `Marcar pedido como solicitado` y `Activar modo esperando_feedback`; el Code solo redacta.
+  - Antes de publicar se verificó que el borrador de ambos workflows era idéntico a la versión activa
+    (no se arrastró ningún cambio ajeno).
+- **Falta:** verificación por WhatsApp (G11) — ver `qa/RESULTADOS.md` §0.
+- **Limpieza manual ✅ hecha (2026-09-16):** borrada la fila de `573113298122` en
+  `feedback_pendiente`, `CLI-038` devuelto a `modo = 'bot'`, y `feedback_solicitado = true` en todo
+  pedido que ya tenía `feedback`.
+
+### BUG-058 · 🔴 Alta · 🟠 En progreso (BD + n8n **publicados** · falta verificar por WhatsApp, ver BUG-057) — `feedback_solicitado` nunca se marca: el PATCH apunta a `pedido_id=eq.undefined` y el job vuelve a pedir feedback del mismo pedido cada 15 min
+
+- **Componente:** n8n `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`) → rama `trigger_feedback` → nodo
+  `Marcar pedido como solicitado` (HTTP PATCH a `/rest/v1/pedidos`).
+- **Síntoma (verificado vía MCP el 2026-09-16):** `PED-246` se entregó el 2026-09-15 21:06 UTC, el
+  job le pidió feedback al menos dos veces (22:15 y 23:30 UTC, ejecuciones con envío de WhatsApp
+  confirmado) y **hoy sigue con `feedback_solicitado = false`**.
+- **Causa:** el fix de BUG-050 reordenó la cadena a
+  `Code — Preparar payload → feedback_pendiente → Enviar WhatsApp → Marcar pedido → Activar modo`,
+  pero **el nodo `Marcar pedido` se quedó leyendo `={{ $json.pedido_id }}`**. Tras el reorden su
+  `$json` es la respuesta de la API de WhatsApp (`messaging_product`, `contacts`, `messages`), que
+  no tiene `pedido_id`. La query sale como `pedido_id=eq.undefined` → PostgREST hace match de 0
+  filas, responde **204 vacío**, y n8n lo da por exitoso. En la ejecución `15679` el nodo aparece
+  `success` con output `{}`.
+- Sus hermanos sí se migraron a `$('Code — Preparar payload').item.json.…` (`Activar modo`,
+  `Enviar WhatsApp`, `feedback_pendiente`). **Este quedó solo.** Por eso `modo` sí cambia y
+  `feedback_solicitado` no.
+- **Efecto compuesto:** la idempotencia documentada (`feedback_solicitado = true` evita repreguntar)
+  **no existe**. Lo único que frena la repregunta es el filtro `modo === 'bot'` del Code node: en
+  cuanto algo devuelve el cliente a `bot`, el siguiente tick del cron (15 min) le vuelve a pedir
+  feedback del mismo pedido mientras siga dentro de la ventana 1–6 h. Es lo que produjo el segundo
+  ciclo de `PED-246` y, con él, el 409 de BUG-057.
+- **Fix propuesto:** `pedido_id` → `={{ $('Code — Preparar payload').item.json.pedido_id }}`. Y
+  como cinturón, `Prefer: return=representation` en ese PATCH para que un match de 0 filas sea
+  visible (hoy un no-op es indistinguible de un éxito).
+
+### BUG-059 · 🟡 Media · 🟠 En progreso (BD + n8n **publicados** · falta verificar por WhatsApp, ver BUG-057) — Fase B: `Eliminar feedback pendiente1` filtra por un `telefono` que no existe en la fila de `feedback` → no borra nada y deja la cola huérfana
+
+- **Componente:** n8n `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`) → `Eliminar feedback
+  pendiente1` (rama del comentario, Fase B).
+- **Causa (verificada vía MCP, ejecución `15677`):** el nodo filtra por `={{ $json.telefono }}`, y
+  cuando viene de `Guardar comentario` su `$json` es la fila de `feedback`
+  (`feedback_id, cliente_id, pedido_id, fecha, comentario, …`) — **`telefono` no es columna de
+  `feedback`**. El DELETE sale con `telefono=eq.undefined`, borra 0 filas y devuelve `{}`; como
+  tiene `alwaysOutputData: true`, la cadena sigue y nadie se entera.
+- Es exactamente el "segundo defecto latente" de BUG-056, pero en el nodo gemelo: el fix se aplicó
+  a la rama positiva (`Eliminar feedback pendiente`) y **no** a este.
+- **Consecuencia medida:** en `15677` `Restaurar modo bot1` sí funcionó (usa `cliente_id` del
+  trigger), así que el cliente volvió a `modo = 'bot'` **con la fila de `feedback_pendiente` viva**.
+  Ese desfase es lo que dejó el terreno listo para BUG-058 → BUG-057.
+- **Nota:** por la rama `saltar` (`¿Hay comentario?1` = false) el nodo **sí** funciona, porque su
+  entrada es `Procesar comentario`, que sí trae `telefono`. Falla solo cuando hay comentario.
+- **Fix propuesto:** `telefono` → `={{ $('When Executed by Another Workflow').first().json.telefono }}`,
+  igual que el de la rama positiva.
+
+### BUG-060 · 🟢 Baja · 🟠 En progreso (BD + n8n **publicados** · falta verificar por WhatsApp, ver BUG-057) — `feedback.fecha` se guarda 2 horas en el futuro: `$now.toISO()` usa el huso de la instancia n8n (UTC+2) sobre una columna `timestamp` que el resto del sistema lee como UTC
+
+- **Componente:** n8n `Sub — Feedback Pendiente` → `Guardar calificación`, campo `fecha` =
+  `={{ $now.toISO() }}`.
+- **Evidencia (MCP, 2026-09-16):** la ejecución `15674` corrió a las **23:22:35.677 UTC** y la fila
+  `FB-PED-246` quedó con `fecha = 2026-09-16 01:22:35.841`. Mismos milisegundos, **+2 h exactas**.
+- **Causa:** `feedback.fecha` es `timestamp without time zone` y la convención del proyecto es que
+  guarda **UTC** (ver CLAUDE.md y `parseDb()` en `src/utils/dateRanges.js`). `$now.toISO()` de n8n
+  resuelve en el huso de la instancia (UTC+2), y PostgREST descarta el offset al escribir en una
+  columna sin zona. El dashboard lo reinterpreta como UTC → toda calificación nueva aparece 2 h
+  adelantada (y 7 h respecto a la hora de Colombia).
+- **Fix propuesto:** `={{ $now.toUTC().toISO() }}` (o dejar que la BD ponga el default). Revisar de
+  paso si otros nodos del mismo workflow escriben fechas con `$now.toISO()`.
+
+### BUG-056 · 🔴 Alta · 🟠 En progreso (**publicado**, falta verificar por WhatsApp: hoy lo tapa BUG-057) — toda nota válida cae en la ruta NEGATIVA: el cliente califica 5 y el bot responde *"Lamento que no fuera lo esperado"*
+
+- **Componente:** n8n `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`) → switch `¿Nota > 3?`
+  (y, detrás de él, toda la rama positiva).
+- **Síntoma medido (2026-09-15, `573113298122`, ejecución `15674`):** el cliente responde `5`; el bot
+  contesta *"Lamento que no fuera lo esperado 🙏 ¿Nos cuentas qué pasó?"* y lo deja en
+  `esperando_comentario`. Su siguiente mensaje (`Dije 5`) se guarda como **comentario de queja** en
+  `feedback.comentario`. Nunca recibe la invitación a reseñar en Google.
+- **Causa (verificada vía MCP, datos de la ejecución `15674`):** `Parsear calificación` emite
+  `{ tipo: 'valido', nota: 5, es_positiva: true, … }` — correcto, el fix de BUG-051 funciona. Pero
+  entre el parser y el switch está `Guardar calificación` (INSERT a Supabase), y el switch evalúa
+  `={{ $json.es_positiva }}`: su `$json` **ya no es el del parser**, es la fila insertada
+  (`feedback_id, cliente_id, pedido_id, fecha, calificacion_general, comentario, resuelta_at`).
+  `es_positiva` ahí es `undefined` → la salida 0 (`is true`) no matchea, la salida 1 (`is false`)
+  sí → **ruta negativa para 1, 2, 3, 4 y 5 por igual**. No hay nota que salga por la positiva.
+- **Segundo defecto, latente detrás del primero:** la rama positiva tampoco habría funcionado.
+  `Eliminar feedback pendiente` filtra por `={{ $json.telefono }}` y `Restaurar modo bot` por
+  `={{ $json.cliente_id }}` sobre esa misma fila de `feedback` — y `telefono` **no es columna de
+  `feedback`**. El delete no borraría nada, no emitiría item, y la cadena se cortaría ahí: cliente
+  atrapado en `modo = 'esperando_feedback'` y sin invitación a Google.
+- **Fix publicado el 2026-09-15 23:41** — verificado vía MCP el 2026-09-16: `versionId` =
+  `activeVersionId` = `3f00d92d-4dcc-43e5-bb43-549ff2a8b44f`, y los 4 nodos traen las expresiones
+  nuevas. **Falta la verificación por WhatsApp**: desde que se publicó, ninguna ejecución llega al
+  switch, porque `Guardar calificación` revienta antes con 409 (→ **BUG-057**). Los 4 cambios:
+  1. `¿Nota > 3?`, ambas reglas: `leftValue` → `={{ $('Parsear calificación').item.json.es_positiva }}`
+     (el `pairedItem` sobrevive al nodo Supabase; está en la data de `15674`).
+  2. `Eliminar feedback pendiente`: `telefono` → `={{ $('When Executed by Another Workflow').first().json.telefono }}`
+     + `alwaysOutputData: true` para que la cadena no se corte nunca.
+  3. `Restaurar modo bot`: `cliente_id` → `={{ $('When Executed by Another Workflow').first().json.cliente_id }}`.
+  4. `Invitar reseña Google`: `.item` → `.first()` (con `alwaysOutputData` arriba, el item sintético
+     puede no traer `pairedItem`).
+- **Lección:** en n8n, `$json` es la salida del nodo **inmediatamente anterior**. Un campo calculado
+  en un Code node no sobrevive a un nodo Supabase/HTTP intermedio: hay que referenciarlo con
+  `$('Nodo').item.json`. El daño es silencioso — el switch no falla, solo enruta mal.
+- **Estado de la BD tras la prueba:** `FB-PED-246` = nota 5 con comentario `"Dije 5"`; `CLI-038`
+  sigue en `modo = 'esperando_feedback'` con fila en `feedback_pendiente` (`estado = 'esperando_nota'`).
+- **Ojo:** el "segundo defecto, latente" se arregló **solo en la rama positiva**. El nodo gemelo de
+  la Fase B (`Eliminar feedback pendiente1`) quedó con el mismo patrón roto → **BUG-059**.
 
 ### BUG-055 · 🔴 Alta · 🟠 En progreso (aplicado, falta verificar por WhatsApp) — el agente de menú pide "¿te la dejo?" sin guardar, y el "sí" del cliente cae en soporte: el pedido no avanza
 

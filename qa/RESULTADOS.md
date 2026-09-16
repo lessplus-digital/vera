@@ -51,7 +51,7 @@ Ningún bug cerrado se reabrió y ningún verde pasó a rojo por un cambio del s
 | `07-housekeeping.sql` | 19/20 | T5b = BUG-052 🔴 (decisión de negocio) |
 | `08-roles-rls.sql` | **16/16** | — |
 | `09-basura.sql` | nulos, inyección, límites y JSONB basura sin SQLSTATE crudo; 0 filas corruptas | T9 = BUG-049 (decisión de horario) |
-| `10-resenas.sql` | T1 · T2 · T5 · T6 · T7 · T9 verdes | T8 es réplica documental; el parser real está en vivo → G11 |
+| `10-resenas.sql` | T1 · T2 · T5 · T6 · T7 · T9 verdes · **2026-09-16: +T10–T15 verdes** (RPCs nuevas del feedback) | T8 es réplica documental. **La capa n8n aún corre el flujo viejo** → ver §0 abajo |
 | Capa B · 11 guiones WhatsApp | G1 corrido (antes del fix de menú) · G2 bloqueado por BUG-055 | G9 bloqueado (horario) |
 | Capa C · Vitest | ⬜ pendiente | |
 
@@ -65,9 +65,27 @@ pueden ejecutar ya.
 
 ---
 
-## ▶️ Por dónde seguir (última sesión: 2026-09-15)
+## ▶️ Por dónde seguir (última sesión: 2026-09-16)
 
 Orden sugerido para retomar. Lo de arriba es contexto; esto es la lista de trabajo.
+
+### 0. 🟠 Incidente de feedback del 2026-09-16 — desplegado, falta probarlo por WhatsApp
+
+Juan respondió `5` dos veces a *"¿cómo estuvo tu pedido?"* y el bot no contestó nada. Causa:
+**BUG-057/058/059/060** (tracker). Los tres primeros eran el mismo fallo de diseño — la máquina de
+estados en ~20 nodos de n8n sin transacción, con pasos que fallaban en verde — así que se movió a la BD.
+
+- [x] Desatascado `CLI-038` (cola borrada, `modo = 'bot'`).
+- [x] RPCs `procesar_respuesta_feedback` y `solicitar_feedback_lote` creadas.
+- [x] Cron de expiración: 48 h/diario → **6 h/horario**. Ya protege al flujo viejo: encierro ≤ 7 h.
+- [x] `10-resenas.sql` T10–T15 verdes (T11 reproduce el 409 exacto; ya no revienta).
+- [x] n8n recableado y **publicado**: `Sub — Feedback Pendiente` `05b3415f…` (20 → 7 nodos) y
+      `Pizzeria Vera` `1f351a3b…` (rama `trigger_feedback` → RPC). Flujo nuevo en `docs/bot/feedback.md`.
+- [ ] Correr **G11** completo: nota 5 → invitación a Google · nota 2 → comentario → gracias ·
+      `5` dos veces → sin silencio · `10/10` → "responde 1–5". Y T15 tras cada prueba.
+      Para forzar la pregunta sin esperar un pedido real: un pedido `entregado` hace ~2 h con
+      `feedback_solicitado = false`, cliente en `'bot'` y sin fila en `feedback`; el cron lo toma
+      en ≤ 15 min.
 
 ### 1. Hecho el 2026-09-15 (tarde) — lo que queda es verificarlo hablando con el bot
 

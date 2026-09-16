@@ -3,6 +3,9 @@
 -- Oráculo: docs/bot/feedback.md · tablas `feedback`, `feedback_pendiente`,
 --          `pedidos.feedback_solicitado`, `clientes.modo`
 -- Estado 2026-09-12: 32 casos · 22 verde · 10 rojo (BUG-050, BUG-051).
+-- Estado 2026-09-16: +T10..T15. La máquina de estados ya no vive en n8n: se movió a
+--   `procesar_respuesta_feedback()` y `solicitar_feedback_lote()` (BUG-057/058/059/060),
+--   así que por primera vez se puede probar ENTERA desde aquí, no por sentencias sueltas.
 --
 -- El flujo tiene dos mitades en n8n (el job que PIDE la nota y el subworkflow que
 -- la RECIBE), pero toda la máquina de estados se apoya en cuatro piezas de BD:
@@ -202,6 +205,10 @@ rollback;
 
 -- ---------------------------------------------------------------------------
 -- T6 · BUG-050 · La cola no caduca. Verde = 0 filas vencidas.
+--      2026-09-16: el umbral bajó de 48 h a **6 h** y el cron de diario a horario
+--      (`7 * * * *`). 48 h con un job diario dejaba a un cliente hasta 3 días sin
+--      bot — que es justo lo que pasó en BUG-057. La ventana real para responder
+--      "califica tu pedido" son horas.
 --      Medido 2026-09-12 contra datos vivos: 9 filas, la más vieja de 108 días,
 --      y 7 clientes atrapados en 'esperando_feedback'. Ningún job las tocaba.
 --      Medido 2026-09-15: **0 filas · 0 atrapados** — con el job
@@ -215,7 +222,7 @@ select fp.telefono, fp.pedido_id, fp.estado,
        c.modo as modo_cliente,
        (select count(*) from feedback f where f.pedido_id=fp.pedido_id) as ya_tiene_feedback
 from feedback_pendiente fp left join clientes c on c.cliente_id=fp.cliente_id
-where fp.fecha_solicitud < now() - interval '48 hours'
+where fp.fecha_solicitud < now() - interval '6 hours'
 order by fp.fecha_solicitud;
 
 
@@ -226,14 +233,14 @@ order by fp.fecha_solicitud;
 --      (b)=0 es verde real: no hay modo huérfano, porque el problema es el
 --      contrario — hay cola de sobra, y apuntando al pedido equivocado.
 --      Además: 7 clientes en 'esperando_feedback' ahora mismo.
---        a) filas en cola de más de 48 h
+--        a) filas en cola de más de 6 h
 --        b) clientes en 'esperando_feedback' SIN fila en la cola
 --           (el "modo huérfano" que el subworkflow dice limpiar)
 --        c) filas en cola cuyo pedido YA tiene feedback (cola que debió borrarse)
 --        d) feedback cuyo pedido no está 'entregado'
 -- ---------------------------------------------------------------------------
 select
- (select count(*) from feedback_pendiente where fecha_solicitud < now()-interval '48 hours') as a_cola_vencida,
+ (select count(*) from feedback_pendiente where fecha_solicitud < now()-interval '6 hours') as a_cola_vencida,
  (select count(*) from clientes c where c.modo='esperando_feedback'
     and not exists (select 1 from feedback_pendiente fp where fp.cliente_id=c.cliente_id))   as b_modo_huerfano,
  (select count(*) from feedback_pendiente fp
@@ -286,30 +293,32 @@ from (values
 
 
 -- ---------------------------------------------------------------------------
--- T9 · Fix 3 de BUG-050 · `expirar_feedback_pendiente()` (cron 30 7 * * *).
---      Cuatro clientes, cuatro casos que el job NO puede confundir:
---        QF1 · fila de 49 h, modo esperando_feedback → se borra y vuelve a 'bot'
---        QF2 · fila de 47 h, modo esperando_feedback → intacta (sigue esperando)
---        QF3 · fila de 49 h, modo 'humano'           → se borra, pero el modo NO
+-- T9 · Fix 3 de BUG-050 · `expirar_feedback_pendiente()` (cron `7 * * * *`).
+--      Tres clientes, tres casos que el job NO puede confundir:
+--        QF1 · fila de 7 h, modo esperando_feedback → se borra y vuelve a 'bot'
+--        QF2 · fila de 5 h, modo esperando_feedback → intacta (sigue esperando)
+--        QF3 · fila de 7 h, modo 'humano'           → se borra, pero el modo NO
 --              se pisa: hay un operador atendiendo (§33: ¿a quién daña cuando acierta?)
---      Medido 2026-09-15: devuelto=1 · QF1 cola=0 modo=bot · QF2 cola=1
---      modo=esperando_feedback · QF3 cola=0 modo=humano. Verde.
+--      Medido 2026-09-15 (con umbral 48 h y fixtures 49/47/49 h): devuelto=1 ·
+--      QF1 cola=0 modo=bot · QF2 cola=1 modo=esperando_feedback · QF3 cola=0
+--      modo=humano. Verde. 2026-09-16 el umbral bajó a 6 h (BUG-057) y las
+--      fixtures se reescalaron; las fronteras que prueba son las mismas.
 --      Ojo: la función devuelve el ROW_COUNT del UPDATE de clientes (1), no las
 --      filas borradas de la cola (2). No es un bug, pero no lo leas como "borró 1".
 -- ---------------------------------------------------------------------------
 begin;
 insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo) values
- ('CLI-QF1','573000000981','QA 49h espera', now(),'esperando_feedback'),
- ('CLI-QF2','573000000982','QA 47h espera', now(),'esperando_feedback'),
- ('CLI-QF3','573000000983','QA 49h humano', now(),'humano');
+ ('CLI-QF1','573000000981','QA 7h espera', now(),'esperando_feedback'),
+ ('CLI-QF2','573000000982','QA 5h espera', now(),'esperando_feedback'),
+ ('CLI-QF3','573000000983','QA 7h humano', now(),'humano');
 insert into pedidos (pedido_id, cliente_id, telefono, tipo_pedido, estado, metodo_pago, fecha_pedido, fecha_entrega) values
  ('PED-QF1','CLI-QF1','573000000981','recoger','entregado','Efectivo', now()-interval '3 days', now()-interval '3 days'),
  ('PED-QF2','CLI-QF2','573000000982','recoger','entregado','Efectivo', now()-interval '2 days', now()-interval '2 days'),
  ('PED-QF3','CLI-QF3','573000000983','recoger','entregado','Efectivo', now()-interval '3 days', now()-interval '3 days');
 insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado,fecha_solicitud) values
- ('573000000981','PED-QF1','CLI-QF1','esperando_nota',       now()-interval '49 hours'),
- ('573000000982','PED-QF2','CLI-QF2','esperando_nota',       now()-interval '47 hours'),
- ('573000000983','PED-QF3','CLI-QF3','esperando_comentario', now()-interval '49 hours');
+ ('573000000981','PED-QF1','CLI-QF1','esperando_nota',       now()-interval '7 hours'),
+ ('573000000982','PED-QF2','CLI-QF2','esperando_nota',       now()-interval '5 hours'),
+ ('573000000983','PED-QF3','CLI-QF3','esperando_comentario', now()-interval '7 hours');
 -- escribe en una sentencia, lee en la siguiente (trampa de 04-flujo-pedido.sql)
 create temp table r9(n text) on commit drop;
 insert into r9 select expirar_feedback_pendiente()::text;
@@ -323,3 +332,257 @@ select c.cliente_id,
        (select n from r9) as devuelto
 from clientes c where c.cliente_id like 'CLI-QF%' order by c.cliente_id;
 rollback;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 2026-09-16 · La máquina de estados se movió de n8n a la BD (BUG-057/058/059/060)
+--
+-- Antes, responder "5" recorría 8 nodos de n8n sin transacción: cada paso podía
+-- fallar en silencio (un filtro PostgREST que no matchea responde 204, y n8n lo
+-- da por éxito) y dejar el estado a medias. Los tres bugs del incidente del
+-- 2026-09-15 son tres variantes del mismo fallo. Ahora hay dos funciones:
+--   · solicitar_feedback_lote(limite)           → elegir + marcar + encolar + modo
+--   · procesar_respuesta_feedback(tel, mensaje) → parsear + escribir + qué contestar
+-- Todo dentro de una transacción: o pasa entero, o no pasa.
+--
+-- Medido 2026-09-16 contra la BD real: T10 10/10 · T11 3/3 · T12 2/2 · T13 5/5 ·
+-- T14 desfase 0 s · T15 0/0/0/0. Verde entero.
+--
+-- ⚠️ TRAMPA (costó un 42702 al escribir `solicitar_feedback_lote`): los nombres de
+--    un `RETURNS TABLE` **son variables plpgsql**, así que chocan con las columnas
+--    homónimas de un `ON CONFLICT … DO UPDATE SET` (ahí no se pueden calificar).
+--    La función lleva `#variable_conflict use_column`. Si alguien la reescribe sin
+--    esa línea, revienta en runtime, no al crearla.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+
+-- ---------------------------------------------------------------------------
+-- T10 · `procesar_respuesta_feedback` · las salidas de la Fase A.
+--       Medido 2026-09-16: 10/10. "10/10" y "quiero 2 pizzas" caen en nota_invalida
+--       (con el parser viejo eran nota 1 y nota 2) y "cinco" resuelve a 5.
+--       Helper: cada caso reconstruye la cola desde cero, porque una nota 4–5
+--       la borra y el siguiente caso vería 'sin_pendiente' por arrastre.
+-- ---------------------------------------------------------------------------
+begin;
+insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo)
+values ('CLI-QA10','573000000970','QA Reseñas', now(), 'esperando_feedback');
+insert into pedidos (pedido_id,cliente_id,telefono,tipo_pedido,estado,metodo_pago,fecha_entrega)
+values ('PED-QA10','CLI-QA10','573000000970','domicilio','entregado','Efectivo', now()-interval '2 hours');
+
+create or replace function pg_temp.responder(msg text) returns jsonb language plpgsql as $f$
+declare v jsonb;
+begin
+  delete from feedback where pedido_id = 'PED-QA10';
+  insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado)
+  values ('573000000970','PED-QA10','CLI-QA10','esperando_nota')
+  on conflict (telefono) do update set estado='esperando_nota', fecha_solicitud=now();
+  update clientes set modo='esperando_feedback' where cliente_id='CLI-QA10';
+  v := procesar_respuesta_feedback('573000000970', msg);
+  return v
+    || jsonb_build_object(
+         'cola_restante', (select count(*) from feedback_pendiente where telefono='573000000970'),
+         'estado_cola',   (select estado from feedback_pendiente where telefono='573000000970'),
+         'modo',          (select modo from clientes where cliente_id='CLI-QA10'),
+         'nota_en_bd',    (select calificacion_general from feedback where pedido_id='PED-QA10'));
+end $f$;
+
+select v.mensaje,
+       x.r->>'accion'        as accion,
+       x.r->>'nota_en_bd'    as nota_guardada,
+       x.r->>'cola_restante' as cola,
+       x.r->>'estado_cola'   as estado_cola,
+       x.r->>'modo'          as modo,
+       v.esperado
+from (values
+  ('5',                       'positiva · nota 5 · cola 0 · modo bot'),
+  ('cinco',                   'positiva · nota 5 · cola 0 · modo bot'),
+  ('  4 ',                    'positiva · nota 4 · cola 0 · modo bot'),
+  ('3',                       'pedir_comentario · nota 3 · cola 1 · esperando_comentario · modo esperando_feedback'),
+  ('1',                       'pedir_comentario · nota 1 · cola 1 · esperando_comentario'),
+  ('me demoraron 45 minutos', 'nota_invalida · sin nota · cola 1 · esperando_nota'),
+  ('10/10',                   'nota_invalida (NO nota 1 — BUG-051)'),
+  ('quiero 2 pizzas',         'nota_invalida (NO nota 2 — BUG-051)'),
+  ('perfecto, gracias',       'nota_invalida'),
+  ('',                        'nota_invalida')
+) v(mensaje, esperado), lateral (select pg_temp.responder(v.mensaje) as r) x;
+rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- T11 · 🔴 REGRESIÓN BUG-057 · responder DOS veces no puede romper nada.
+--       Medido 2026-09-16: los 3 pasos ACEPTADO · nota_final=2 · 1 fila · ningún
+--       23505. Con el flujo viejo, los pasos 2 y 3 eran 💥 23505.
+--       El incidente: el cliente contestó "5" a las 18:57 y "5" a las 18:59.
+--       El INSERT plano chocó con la PK determinista FB-{pedido_id} (23505), el
+--       subworkflow murió sin contestar ni limpiar, y el cliente quedó atrapado
+--       en 'esperando_feedback' con TODOS sus mensajes futuros muriendo igual.
+--       Se prueban los dos caminos por los que llegaba el choque:
+--         a) dos respuestas seguidas → la segunda es 'sin_pendiente' y de paso le
+--            devuelve el modo 'bot' en vez de dejarlo colgado.
+--         b) cola reabierta sobre un pedido YA calificado → la nota se ACTUALIZA
+--            (UPSERT). Este es el 23505 exacto de la ejecución 15688.
+-- ---------------------------------------------------------------------------
+begin;
+insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo)
+values ('CLI-QA10','573000000970','QA Reseñas', now(), 'esperando_feedback');
+insert into pedidos (pedido_id,cliente_id,telefono,tipo_pedido,estado,metodo_pago,fecha_entrega)
+values ('PED-QA10','CLI-QA10','573000000970','domicilio','entregado','Efectivo', now()-interval '2 hours');
+insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado)
+values ('573000000970','PED-QA10','CLI-QA10','esperando_nota');
+
+create temp table t11(paso int, accion text) on commit drop;
+insert into t11 select 1, pg_temp.run($$select procesar_respuesta_feedback('573000000970','5')$$);
+insert into t11 select 2, pg_temp.run($$select procesar_respuesta_feedback('573000000970','5')$$);
+-- (b) el escenario exacto del 409: el job reabre la cola de un pedido calificado
+insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado)
+values ('573000000970','PED-QA10','CLI-QA10','esperando_nota');
+update clientes set modo='esperando_feedback' where cliente_id='CLI-QA10';
+insert into t11 select 3, pg_temp.run($$select procesar_respuesta_feedback('573000000970','2')$$);
+
+select (select string_agg('resp '||paso||' → '||accion, E'\n' order by paso) from t11) as secuencia,
+       (select calificacion_general from feedback where pedido_id='PED-QA10')          as nota_final,
+       (select count(*) from feedback where pedido_id='PED-QA10')                      as filas_feedback,
+       (select modo from clientes where cliente_id='CLI-QA10')                         as modo_final;
+-- Esperado: los 3 pasos ACEPTADO (ninguno 💥 23505) · nota_final=2 (el UPSERT
+-- actualizó) · filas_feedback=1 · modo_final=esperando_feedback (la 3ª fue nota
+-- baja y pidió comentario). Con el flujo viejo, 2 y 3 eran 💥 23505.
+rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- T12 · 🔴 REGRESIÓN BUG-059 · la Fase B tiene que CERRAR, no medio cerrar.
+--       Medido 2026-09-16: 2/2 · ambos cola=0 y modo=bot · "saltar" deja NULL.
+--       El nodo `Eliminar feedback pendiente1` filtraba por $json.telefono sobre
+--       la fila de `feedback`, que no tiene esa columna: borraba 0 filas y
+--       devolvía éxito. `Restaurar modo bot1` sí funcionaba → el cliente volvía a
+--       'bot' con la cola VIVA. Ese desfase es el que encadenó todo el incidente.
+--       Invariante: tras la Fase B, cola=0 Y modo='bot'. Nunca uno sin el otro.
+-- ---------------------------------------------------------------------------
+begin;
+insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo) values
+ ('CLI-QB1','573000000991','QA comenta', now(),'esperando_feedback'),
+ ('CLI-QB2','573000000992','QA salta',   now(),'esperando_feedback');
+insert into pedidos (pedido_id,cliente_id,telefono,tipo_pedido,estado,metodo_pago,fecha_entrega) values
+ ('PED-QB1','CLI-QB1','573000000991','domicilio','entregado','Efectivo', now()-interval '2 hours'),
+ ('PED-QB2','CLI-QB2','573000000992','domicilio','entregado','Efectivo', now()-interval '2 hours');
+insert into feedback (feedback_id,cliente_id,pedido_id,fecha,calificacion_general) values
+ ('FB-PED-QB1','CLI-QB1','PED-QB1', now() at time zone 'utc', 2),
+ ('FB-PED-QB2','CLI-QB2','PED-QB2', now() at time zone 'utc', 2);
+insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado) values
+ ('573000000991','PED-QB1','CLI-QB1','esperando_comentario'),
+ ('573000000992','PED-QB2','CLI-QB2','esperando_comentario');
+
+create temp table t12(cli text, accion text) on commit drop;
+insert into t12 select 'CLI-QB1', procesar_respuesta_feedback('573000000991','La pizza llegó fría')::text;
+insert into t12 select 'CLI-QB2', procesar_respuesta_feedback('573000000992','saltar')::text;
+
+select c.cliente_id,
+       (select accion from t12 where cli=c.cliente_id)                              as respuesta,
+       (select count(*) from feedback_pendiente fp where fp.cliente_id=c.cliente_id) as cola,
+       c.modo,
+       (select comentario from feedback f where f.cliente_id=c.cliente_id)           as comentario,
+       case c.cliente_id
+         when 'CLI-QB1' then 'agradecer · cola=0 · modo=bot · comentario guardado'
+         when 'CLI-QB2' then 'agradecer · cola=0 · modo=bot · comentario NULL (saltar)' end as esperado
+from clientes c where c.cliente_id like 'CLI-QB%' order by 1;
+rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- T13 · 🔴 REGRESIÓN BUG-058 · `solicitar_feedback_lote` es todo-o-nada.
+--       Medido 2026-09-16: 5/5 · solo QL1 se toma, y queda marcado + encolado +
+--       modo cambiado en la misma transacción.
+--       El PATCH de `feedback_solicitado` apuntaba a `pedido_id=eq.undefined`:
+--       0 filas, 204, verde. El flag nunca se marcaba y el cron repreguntaba el
+--       mismo pedido cada 15 min. Ahora las tres escrituras van en la misma
+--       transacción que el SELECT que devuelve las filas. Las cinco guardas:
+--         QL1 · entregado hace 2 h, cliente en 'bot'      → SÍ lo toma
+--         QL2 · entregado hace 30 min                     → no (muy reciente)
+--         QL3 · entregado hace 2 h pero YA tiene feedback → no (la guarda nueva:
+--               el hecho manda sobre el flag, aunque feedback_solicitado=false)
+--         QL4 · entregado hace 2 h pero el cliente está en 'humano' → no
+--         QL5 · entregado hace 2 h pero ya tiene cola abierta       → no
+-- ---------------------------------------------------------------------------
+begin;
+insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo) values
+ ('CLI-QL1','573000000951','QA lote 1', now(),'bot'),
+ ('CLI-QL2','573000000952','QA lote 2', now(),'bot'),
+ ('CLI-QL3','573000000953','QA lote 3', now(),'bot'),
+ ('CLI-QL4','573000000954','QA lote 4', now(),'humano'),
+ ('CLI-QL5','573000000955','QA lote 5', now(),'bot');
+insert into pedidos (pedido_id,cliente_id,telefono,tipo_pedido,estado,metodo_pago,fecha_entrega,feedback_solicitado) values
+ ('PED-QL1','CLI-QL1','573000000951','domicilio','entregado','Efectivo', now()-interval '2 hours',   false),
+ ('PED-QL2','CLI-QL2','573000000952','domicilio','entregado','Efectivo', now()-interval '30 minutes',false),
+ ('PED-QL3','CLI-QL3','573000000953','domicilio','entregado','Efectivo', now()-interval '2 hours',   false),
+ ('PED-QL4','CLI-QL4','573000000954','domicilio','entregado','Efectivo', now()-interval '2 hours',   false),
+ ('PED-QL5','CLI-QL5','573000000955','domicilio','entregado','Efectivo', now()-interval '2 hours',   false);
+insert into feedback (feedback_id,cliente_id,pedido_id,fecha,calificacion_general)
+values ('FB-PED-QL3','CLI-QL3','PED-QL3', now() at time zone 'utc', 4);
+insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado)
+values ('573000000955','PED-QL5','CLI-QL5','esperando_nota');
+
+-- escribe en una sentencia, lee en la siguiente (trampa de 04-flujo-pedido.sql)
+create temp table t13(pedido_id text, cliente_id text, telefono text, nombre text) on commit drop;
+insert into t13 select * from solicitar_feedback_lote(50);
+
+select p.pedido_id,
+       (select count(*) from t13 where t13.pedido_id = p.pedido_id) > 0 as lo_tomo,
+       p.feedback_solicitado                                            as marcado,
+       (select modo from clientes c where c.cliente_id=p.cliente_id)    as modo_cliente,
+       (select fp.pedido_id from feedback_pendiente fp where fp.cliente_id=p.cliente_id) as cola,
+       case p.pedido_id
+         when 'PED-QL1' then 'lo_tomo=t · marcado=t · modo=esperando_feedback · cola=PED-QL1'
+         when 'PED-QL2' then 'lo_tomo=f · marcado=f · modo=bot · cola=NULL (muy reciente)'
+         when 'PED-QL3' then 'lo_tomo=f · marcado=f · modo=bot · cola=NULL (ya calificado)'
+         when 'PED-QL4' then 'lo_tomo=f · marcado=f · modo=humano · cola=NULL'
+         when 'PED-QL5' then 'lo_tomo=f · marcado=f · modo=bot · cola=PED-QL5 (ya en cola)' end as esperado
+from pedidos p where p.pedido_id like 'PED-QL%' order by 1;
+rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- T14 · BUG-060 · `feedback.fecha` es `timestamp` SIN zona y por convención
+--       guarda UTC (CLAUDE.md · parseDb()). n8n escribía `$now.toISO()`, que
+--       resuelve en el huso de la INSTANCIA (UTC+2): la ejecución 15674 corrió a
+--       las 23:22:35.677 UTC y la fila quedó con 01:22:35.841. Mismos ms, +2 h.
+--       Verde = desfase < 5 segundos. Medido 2026-09-16: 0 s.
+-- ---------------------------------------------------------------------------
+begin;
+insert into clientes (cliente_id, telefono, nombre, fecha_registro, modo)
+values ('CLI-QA10','573000000970','QA Reseñas', now(), 'esperando_feedback');
+insert into pedidos (pedido_id,cliente_id,telefono,tipo_pedido,estado,metodo_pago,fecha_entrega)
+values ('PED-QA10','CLI-QA10','573000000970','domicilio','entregado','Efectivo', now()-interval '2 hours');
+insert into feedback_pendiente (telefono,pedido_id,cliente_id,estado)
+values ('573000000970','PED-QA10','CLI-QA10','esperando_nota');
+
+create temp table t14(x text) on commit drop;
+insert into t14 select procesar_respuesta_feedback('573000000970','5')::text;
+
+select f.fecha                    as fecha_guardada,
+       (now() at time zone 'utc') as ahora_utc,
+       round(extract(epoch from ((now() at time zone 'utc') - f.fecha)))::text || ' s' as desfase,
+       case when abs(extract(epoch from ((now() at time zone 'utc') - f.fecha))) < 5
+            then 'verde' else '⚠️ la fecha no está en UTC' end as veredicto
+from feedback f where f.pedido_id='PED-QA10';
+rollback;
+
+
+-- ---------------------------------------------------------------------------
+-- T15 · La invariante que resume el incidente entero, como red permanente.
+--       Medido 2026-09-16 contra datos vivos: 0 / 0 / 0 / 0.
+--       Ningún cliente puede quedar en un estado del que el sistema no lo saque.
+--       Los cuatro contadores deben ser 0 contra datos VIVOS (sin transacción).
+--         a) en 'esperando_feedback' sin fila en la cola  → modo huérfano
+--         b) fila en la cola con el cliente NO en 'esperando_feedback' ni 'humano'
+--            → el desfase exacto de BUG-059
+--         c) fila en la cola cuyo pedido ya tiene feedback → el 23505 esperando
+--         d) fila en la cola de más de 6 h → el job de expiración no corrió
+-- ---------------------------------------------------------------------------
+select
+ (select count(*) from clientes c where c.modo='esperando_feedback'
+    and not exists (select 1 from feedback_pendiente fp where fp.cliente_id=c.cliente_id))  as a_modo_huerfano,
+ (select count(*) from feedback_pendiente fp join clientes c on c.cliente_id=fp.cliente_id
+    where c.modo not in ('esperando_feedback','humano'))                                    as b_cola_sin_modo,
+ (select count(*) from feedback_pendiente fp
+    where exists (select 1 from feedback f where f.pedido_id=fp.pedido_id))                 as c_cola_ya_calificada,
+ (select count(*) from feedback_pendiente where fecha_solicitud < now()-interval '6 hours') as d_cola_vencida;

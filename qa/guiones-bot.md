@@ -260,7 +260,7 @@ mezclan dominios a propósito.
 
 ---
 
-## G11 · 🔴 Flujo de reseñas — **BUG-050 y BUG-051**
+## G11 · 🔴 Flujo de reseñas — **BUG-050, BUG-051 y BUG-056**
 
 **Por qué existe:** la Capa A midió que el flujo está roto en producción — **ningún feedback
 registrado desde el 2026-07-23**, 7 clientes atrapados en `esperando_feedback` y 9 filas zombis en
@@ -283,7 +283,7 @@ Luego espera a que corra `trigger_feedback` (cada 15 min) o ejecútalo a mano de
 | # | Envía | El bot **debe** |
 |---|---|---|
 | 11.1 | *(esperar)* | **llegar** el WhatsApp pidiendo calificar 1–5. Hoy **no llega** si el cliente ya tenía fila en la cola → BUG-050 |
-| 11.2 | `5` | agradecer e **invitar a dejar reseña en Google** |
+| 11.2 | `5` | agradecer e **invitar a dejar reseña en Google**. **BUG-056 (medido 2026-09-15, ejecución `15674`): hoy responde *"Lamento que no fuera lo esperado"* y pide explicaciones.** Toda nota válida cae en la ruta negativa |
 | 11.3 | *(repetir con otro pedido)* `2` | pedir el comentario (*"¿qué pasó?"*) |
 | 11.4 | `llegó frío` | guardar el comentario y devolver el modo a `bot` |
 | 11.5 | `saltar` (en vez de comentar) | cerrar sin comentario y devolver el modo a `bot` |

@@ -230,9 +230,20 @@ migración `feedback_add_resuelta_at`, 2026-07-23; solo aplica a negativas/neutr
 > `mensajes_soporte` no tiene FK a `clientes` (referencia por `telefono`), así que el historial
 > de soporte NO se borra.
 
-### `feedback_pendiente` — cola de espera de feedback (2 filas · PK `telefono` · RLS ✅)
+### `feedback_pendiente` — cola de espera de feedback (PK `telefono` · RLS ✅)
 `telefono` 🔑, `pedido_id`, `cliente_id`, `estado` (check `esperando_nota`/`esperando_comentario`),
-`fecha_solicitud`.
+`fecha_solicitud` (default `now()`).
+
+> **Desde 2026-09-16 (BUG-057/058/059) esta tabla solo la escriben dos RPCs:**
+> `solicitar_feedback_lote` (encola) y `procesar_respuesta_feedback` (avanza/cierra), más el cron
+> de expiración. La máquina de estados vivía en ~20 nodos de n8n sin transacción y cada paso podía
+> fallar en silencio; el resultado fue un cliente atrapado en `esperando_feedback` con la cola viva
+> y un pedido ya calificado. **Invariante:** nunca `modo = 'bot'` con fila en la cola, ni
+> `esperando_feedback` sin ella (probado por `qa/sql/10-resenas.sql` T15).
+>
+> ⚠️ `feedback.fecha` es `timestamp` sin zona y guarda **UTC**. Lo escribe la RPC con
+> `now() at time zone 'utc'`; n8n escribía `$now.toISO()` en el huso de su instancia (UTC+2) y
+> dejaba las notas 2 h en el futuro (BUG-060).
 
 ### `mensajes_soporte` — chat de soporte (RLS ✅ solo authenticated)
 `id` uuid 🔑, `telefono`, `origen` (check `cliente`/`admin`/`sistema`/**`bot`**), `mensaje`,
@@ -419,6 +430,8 @@ WHERE p.pedido_id = v_pedido_id;
 | `mi_rol` | `() → text` | **Rol del usuario en curso.** NULL si no hay sesión, no tiene perfil o está inactivo. La usan todas las políticas por rol. **STABLE · SECURITY DEFINER** (obligatorio: leer `perfiles` desde las políticas de `perfiles` daría recursión). |
 | `es_admin` | `() → boolean` | Azúcar sobre `mi_rol()`. **STABLE · SECURITY DEFINER.** |
 | `puede_ver_pedido` / `puede_ver_cliente` | `(text) → boolean` | Visibilidad cruzada del domiciliario sobre `detalle_pedidos` y `clientes`. **STABLE · SECURITY DEFINER** para no encadenar la RLS de `pedidos` dentro de otra política. |
+| `solicitar_feedback_lote` | `(p_limite int=5) → table(pedido_id, cliente_id, telefono, nombre)` | **Lado "preguntar" del feedback** (2026-09-16, BUG-058). Devuelve los pedidos a los que hay que pedir calificación y, **en la misma transacción**, marca `feedback_solicitado`, los encola en `feedback_pendiente` y pasa al cliente a `esperando_feedback`. n8n solo envía el WhatsApp. Elegible = `entregado` · flag en false · `fecha_entrega` entre now()−6 h y now()−1 h · cliente `activo` en `'bot'` · **sin fila en `feedback`** (la guarda que faltaba: el hecho manda sobre el flag) · sin cola abierta para ese teléfono. `FOR UPDATE SKIP LOCKED` contra ticks del cron solapados. `p_limite` acotado 1–50. Lleva `#variable_conflict use_column` (los nombres del `RETURNS TABLE` chocan con las columnas del `ON CONFLICT`: 42702 en runtime). **SECURITY DEFINER**, `EXECUTE` solo `service_role`. |
+| `procesar_respuesta_feedback` | `(p_telefono text, p_mensaje text) → jsonb` | **Lado "responder" del feedback** (2026-09-16, BUG-057/059/060). Puerta única para cualquier mensaje de un cliente en `esperando_feedback`. Bloquea su fila de la cola (`FOR UPDATE`, dos mensajes seguidos se serializan) y, según `estado`: **`esperando_nota`** → parsea con la regla estricta de BUG-051 (el mensaje tiene que *ser* la nota: dígito 1–5 o `uno`..`cinco` tras quitar puntuación/emoji/acentos), **UPSERT** en `feedback` (una segunda calificación actualiza, no revienta con 23505), y cierra (nota ≥ 4) o pasa a `esperando_comentario` (≤ 3). **`esperando_comentario`** → guarda el texto (≤ 2000; `saltar` no pisa uno existente) y cierra. "Cerrar" = borrar la cola **y** restaurar `modo = 'bot'` en la misma transacción. Sin cola → restaura el modo si estaba huérfano. Estado desconocido → suelta al cliente antes que dejarlo atrapado. Devuelve `{accion}` ∈ `positiva` · `pedir_comentario` · `agradecer` · `nota_invalida` · `sin_pendiente`, y n8n solo elige el texto. **SECURITY DEFINER**, `EXECUTE` solo `service_role`. |
 | `marcar_entregado` | `(p_pedido_id text) → pedidos` | **Única vía de escritura del rol domiciliario.** Valida rol, asignación y estado; el UPDATE lo hace saltando RLS. Existe porque **RLS no puede limitar columnas** (ver §Modelo de permisos). **SECURITY DEFINER.** |
 | `validar_asignacion_domiciliario` | `() → trigger` | Trigger de `pedidos` (ver §Triggers). |
 | `resumen_entregas` | `(p_domiciliario uuid, p_desde timestamptz=null, p_hasta timestamptz=null) → (entregas, total, efectivo, primera, ultima)` | Totales del historial de entregas. Existe porque la lista está paginada y sumar solo lo cargado daría una cifra que crece al hacer scroll. **STABLE · SECURITY INVOKER** — al revés que el resto de RPC de este esquema: así hereda la RLS de `pedidos` y la autorización sale gratis (un domiciliario que pase el id de otro recibe ceros, porque esas filas no existen para él). |
@@ -433,7 +446,7 @@ WHERE p.pedido_id = v_pedido_id;
 | `limpiar-carritos-abandonados` | `0 8 * * *` | `limpiar_carritos_abandonados()` |
 | `limpiar_historial_chat_semanal` | `0 3 * * 1` | `limpiar_historial_chat()` |
 | `expirar-pedidos-pendientes` | `0 16 * * *` | `expirar_pedidos_pendientes()` — 16:00 UTC = **11:00 Colombia**: el corte (00:00) ya pasó, pero la notificación de cancelación le llega al cliente a una hora decente y no a medianoche. Mientras tanto el pedido viejo no estorba, porque el kanban solo muestra los del día actual |
-| `expirar-feedback-pendiente` | `30 7 * * *` | `expirar_feedback_pendiente()` — borra filas de `feedback_pendiente` de más de 48 h y devuelve a `'bot'` a esos clientes si seguían en `esperando_feedback` (nunca pisa un `humano`). BUG-050, 2026-09-12 |
+| `expirar-feedback-pendiente` | `7 * * * *` | `expirar_feedback_pendiente()` — borra filas de `feedback_pendiente` de más de **6 h** y devuelve a `'bot'` a esos clientes si seguían en `esperando_feedback` (nunca pisa un `humano`). BUG-050, 2026-09-12. **2026-09-16 (BUG-057):** era 48 h con corrida diaria — un cliente atrapado podía pasar ~3 días sin bot. Es la red de seguridad de todo el flujo: acota cualquier fallo futuro a ≤ 7 h. |
 | `limpiar-mensajes-pendientes` | `*/5 * * * *` | `delete from n8n_mensajes_pendientes where creado_el < now() - interval '5 minutes'` — un turno que muere a mitad del buffer dejaba la fila, y `Combinar mensajes` la pegaba delante del próximo mensaje del cliente aunque llegara días después. Un flujo sano la borra a los ~3 s. BUG-053, 2026-09-15 |
 
 > ✅ Desde 2026-07-22 **`Sub — Consultar_menu` llama a `buscar_menu`** (POST

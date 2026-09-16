@@ -531,3 +531,80 @@ Champiñon* cubre la mitad → 0.25, que cae en "confirmar". Y el test que impor
 es la banda: **¿algún producto que no pidieron llega a ≥0.5?** (`02-menu.sql · T8`). Antes de tocar
 una función que alimenta a un LLM, lee cómo la consume el workflow: el mismo arreglo diseñado para
 un top-5 no habría servido.
+
+## 36. `$json` no atraviesa un nodo: un campo calculado en un Code node muere en el siguiente INSERT (2026-09-15)
+
+**Síntoma.** Un cliente califica su pedido con **5** y el bot le contesta *"Lamento que no fuera lo
+esperado 🙏 ¿Nos cuentas qué pasó?"*. El siguiente mensaje del cliente (*"Dije 5"*) queda guardado
+como comentario de queja. La nota se guardó bien (5); lo que estaba mal era el camino.
+
+**Causa.** En `Sub — Feedback Pendiente` la cadena es
+`Parsear calificación` → `Guardar calificación` (INSERT Supabase) → `¿Nota > 3?` (Switch).
+El parser emite `es_positiva: true`, pero el switch evalúa `={{ $json.es_positiva }}`, y su `$json`
+es la salida del nodo **inmediatamente anterior**: la fila insertada en `feedback`
+(`feedback_id, cliente_id, pedido_id, fecha, calificacion_general, comentario, resuelta_at`). Ahí
+`es_positiva` es `undefined`. Con eso, la regla `is true` no matchea y la regla `is false` sí:
+**todas** las notas —1 a 5— salían por la ruta negativa. Verificado en la ejecución `15674`.
+
+**Por qué es difícil de ver.** El switch no falla: enruta. La ejecución queda en verde, el INSERT
+es correcto, la nota en la BD es correcta, y en `qa/sql/` no hay nada que detectarlo porque el
+defecto no está en SQL. Solo se ve leyendo la conversación o abriendo la ejecución nodo por nodo.
+Escondía además un segundo defecto en la rama que nunca corría: `Eliminar feedback pendiente`
+filtraba por `$json.telefono` sobre esa misma fila de `feedback`, que no tiene esa columna.
+
+**Lección.** Un campo calculado en un Code node **no sobrevive** a un nodo Supabase/HTTP intermedio.
+Si un nodo posterior lo necesita, referencia el origen explícitamente —
+`$('Parsear calificación').item.json.es_positiva` — o decide con un campo que **sí** venga en el
+item que llega (`calificacion_general > 3`). Y cuando muevas un nodo de decisión detrás de una
+escritura, revisa **todo** lo que ese nodo y sus descendientes leen de `$json`: el resto de la rama
+suele estar leyendo el item viejo también.
+
+## 37. Reordenar una cadena en n8n no es mover cajas: es cambiar el `$json` de todo lo que quedó detrás (2026-09-16)
+
+**Síntoma.** El job de feedback vuelve a preguntar por un pedido que ya preguntó. `PED-246` recibió
+la misma pregunta dos veces en 75 minutos y, un día después, sigue con `feedback_solicitado = false`
+pese a dos ejecuciones verdes que dicen haberlo marcado.
+
+**Causa.** El fix de BUG-050 reordenó la cadena para que el WhatsApp saliera antes de marcar el
+pedido. El nuevo orden es correcto; lo que nadie revisó es que `Marcar pedido como solicitado`
+seguía filtrando por `={{ $json.pedido_id }}`. Tras el reorden su `$json` ya no es el payload del
+Code node sino **la respuesta de la API de WhatsApp**, que no tiene `pedido_id`. La query sale como
+`pedido_id=eq.undefined`, PostgREST hace match de 0 filas y responde **204 sin cuerpo** — que para
+n8n es un éxito. Sus tres nodos hermanos sí se habían migrado a
+`$('Code — Preparar payload').item.json.…`; ese quedó solo.
+
+**Por qué es difícil de ver.** Es el mismo fallo silencioso del caso 31, pero sin RLS de por medio:
+**cualquier** filtro de PostgREST que no matchea nada devuelve éxito con 0 filas. Con
+`Prefer: return=minimal` el output del nodo es `{}` tanto si actualizó como si no. La única forma de
+notarlo es ir a la BD a mirar si la columna cambió.
+
+**Lección.** Mover un nodo en n8n es un cambio de datos, no de layout: después de reordenar, audita
+**cada** `$json` de los nodos que quedaron detrás del punto de corte — y si el fix migró unos a
+`$('Nodo')…`, migra **todos**, no los que rompían ese día. Para escrituras de idempotencia
+(`feedback_solicitado`, `procesado`, `notificado`) usa `Prefer: return=representation`: un match de
+0 filas debe verse distinto de un éxito.
+
+## 38. Cuando el fallo deja al cliente atrapado, el bug no es el error: es que nadie lo saca de ahí (2026-09-16)
+
+**Síntoma.** Un cliente en `modo = 'esperando_feedback'` responde `5`. Silencio. Responde `5` otra
+vez. Silencio. **Cualquier** mensaje que mande a partir de ahí muere igual, indefinidamente: el bot
+dejó de existir para él y nada en el sistema lo detecta.
+
+**Causa.** Tres defectos pequeños encadenados. Un DELETE que no borró (filtraba por una columna que
+no existe en el item) dejó viva la fila de `feedback_pendiente` mientras el `modo` sí se restauraba;
+un PATCH que no marcó nada dejó el pedido elegible para repreguntar; y el upsert del job devolvió la
+cola a `esperando_nota` para un pedido que **ya tenía feedback**. Al responder, el INSERT chocó con
+la PK determinista `FB-{pedido_id}` → 409 → el subworkflow murió antes de contestar, limpiar la cola
+o restaurar el modo. BUG-057/058/059.
+
+**Por qué es difícil de ver.** Ninguno de los tres defectos rompe nada por sí solo: dos son no-ops
+verdes y el tercero solo aparece cuando coinciden. Y el estado resultante —modo de captura activo,
+cola viva, pedido ya calificado— es una combinación que el diseño da por imposible, así que no hay
+código que la contemple.
+
+**Lección.** Todo modo que secuestra la conversación (`esperando_feedback`, `humano`, cualquier
+máquina de estados sobre el cliente) necesita **una salida que no dependa de que el flujo termine
+bien**: un job de expiración por antigüedad que borre la fila y devuelva `modo = 'bot'`. Sin esa red,
+cualquier fallo a mitad de camino no degrada el servicio — lo cancela, para ese cliente, para
+siempre. Y una PK determinista (`FB-{pedido_id}`) es una aserción de unicidad: el flujo que la
+escribe tiene que asumir el reintento (upsert u `onError`), no romperse con él.

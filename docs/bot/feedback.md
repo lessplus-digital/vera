@@ -1,205 +1,152 @@
 # Sistema de Feedback de Pedidos
 
-El feedback tiene **dos mitades**, en dos workflows distintos de n8n:
+> **Rediseñado el 2026-09-16 (BUG-057/058/059/060).** La máquina de estados ya **no vive en n8n**:
+> vive en dos RPCs transaccionales de Supabase. n8n solo decide *cuándo* llamarlas y *qué texto*
+> enviar. Verificado vía MCP tras publicar: `Sub — Feedback Pendiente` `05b3415f…`,
+> `Pizzeria Vera` `1f351a3b…`. Historia del cambio al final.
 
-1. **[Parte 1 — Job programado](#parte-1--job-programado-solicitud)** (`TRIGGER JOB FEEDBACK`):
-   un cron que detecta pedidos entregados y **pide** la calificación por WhatsApp.
-2. **[Parte 2 — Subworkflow de respuesta](#parte-2--subworkflow-de-respuesta-retener-feedback)**
-   (`Ejecutar Retener feedback`): lo invoca el `Router de modo` del
-   [workflow principal](n8n-workflow.md#fase-4-router-de-modo-handoff) cuando el
-   cliente —ya en modo `esperando_feedback`— **responde**, y procesa la nota/comentario.
+El feedback tiene **dos mitades**, las dos dentro de n8n pero con toda la lógica en la BD:
+
+| Mitad | Dónde corre en n8n | RPC que hace el trabajo |
+|---|---|---|
+| **Preguntar** | rama `trigger_feedback` del workflow principal `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`) | `solicitar_feedback_lote(p_limite)` |
+| **Responder** | subworkflow `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`), invocado por el `Router de modo` cuando el cliente está en `esperando_feedback` | `procesar_respuesta_feedback(p_telefono, p_mensaje)` |
+
+Contrato completo de las dos funciones: [`../database/schema.md`](../database/schema.md) §Funciones.
+Pruebas: `qa/sql/10-resenas.sql` T10–T15.
 
 ---
 
-## Parte 1 — Job programado (solicitud)
+## Por qué está en la BD y no en n8n
 
-> Workflow n8n **independiente** (tiene su propio Schedule Trigger).
+Hasta el 2026-09-16 las dos mitades eran ~20 nodos de n8n que escribían en tres tablas **sin
+transacción**. Cada paso podía fallar en silencio — un filtro PostgREST que no matchea ninguna fila
+responde **204**, y n8n lo marca como éxito — y dejar al cliente a medias. En el incidente que lo
+destapó, tres defectos así se encadenaron: un DELETE que no borró, un PATCH que no marcó y un INSERT
+que chocó con 409. Resultado: un cliente respondió `5` dos veces, no recibió nada y quedó **fuera del
+bot** con cada mensaje muriendo igual.
 
-### Propósito
+La regla desde entonces: **ninguna transición de estado del feedback se escribe desde n8n.** Si hace
+falta una nueva, va a la RPC, con su caso en `10-resenas.sql`.
 
-Cada **15 minutos** busca pedidos `entregado` que **aún no** tienen feedback
-solicitado y que se entregaron hace **entre 1 y 6 horas**. A cada uno le envía un
-WhatsApp pidiendo calificar del 1 al 5, marca el pedido, pasa al cliente a modo
-`esperando_feedback` y registra la espera en `feedback_pendiente`.
+---
 
-### Flujo
+## Mitad 1 — Preguntar (cron cada 15 min)
 
 ```
 trigger_feedback (Schedule Trigger — cada 15 min)
   │
-  └─ Buscar pedidos pendientes de feedback (HTTP GET — Supabase REST /pedidos)
-       │   select: pedido_id, cliente_id, telefono, fecha_entrega, clientes(nombre,modo)
-       │   filtros: estado=eq.entregado · feedback_solicitado=eq.false
-       │            fecha_entrega gte (now−6h) y lte (now−1h) · limit 50
-       │   (retryOnFail 2 s · alwaysOutputData)
+  └─ Solicitar lote de feedback (RPC)   POST /rest/v1/rpc/solicitar_feedback_lote  {"p_limite": 20}
+       │   Devuelve [{pedido_id, cliente_id, telefono, nombre}] y, EN LA MISMA TRANSACCIÓN,
+       │   ya marcó feedback_solicitado, encoló en feedback_pendiente y pasó al cliente
+       │   a 'esperando_feedback'.   (retryOnFail · alwaysOutputData)
        │
-       └─ Split In Batches (batchSize 5, reset)
-            │  ├─ done → (fin)
-            │  └─ loop ↓ (procesa de a 5; vuelve tras Wait1)
-            │
-            ├─ Code — Preparar payload (Code node)
-            │   ├─ Valida pedido_id / telefono / cliente_id (si falta → descarta item)
-            │   ├─ Extrae nombre y modo del JOIN clientes(...)
-            │   ├─ SOLO procesa clientes en modo 'bot' (si no → descarta item)
-            │   ├─ Usa el primer nombre solo si es válido (≠ 'Pendiente' / no vacío)
-            │   └─ Arma el mensaje "¿Cómo estuvo tu pedido? Califica del 1 al 5"
-            │        → { pedido_id, cliente_id, telefono, mensaje }
-            │
-            ├─ Marcar pedido como solicitado (HTTP PATCH /pedidos?pedido_id=eq.{id})
-            │   └─ body: { "feedback_solicitado": true }   (idempotencia)
-            │
-            ├─ Activar modo esperando_feedback (HTTP PATCH /clientes?cliente_id=eq.{id})
-            │   └─ body: { "modo": "esperando_feedback" }
-            │
-            ├─ feedback_pendiente (HTTP POST /feedback_pendiente)
-            │   └─ body: { telefono, pedido_id, cliente_id, estado: "esperando_nota" }
-            │
-            ├─ Enviar WhatsApp (WhatsApp — message.send)
-            │   └─ Envía el mensaje al telefono del cliente
-            │
-            └─ Wait1 (Wait — 2 s)
-                 └─ Vuelve a Split In Batches (siguiente lote)
+       └─ Split In Batches (de a 5)
+            ├─ Code — Preparar payload   solo redacta: "Hola {primer nombre} 👋 … Califícalo del 1 al 5"
+            ├─ Enviar WhatsApp
+            └─ Wait1 (2 s) → vuelve al Split
 ```
 
-### 🔴 Estado real (verificado vía MCP el 2026-09-12) — este flujo NO funciona
+**Qué pedidos elige la RPC:** `entregado` · `feedback_solicitado = false` · entregado hace entre 1 y
+6 h · cliente `activo` en modo `'bot'` · **sin fila en `feedback`** · sin cola abierta para ese
+teléfono. `FOR UPDATE SKIP LOCKED`, así dos ticks solapados no se llevan el mismo pedido.
 
-Lo de arriba describe el diseño. **En producción lleva roto desde el 2026-07-23** (último feedback
-registrado). Ver **BUG-050** y **BUG-051** en el bug-tracker y la batería `qa/sql/10-resenas.sql`.
-
-Tres correcciones al documento, además:
-
-1. **No es un workflow independiente.** La rama `trigger_feedback` vive **dentro** del workflow
-   principal `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`). No existe ningún workflow llamado
-   `TRIGGER JOB FEEDBACK`.
-2. **`feedback_pendiente` tiene PK `telefono`** — un solo slot por cliente. El nodo
-   `feedback_pendiente` hace `POST` sin upsert, así que con un cliente repetido devuelve
-   **409 / 23505** y, al ser `onError` = detener workflow, **mata la ejecución**.
-3. **El orden de la cadena hace el daño irreversible:** `Marcar pedido como solicitado` y
-   `Activar modo esperando_feedback` se ejecutan **antes** del POST que falla, y `Enviar WhatsApp`
-   **después**. Resultado: el pedido queda marcado como preguntado, el cliente atrapado en modo
-   feedback, y **la pregunta nunca sale**.
-
-El fix propuesto (upsert + reordenar + job de expiración de la cola) está detallado en BUG-050.
-
-### Notas
-
-- **Idempotencia:** `feedback_solicitado = true` evita volver a pedir feedback del
-  mismo pedido en la próxima corrida.
-- **Ventana 1–6 h:** espera ≥1 h tras la entrega y no persigue pedidos de más de 6 h.
-- **Solo modo `'bot'`:** no interrumpe a clientes en `humano` / `esperando_feedback`.
-- **Batching + Wait 2 s:** espacia los envíos y evita ráfagas contra la API de WhatsApp.
+**Trade-off asumido:** la RPC marca **antes** de que salga el WhatsApp. Si el envío falla, el
+cliente queda en `esperando_feedback` sin haber sido preguntado — hasta que el cron de expiración lo
+libera (≤ 7 h). Se prefirió eso a lo contrario: marcar después permitía **repreguntar**, que fue
+justo lo que causó el incidente.
 
 ---
 
-## Parte 2 — Subworkflow de respuesta (Retener feedback)
-
-> Subworkflow invocado por **Execute Workflow** desde el `Router de modo` del
-> workflow principal. Recibe `{ telefono, mensaje, cliente_id }`.
-
-### Flujo — despacho por estado
+## Mitad 2 — Responder (subworkflow)
 
 ```
-When Executed by Another Workflow (inputs: telefono, mensaje, cliente_id)
+When Executed by Another Workflow   {telefono, mensaje, cliente_id}
   │
-  └─ Obtener feedback pendiente (Supabase get — feedback_pendiente WHERE telefono)
+  └─ Procesar respuesta (RPC)   POST /rest/v1/rpc/procesar_respuesta_feedback   (retry 3× / 2 s)
+       │   → {accion, nota?, pedido_id?}
        │
-       └─ ¿Existe feedback pendiente? (IF — pedido_id exists)
-            ├─ FALSE → Limpiar modo huérfano (Supabase update clientes modo='bot')
-            │            └─ FIN (modo de feedback sin fila pendiente → se resetea)
-            │
-            └─ TRUE → Estado del feedback (Switch por feedback_pendiente.estado)
-                 ├─ 'esperando_nota'        → FASE A (calificación) ↓
-                 ├─ 'esperando_comentario'  → FASE B (comentario) ↓
-                 └─ (fallback)              → Limpiar modo huérfano → FIN
+       └─ ¿Qué contestar?  (Switch sobre accion)
+            ├─ 0 positiva          → Invitar reseña Google
+            ├─ 1 pedir_comentario  → Pedir comentario   ("¿qué pasó? … escribe 'saltar'")
+            ├─ 2 agradecer         → Agradecer feedback
+            ├─ 3 nota_invalida     → Pedir nota de nuevo ("responde solo 1–5")
+            └─ fallback            → (sin conectar, a propósito)
 ```
 
-### FASE A — el cliente responde la calificación (`esperando_nota`)
+El **fallback sin conectar** es `sin_pendiente`: el cliente estaba en `esperando_feedback` pero no
+había cola. La RPC ya lo devolvió a `'bot'`; no hay nada que contestar. Tiene una nota en el nodo
+para que nadie lo "arregle" (y no se descarta en silencio: ver `edge-cases.md` §19).
+
+Todos los WhatsApp leen el destinatario de `$('When Executed by Another Workflow')`, nunca de
+`$json` — tras el Switch, `$json` es la respuesta de la RPC y no trae teléfono.
+
+### Lo que hace la RPC según el estado de la cola
+
+| Estado en `feedback_pendiente` | Mensaje del cliente | Escribe | `accion` |
+|---|---|---|---|
+| *(no hay fila)* | cualquiera | `modo → 'bot'` si estaba huérfano | `sin_pendiente` |
+| `esperando_nota` | **es** una nota: `5`, ` 4 `, `cinco`… | UPSERT `feedback` · borra cola · `modo → 'bot'` | `positiva` (4–5) |
+| `esperando_nota` | **es** una nota 1–3 | UPSERT `feedback` · cola → `esperando_comentario` | `pedir_comentario` |
+| `esperando_nota` | *contiene* un número pero no **es** una nota: `10/10`, `quiero 2 pizzas` | nada | `nota_invalida` |
+| `esperando_comentario` | texto | `feedback.comentario` · borra cola · `modo → 'bot'` | `agradecer` |
+| `esperando_comentario` | `saltar` | borra cola · `modo → 'bot'` (no pisa un comentario previo) | `agradecer` |
+
+Garantías: la fila de la cola se bloquea (`FOR UPDATE`), así dos mensajes seguidos se serializan; una
+segunda calificación del mismo pedido **actualiza** en vez de reventar; "cerrar" siempre es borrar la
+cola **y** restaurar el modo, en la misma transacción.
+
+### Ciclo de vida del `modo`
 
 ```
-Parsear calificación (Code)
-  │   Busca un dígito 1–5 en el mensaje → { tipo, nota, es_positiva: nota > 3 }
-  │
-  └─ Nota valida (IF — tipo == 'valido')
-       ├─ FALSE → Pedir nota de nuevo (WhatsApp "responde solo 1–5")
-       │            └─ FIN (sigue en esperando_nota)
-       │
-       └─ TRUE → Guardar calificación (Supabase INSERT feedback:
-            │        feedback_id=FB-{pedido_id}, cliente_id, pedido_id,
-            │        fecha=now, calificacion_general=nota)
-            │
-            └─ ¿Nota > 3? (Switch por es_positiva)
-                 ├─ true (nota 4–5) → RUTA POSITIVA:
-                 │     Eliminar feedback pendiente → Restaurar modo bot
-                 │       → Invitar reseña Google (WhatsApp con link) → FIN
-                 │
-                 └─ false (nota 1–3) → RUTA NEGATIVA:
-                       Cambiar a esperando_comentario (update feedback_pendiente.estado)
-                         → Pedir comentario (WhatsApp "¿qué pasó? escribe 'saltar'")
-                         → FIN (queda en esperando_comentario; cliente sigue en modo feedback)
+bot ──[cron: solicitar_feedback_lote]──▶ esperando_feedback
+                                           │
+   nota 4–5 ───────────────▶ bot  + invitación a Google
+   nota 1–3 ───────────────▶ (sigue en feedback, cola = esperando_comentario)
+                               └─[comenta o 'saltar']──▶ bot + gracias
+   no es una nota ─────────▶ (sigue igual) + "responde 1–5"
+   sin cola ───────────────▶ bot
+   6 h sin responder ──────▶ bot   (cron expirar-feedback-pendiente, cada hora; nunca pisa 'humano')
 ```
-
-### FASE B — el cliente responde el comentario (`esperando_comentario`)
-
-```
-Procesar comentario (Code)   'saltar' → comentario=null · si no → texto (máx 2000)
-  │
-  └─ ¿Hay comentario?1 (IF — comentario exists)
-       ├─ TRUE → Guardar comentario (Supabase update feedback.comentario WHERE pedido_id) ┐
-       └─ FALSE ──────────────────────────────────────────────────────────────────────────┤
-                                                                                            ▼
-              Eliminar feedback pendiente1 → Restaurar modo bot1 → Agradecer feedback → FIN
-```
-
-### Ciclo de vida del `modo` del cliente
-
-```
-bot ──[job pregunta]──▶ esperando_feedback
-                          │
-   nota 4–5 ─────────────▶ (guarda feedback, borra pendiente) ──▶ bot  + invita reseña Google
-   nota 1–3 ─────────────▶ (guarda feedback, estado→esperando_comentario)   [modo sigue en feedback]
-                              │
-                              └─[cliente comenta o 'saltar']──▶ (guarda comentario, borra pendiente) ──▶ bot
-   nota inválida ─────────▶ "responde 1–5"                     [modo sigue en feedback]
-   sin fila pendiente ────▶ Limpiar modo huérfano ─────────────▶ bot
-```
-
-### ✅ Bugs de expresiones — resueltos (2026-07-22, BUG-001/002)
-
-Ambos se confirmaron vía MCP y se corrigieron (en n8n un valor debe empezar con `=` para
-evaluarse como expresión, y la variable del item es `$json`, no `json`):
-
-- **`Guardar comentario`** — al filtro `pedido_id` le faltaba el `=` inicial (texto literal,
-  el comentario nunca se guardaba). Ahora: `={{ $json.pedido_id }}`.
-- **`Limpiar modo huérfano`** — usaba `json.cliente_id` (undefined). Además `$json` era poco
-  fiable ahí: por la rama "sin fila pendiente" el item puede llegar vacío. Ahora lee del
-  trigger, que siempre trae el dato:
-  `={{ $('When Executed by Another Workflow').first().json.cliente_id }}`.
-
-### Nota de diseño
-
-- **`Parsear calificación`** toma el **primer dígito 1–5** que aparezca en el texto
-  (`/[1-5]/`). Un mensaje como "quiero 3 pizzas" se interpretaría como nota 3.
-  **Medido el 2026-09-12 (BUG-051): 6 de 11 mensajes realistas fabrican una nota que nadie dio.**
-  `10/10` → nota **1**; `me demoraron 45 minutos` → nota **4**, y con ella la ruta positiva, que
-  le agradece y le pide una reseña en Google **por una queja**.
-- **Credenciales:** este subworkflow usa la credencial de n8n `Supabase account`
-  (no claves hardcodeadas) — patrón correcto, a diferencia de los nodos HTTP del job.
 
 ---
 
-## Impacto en el esquema (sincronizar en `../database/schema.md`)
+## Red de seguridad
 
-Tablas/columnas que usa el sistema de feedback:
+`expirar_feedback_pendiente()` corre **cada hora** (`7 * * * *`) y libera toda cola de más de **6 h**.
+Es la garantía de último recurso: venga el fallo de donde venga, ningún cliente queda sin bot más de
+~7 h. Hasta el 2026-09-16 era 48 h con corrida diaria — hasta ~3 días.
 
-- **`feedback_pendiente`** (cola de espera) — `telefono`, `pedido_id`, `cliente_id`,
-  `estado` ∈ { `'esperando_nota'`, `'esperando_comentario'` }.
-- **`feedback`** (resultado final) — `feedback_id` (`FB-{pedido_id}`), `cliente_id`,
-  `pedido_id`, `fecha`, `calificacion_general` (1–5), `comentario` (nullable).
-- **`pedidos`** — `feedback_solicitado` (boolean), `fecha_entrega` (timestamp).
-- **`clientes.modo`** admite `'esperando_feedback'` (además de `'bot'` / `'humano'`).
+`10-resenas.sql` **T15** es la invariante en vivo (debe dar `0/0/0/0`): nadie en `esperando_feedback`
+sin cola, nadie con cola y en `'bot'`, ninguna cola sobre un pedido ya calificado, ninguna cola vencida.
 
-## Credenciales (no hardcodear)
+---
 
-La `service_role` de Supabase y el token de Meta deben vivir como **credenciales /
-variables de entorno de n8n**, nunca en git ni en estos docs. La `service_role`
-salta RLS: trátala como secreto de servidor.
+## Esquema que usa
+
+- **`feedback_pendiente`** — PK `telefono` (un slot por cliente), `pedido_id`, `cliente_id`,
+  `estado` ∈ {`esperando_nota`, `esperando_comentario`}, `fecha_solicitud` (default `now()`).
+- **`feedback`** — `feedback_id` = `FB-{pedido_id}` (PK determinista: un feedback por pedido, además
+  de `UNIQUE(pedido_id)`), `calificacion_general` 1–5, `comentario`, `fecha` (`timestamp` en **UTC**,
+  la escribe la RPC).
+- **`pedidos.feedback_solicitado`** · **`clientes.modo`** ∈ {`bot`, `humano`, `esperando_feedback`}.
+
+Las dos RPCs son `SECURITY DEFINER` con `EXECUTE` solo para `service_role`: n8n las llama con la
+credencial `Supabase account`; el dashboard no puede.
+
+---
+
+## Historia
+
+- **2026-07-22 · BUG-001/002** — expresiones sin `=` y `json.` en vez de `$json.` en la Fase B.
+- **2026-09-12 · BUG-050** — el POST a la cola sin upsert mataba el cron con 409; se añadió upsert,
+  reorden y el cron de expiración (48 h).
+- **2026-09-15 · BUG-051** — el parser tomaba el primer dígito del texto (`10/10` → nota 1). Regla
+  estricta: el mensaje tiene que *ser* la nota.
+- **2026-09-15 · BUG-056** — el switch de la nota leía `$json.es_positiva` de la fila insertada:
+  todo caía en la ruta negativa.
+- **2026-09-16 · BUG-057/058/059/060** — el incidente de los dos `5` sin respuesta: el reorden de
+  BUG-050 dejó el PATCH de idempotencia leyendo `$json` de la respuesta de WhatsApp (nunca marcaba),
+  el DELETE de la Fase B filtraba por una columna inexistente (nunca borraba) y el INSERT chocaba con
+  409 al repreguntar. Además `fecha` se guardaba 2 h adelantada. **Se movió toda la lógica a RPCs.**
+  Detalle en `docs/shared/bug-tracker.md` y lecciones en `edge-cases.md` §37–38.
