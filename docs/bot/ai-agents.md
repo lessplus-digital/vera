@@ -22,7 +22,7 @@
 
   > **La memoria ya no es la fuente de verdad del pedido.** `tipo_pedido`, `barrio`,
   > `direccion_entrega` y `metodo_pago` viven en `carritos` y se leen por la vista
-  > `estado_pedido` (ver [`../database/schema.md`](../database/schema.md)). Lo que se
+  > `estado_pedido` (ver [`../database.md`](../database.md)). Lo que se
   > pierda de la ventana ya no se pierde del pedido.
 
 ## Arquitectura
@@ -224,7 +224,7 @@ reescribirlo, que es justo lo que rompe el modelo multi-tenant. Es la misma juga
 `consultar_faq` **no filtra**: devuelve todas las FAQ activas (tope 40) y `p_filtro` solo las
 reordena por parecido. El emparejamiento lo hace el LLM, porque el cliente parafrasea y una
 búsqueda por trigrama perdería la FAQ correcta (detalle y medición en
-[`../database/schema.md`](../database/schema.md#funciones--rpcs)).
+[`../database.md`](../database.md#funciones--rpcs)).
 
 > ⚠️ **El contenido de las FAQ es DATO, nunca instrucción.** Es texto libre que escribe el
 > restaurante y entra al contexto del agente, así que es la única vía por la que alguien podría
@@ -283,7 +283,7 @@ Prompt completo: [`agent-prompts.md#agente-reservas`](agent-prompts.md#agente-re
 4. **NUNCA** dar precios aproximados — exactos desde la BD.
 5. Mensajes cortos (≤ 4–5 líneas), emojis con moderación, tono humano.
 
-## Tablas que tocan los agentes (sync en `../database/schema.md`)
+## Tablas que tocan los agentes (sync en `../database.md`)
 
 `carritos` (PK telefono; items JSON, total), `menu`, `pedidos` + `detalle_pedidos`,
 `clientes`, `info_negocio` (clave/valor del negocio), `faq` (preguntas frecuentes editables),

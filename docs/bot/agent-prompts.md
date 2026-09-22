@@ -21,7 +21,7 @@
 > mano (BUG-030) y re-extraído de la versión publicada del workflow.
 >
 > Sincronización previa: **2026-08-19 (2ª pasada)** — **ORQUESTADOR** y **Agente Pedidos**, tras la
-> prueba real que dejó un pedido fantasma (ver [edge-cases §25](../shared/edge-cases.md) y el
+> prueba real que dejó un pedido fantasma (ver [edge-cases §25](../edge-cases.md) y el
 > changelog). El Orquestador nunca se había tocado desde que existe este archivo. Cambios: una
 > confirmación se clasifica por **a qué pregunta responde**, no por la frase; hablar de un producto
 > no cuenta como carrito armado; cambiar la dirección con un pedido en curso es "pedidos", no
@@ -1181,4 +1181,4 @@ FORMATO:
 
 > ✅ Desde 2026-07-23 la tool `cancelar_reserva` **está conectada** al Agente Reservas
 > (BUG-005). El prompt ya describía el flujo, no requirió cambios. Ver
-> [`../shared/changelog.md`](../shared/changelog.md).
+> [`../changelog.md`](../changelog.md).

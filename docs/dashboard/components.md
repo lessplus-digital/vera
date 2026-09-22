@@ -134,7 +134,7 @@ regla se respeta igual — el efecto no consulta nada mientras no haya sesión.
 **`utils/permisos.js` — conveniencia, no seguridad.** Mapea rol → tabs visibles y capacidades
 (`asignarDomiciliario`, `editarPedido`, `marcarEntregado`…). Existe para no mostrarle a un mesero
 una tab Soporte que la BD le devuelve vacía y parece rota. **La frontera es la RLS** (ver
-`../database/schema.md` §Modelo de permisos): el JWT viaja en cada llamada REST y de realtime, así
+`../database.md` §Modelo de permisos): el JWT viaja en cada llamada REST y de realtime, así
 que lo que un rol no debe ver se corta en Postgres, lo diga o no este archivo.
 
 > Al tocarlo: cada entrada debe corresponder a una política real. Aflojar aquí sin aflojar la RLS
@@ -328,7 +328,7 @@ vacía, no un error.
 - Ordenar por columna clickeando el encabezado: Nombre (A→Z default), Modo (orden de `CLIENT_MODES`) y Registrado (más reciente primero al primer click); misma columna re-clickeada invierte el orden, desempate estable por nombre. El botón A→Z de la toolbar equivale a clickear Nombre
 - Crear cliente nuevo y editar existentes (`ClientModal`: nombre, teléfono, dirección, modo)
 - Botón **Saludar** por fila → `WelcomeModal` envía la plantilla `bienvenida_cliente` (Marketing, un solo param: el primer nombre). Es la única forma de abrir conversación con un cliente creado a mano que nunca le escribió al bot — sin ventana de 24h abierta, el texto libre no se entrega. Comparte estilos con `PromoModal` (`.promo-modal, .welcome-modal` en `statistics.less`)
-- Eliminar cliente desde `ClientModal`: el click en `.btn danger` muestra una franja de confirmación dentro del footer (tokens red) que advierte que el borrado es **en cascada** — se eliminan también sus `pedidos` (→ `detalle_pedidos`), `reservas` y `feedback` (FKs `ON DELETE CASCADE` desde 2026-07-22, ver `docs/database/schema.md`) y que altera las estadísticas históricas. Al confirmar: toast success + sonido `playDeleted`. `mensajes_soporte` no se borra (sin FK)
+- Eliminar cliente desde `ClientModal`: el click en `.btn danger` muestra una franja de confirmación dentro del footer (tokens red) que advierte que el borrado es **en cascada** — se eliminan también sus `pedidos` (→ `detalle_pedidos`), `reservas` y `feedback` (FKs `ON DELETE CASCADE` desde 2026-07-22, ver `docs/database.md`) y que altera las estadísticas históricas. Al confirmar: toast success + sonido `playDeleted`. `mensajes_soporte` no se borra (sin FK)
 - Crear/guardar también confirman con toast success (el modal cierra en silencio si no)
 - Teléfono se sanitiza a solo dígitos en el input; valida mínimo 7 dígitos
 - Duplicado de teléfono (constraint UNIQUE, error 23505) se muestra como mensaje amigable
@@ -504,7 +504,7 @@ pasa a las secciones como `showToast`.
 **Propósito:** editar los **valores** de `info_negocio` — la tabla que el bot lee completa vía
 la tool `info_local` (Agente Soporte) para responder horarios, dirección, pagos, zonas, etc.
 Lo que se guarda aquí es literalmente lo que el bot dicta por WhatsApp. No se crean ni
-eliminan claves desde la UI (la estructura la define la BD; ver `docs/database/schema.md`).
+eliminan claves desde la UI (la estructura la define la BD; ver `docs/database.md`).
 
 **Funcionalidad:**
 - Registro de campos (`SECTIONS` en `BusinessInfoSection`): orden, agrupación, label, help,
@@ -690,7 +690,7 @@ apuntar el perfil → borrar la anterior (best-effort), nunca al revés.
 exige la Admin API con `service_role`, y esa clave no puede viajar en el bundle (mismo motivo que
 el token de WhatsApp y que el alta de usuarios). El camino barato —`resetPasswordForEmail`— **no
 servía**: la mayoría del personal tiene un email interno inventado, sin bandeja donde recibir el
-enlace. Por eso existe la Edge Function `admin-password` (ver `docs/database/schema.md`), donde
+enlace. Por eso existe la Edge Function `admin-password` (ver `docs/database.md`), donde
 el `service_role` se queda en el servidor. El navegador solo manda `{usuario_id, password}` con
 su JWT.
 
@@ -808,5 +808,5 @@ constants.js) — ya **no** hardcodeado en
   borraría de qué era cada mitad). Los hooks `useOrders` y `useOrderHistory` seleccionan la columna
   `mitades`, y `OrderCard` / `OrderDetailModal` la pintan con `.mm-tag`. Las reglas del negocio
   (misma masa, sin porción, solo pizza salada, cobra la más cara) las decide la RPC, no este código
-  — ver [`../database/schema.md`](../database/schema.md) y [`../bot/ai-agents.md`](../bot/ai-agents.md)
+  — ver [`../database.md`](../database.md) y [`../bot/ai-agents.md`](../bot/ai-agents.md)
 - Las imágenes en `SupportPanel` usan `loading="lazy"` + fallback visual si fallan

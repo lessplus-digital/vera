@@ -3,7 +3,8 @@
 > Lógica **server-side** de las tools que llaman los agentes. Cada uno es un workflow n8n
 > independiente con trigger `When Executed by Another Workflow`. Referenciados desde la
 > tabla de tools de cada agente en [`ai-agents.md`](ai-agents.md).
-> Fuente: instancia n8n vía MCP (`n8n-mcp`), 2026-07-16.
+> Fuente: instancia n8n vía MCP, 2026-07-16 (entonces por el servidor comunitario `n8n-mcp`, hoy
+> retirado; para re-verificar usa `n8n-native` o el subagente `n8n-inspector`).
 > Secciones **Consultar_menu** y **Crear_orden_completa** re-verificadas 2026-07-22 (nodos ya
 > con credencial `Supabase account`; BUG-003/006/007 resueltos).
 

@@ -1,6 +1,6 @@
 # Campaña de pruebas — plan y resultados
 
-Baterías: [`sql/`](sql/) · Bugs nuevos → [`../docs/shared/bug-tracker.md`](../docs/shared/bug-tracker.md)
+Baterías: [`sql/`](sql/) · Bugs nuevos → [`../docs/bug-tracker.md`](../docs/bug-tracker.md)
 
 ## La estrategia, en una frase
 
@@ -582,110 +582,11 @@ prueba, así que no da para bug — pero conviene decidir si debe existir.
 
 # Bugs nuevos
 
-## BUG-039 · 🔴 Alta — `buscar_menu` empata todo en 1.000 y el bot agrega el producto equivocado
+Los 14 bugs que encontró la Capa A (**BUG-039 … BUG-052**) viven en un solo sitio:
+[`../docs/bug-tracker.md`](../docs/bug-tracker.md) si siguen abiertos,
+[`../docs/changelog.md`](../docs/changelog.md) si ya se cerraron.
+Aquí solo quedan el veredicto por batería (arriba) y la lista de trabajo.
 
-- **Componente:** BD → `buscar_menu()` · consumido por `Sub — Consultar_menu` (`r9BbkGSCNJcJ2P6t`)
-  → tool `consultar_menu` del Agente Menú.
-- **Síntoma medido:**
-  - **26 de 133 productos (20%) no aparecen en el top-5** al buscarlos por su **nombre exacto**,
-    pese a tener similitud 1.000.
-  - **125 de 133 (94%) empatan** en el score máximo con al menos otro producto de nombre distinto.
-    49 de ellos empatan con entre 6 y 20 competidores.
-  - Frases naturales de cliente que **no devuelven lo pedido en ninguna de las 5 posiciones**:
-
-    | El cliente escribe | Lo que recibe el bot |
-    |---|---|
-    | `una copa de vino` | De Mi Tierra · De Mi Tierra · Limonada de Vino Tinto · Panecillos de Nutella · Limonada de Sandía |
-    | `pan de ajo` | De Mi Tierra · Limonada de Vino Tinto · Panecillos de Nutella · De Mi Tierra · Limonada de Sandía |
-    | `arepa de pollo` | Pollo Champiñon · Pollo Tocineta · Pollo Champiñon · Pollo Tocineta · Limonada de Vino Tinto |
-    | `lasaña de pollo` | Pollo Champiñon · Pollo Tocineta · Pollo Champiñon · Pollo Tocineta · Limonada de Vino Tinto |
-    | `una limonada de mango` | Panecillos de Nutella · Limonada de Vino Tinto · Limonada Tamarindo · Limonada Hierbabuena · De Mi Tierra |
-
-- **Causa (leída de la definición viva):** la **CAPA C** (`word_scores`) puntúa palabra contra
-  palabra con `MAX(similarity(f.word, sw.word))`, y el score final es un `GREATEST(...)`. Basta
-  que **una sola palabra** del nombre coincida exacta con **una sola palabra** de la búsqueda
-  para que el producto puntúe **1.000**. El filtro es `length(word) >= 2`, así que la
-  preposición **`"de"`** entra: cualquier producto que contenga "de" empata a 1.000 con
-  cualquier búsqueda que contenga "de". Luego `ORDER BY similitud DESC LIMIT 5` corta
-  **arbitrariamente** entre decenas de empatados.
-- **Por qué es alta y no media:** el prompt del Agente Menú usa la similitud como criterio de
-  confianza — *"≥0.5 → proceder sin confirmar; 0.2-0.5 → confirmar «¿Te refieres a…?»"*. Con
-  todo empatado en 1.000 **el bot nunca entra en la banda de confirmación**: agrega al carrito,
-  con plena confianza, un producto que el cliente no pidió. Es la regla `PROHIBIDO elegir un
-  producto distinto al que pidió el cliente` (agent-prompts.md) rota desde la herramienta, no
-  desde el modelo. Y encaja con la lección de edge-case §27: la herramienta miente y el prompt
-  no tiene cómo saberlo.
-- **Fix propuesto (simulado y medido, no teórico):**
-  1. Excluir stopwords (`de la el en con y al los las un una del sin por para mi su a`) del
-     match palabra-a-palabra, **a ambos lados**.
-  2. Desempatar en el `ORDER BY`: primero coincidencia exacta del nombre normalizado, luego
-     containment, luego similitud, luego nombre más corto.
-
-  **Medición de la simulación:** producto hallado en top-5 por su nombre exacto pasa de
-  **107/133 (80%) a 133/133 (100%)**; queda primero en 105/133, y **los 28 que no quedan
-  primeros son exactamente los nombres duplicados por variante** (Tradicional/Estofada), donde
-  "primero" no está definido. Comparativas: `pan de ajo` → *Pan de Ajo* en 1º;
-  `papata mexicana` → aparece *Patatas Mexicanas*; `lasaña de pollo` → aparece *Lasaña Pollo*.
-- ⚠️ **Trampa al implementarlo:** mi simulación **descartó la CAPA D** (el diccionario de
-  correcciones) y por eso `chelita` dejó de devolver cervezas. El fix real **debe conservar
-  `termino_corregido`** y aplicar el filtro de stopwords sobre las dos variantes del término.
-  El test `02-menu.sql · T4` existe justamente para atrapar esa regresión.
-- **Cabo suelto que el fix NO resuelve:** `una limonada de mango` sigue sin devolver
-  *Limonada Mango Biche* (el nombre real lleva "Biche"). Es un problema de vocabulario, no de
-  ranking; se resolvería con una entrada en el diccionario o con `descripcion`.
-
----
-
-## BUG-040 · 🟡 Media — un typo de transposición deja a un cliente de Bello fuera de cobertura
-
-- **Componente:** BD → `consultar_cobertura()`, bloque de `sugerencias` (umbral `similarity >= 0.40`).
-- **Síntoma medido:** barrido sistemático de 59 barrios × 4 clases de typo = **236 casos**;
-  **25 devuelven `cubierto:false` Y cero sugerencias**, o sea el bot le dice *"solo repartimos
-  en Bello"* a alguien que **vive en Bello**, sin ofrecerle siquiera una corrección.
-
-  | Clase de typo | Fallos / 59 | Ejemplos |
-  |---|---|---|
-  | **transponer 2 letras seguidas** | **21 (36%)** | `pardo`→Prado · `cnetro`→Centro · `zmaora`→Zamora · `saurez`→Suárez · `nqiuia`→Niquía |
-  | borrar una letra (nombres ≤5) | 4 | `prdo`→Prado · `peez`→Pérez · `pais`→París |
-  | duplicar letra · quitar la última | 0 | robustos |
-
-- **Causa:** trigram se hunde con las transposiciones (similitud 0.20–0.385 contra el umbral
-  0.40). No es un umbral mal elegido: el comentario del código explica que 0.40 es
-  deliberadamente alto para que `sabaneta` no sugiera `Sabanalarga`. **Bajarlo rompería ese
-  diseño.**
-- **Fix propuesto (validado):** añadir una **segunda pasada por anagrama** cuando trigram no
-  devuelve nada — transponer dos letras conserva exactamente el multiconjunto de caracteres,
-  así que basta comparar las letras ordenadas de la clave normalizada.
-
-  **Medición:** resuelve **21/21** transposiciones, cada una a **un solo** barrio (sin
-  ambigüedad), y da **0 falsos positivos** en los controles negativos `sabaneta`,
-  `sabanalarga`, `envigado`, `itagui`, `medellin`, `bogota`, `copacabana`. El umbral 0.40 se
-  queda como está.
-- **Sin resolver:** las 4 deleciones en nombres de ≤5 letras. Necesitarían distancia de
-  edición — `fuzzystrmatch` está **disponible pero no instalada** en el proyecto.
-
----
-
-## BUG-041 · 🟢 Baja — `buscar_menu_categoria` devuelve categorías vecinas
-
-- **Componente:** BD → `buscar_menu_categoria()`.
-- **Síntoma:** `pizza_premium` devuelve **36** productos cuando la categoría tiene **24** (se
-  cuela `pizza_premium_especial`, 12 productos con **precios distintos**). `adicion` devuelve
-  **14** cuando tiene **4**.
-- **Riesgo:** el bot puede listar una premium-especial como si fuera premium y cantar el
-  precio de la categoría equivocada.
-
----
-
-## BUG-042 · 🟢 Baja — recotizar el domicilio con la misma tarifa se descarta
-
-- **Componente:** BD → trigger `carritos_normalizar_estado()`, bloque de invalidación por cambio
-  de barrio.
-- **Síntoma:** el cliente cambia de barrio dentro de la **misma zona** (Centro → La Milagrosa,
-  ambos $5.000). El agente recotiza bien y guarda `costo_domicilio=5000, cobertura_ok=true`, y el
-  trigger lo tira: los dos quedan NULL y `faltantes` vuelve a pedir `"cobertura"`.
-- **Causa:** el trigger infiere "¿recotizó?" comparando si el precio cambió. Pero **la tarifa es
-  por zona, no por barrio**: 321 de 1711 pares de barrios (18,8%) comparten tarifa.
-- **Impacto medido:** se autorrepara en el segundo guardado (el barrio ya no cambia). Cuesta un
-  turno y puede hacer que el bot anuncie el costo del domicilio dos veces. No rompe el pedido.
-- Detalle completo y fix propuesto en `docs/shared/bug-tracker.md`.
+> Antes, este fichero repetía la ficha completa de BUG-039/040/041/042. Los cuatro se cerraron el
+> 2026-09-15 y la copia quedó desfasada, así que se quitó: **un bug, un sitio**. El histórico
+> íntegro sigue en git (`git log -p qa/RESULTADOS.md`).

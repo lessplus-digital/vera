@@ -23,7 +23,7 @@
 > **Documentación detallada por capa:** el flujo completo de n8n está en
 > [`bot/n8n-workflow.md`](bot/n8n-workflow.md), los agentes y tools en
 > [`bot/ai-agents.md`](bot/ai-agents.md), el feedback en [`bot/feedback.md`](bot/feedback.md),
-> el esquema en [`database/schema.md`](database/schema.md) y el frontend en
+> el esquema en [`database.md`](database.md) y el frontend en
 > [`dashboard/components.md`](dashboard/components.md).
 
 ## Flujo de datos de extremo a extremo

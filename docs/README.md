@@ -7,30 +7,31 @@ para Claude es `CLAUDE.md` (raíz); este índice es el detalle.
 ```
 docs/
 ├── README.md              ← este índice
-├── architecture.md        ← visión global del sistema (las 3 capas juntas)
 │
+│   ── UNA CAPA, UN DOCUMENTO ──
+├── architecture.md        ← visión global del sistema (las 3 capas juntas)
+├── database.md            ← Capa 2 · Supabase: tablas, triggers, RPCs, permisos
 ├── bot/                   ← Capa 1 · Automatización WhatsApp (n8n + OpenAI)
 │   ├── n8n-workflow.md    ← workflow principal (trigger → routing → agentes)
-│   ├── feedback.md        ← sistema de feedback: job que pide + subworkflow que procesa
+│   ├── feedback.md        ← feedback: job que pide la nota + subworkflow que la procesa
 │   ├── ai-agents.md       ← agentes IA: arquitectura, tools, reglas (referencia)
 │   ├── agent-prompts.md   ← system prompts completos verbatim (fuente de verdad)
 │   └── subworkflows.md    ← lógica server-side de las tools (n8n)
-│
-├── database/             ← Capa 2 · Supabase (PostgreSQL) — backend compartido
-│   └── schema.md          ← tablas, columnas, triggers, RPCs
-│
-├── dashboard/            ← Capa 3 · Frontend React + Vite (ESTE repositorio)
+├── dashboard/             ← Capa 3 · Frontend React + Vite (ESTE repositorio)
 │   ├── components.md      ← componentes, hooks, estructura del frontend
-│   └── design-system.md   ← tokens, jerarquía de botones, forms, charts (fuente de verdad visual)
+│   ├── design-system.md   ← tokens, botones, forms, charts (fuente de verdad visual)
+│   └── pos.md             ← análisis de impresión de tickets + cajón (sin código aún)
 │
-└── shared/               ← Transversal a las tres capas
-    ├── bug-tracker.md     ← bugs ABIERTOS + verificaciones en observación (nada más)
-    ├── backlog.md         ← features y mejoras pendientes (no-bugs, riesgos diferidos)
-    ├── changelog.md       ← lo HECHO: decisiones arquitectónicas + bugs resueltos (condensados)
-    └── edge-cases.md      ← lecciones reutilizables (se consultan ANTES de trabajar)
+│   ── ESTADO DEL PROYECTO — transversal, lo que se consulta a diario ──
+├── bug-tracker.md         ← bugs ABIERTOS + verificaciones en observación (nada más)
+├── backlog.md             ← features y mejoras pendientes (no-bugs, riesgos diferidos)
+├── changelog.md           ← lo HECHO: decisiones arquitectónicas + bugs resueltos
+└── edge-cases.md          ← lecciones reutilizables (se consultan ANTES de trabajar)
 ```
 
-Fuera de `docs/` hay una carpeta más que forma parte de la base de conocimiento:
+Fuera de `docs/` está la **suite de pruebas**. Vive en la raíz y no aquí dentro porque no es
+documentación: `qa/sql/` son ficheros **ejecutables** — es el `tests/` de este repo. La prosa
+(el informe y los guiones) vive junto a las pruebas que describe:
 
 ```
 qa/                        ← campaña de pruebas (2026-09-09 · última sesión 2026-09-12)
@@ -49,7 +50,7 @@ invariantes que verifica y las trampas de montaje que ya mordieron.
 | Capa | Qué es | Dónde vive | Doc |
 |---|---|---|---|
 | **Bot** | Agente IA que toma pedidos por WhatsApp | n8n (servidor externo) | [`bot/`](bot/) |
-| **Base de datos** | PostgreSQL, backend compartido | Supabase Cloud | [`database/schema.md`](database/schema.md) |
+| **Base de datos** | PostgreSQL, backend compartido | Supabase Cloud | [`database.md`](database.md) |
 | **Dashboard** | Panel admin en tiempo real | Este repositorio | [`dashboard/components.md`](dashboard/components.md) |
 
 > El bot y el dashboard **comparten el mismo esquema PostgreSQL**. Solo el
@@ -61,16 +62,16 @@ Cuando hagas un cambio significativo, actualiza el doc que corresponde:
 
 | Cambiaste… | Actualiza |
 |---|---|
-| Esquema de BD (tabla, trigger, RPC) | `database/schema.md` |
+| Esquema de BD (tabla, trigger, RPC) | `database.md` |
 | Workflow o tool del agente | `bot/n8n-workflow.md` + `bot/ai-agents.md` |
 | Componente o hook de React | `dashboard/components.md` |
 | Estilos, tokens o patrones visuales | `dashboard/design-system.md` |
-| Encontraste un bug por corregir | `shared/bug-tracker.md` (Abiertos) |
-| Resolviste un bug | quítalo del tracker → entrada condensada en `shared/changelog.md` |
-| La solución dejó una lección reutilizable | `shared/edge-cases.md` |
-| Surgió una feature/mejora para después | `shared/backlog.md` |
-| Tomaste una decisión arquitectónica | `shared/changelog.md` |
+| Encontraste un bug por corregir | `bug-tracker.md` (Abiertos) |
+| Resolviste un bug | quítalo del tracker → entrada condensada en `changelog.md` |
+| La solución dejó una lección reutilizable | `edge-cases.md` |
+| Surgió una feature/mejora para después | `backlog.md` |
+| Tomaste una decisión arquitectónica | `changelog.md` |
 
 El modelo de seguridad (RLS, políticas, keys) se documenta en
-[`database/schema.md`](database/schema.md) (sección «Modelo de permisos») y se verifica
+[`database.md`](database.md) (sección «Modelo de permisos») y se verifica
 en vivo contra Supabase vía MCP — ya no hay scripts SQL versionados en el repo.

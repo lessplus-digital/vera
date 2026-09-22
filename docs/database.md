@@ -347,8 +347,8 @@ propósito**, por el mismo criterio que `faq`.
 Creada con la migración `roles_etapa1_perfiles_y_helpers` (2026-08-12).
 
 > **No lleva `restaurante_id`, a propósito.** El modelo multi-tenant acordado es **un proyecto
-> Supabase por cliente** (aislamiento físico — ver `../shared/changelog.md` 2026-06-19 y
-> `../shared/backlog.md` §SaaS). Estos perfiles son los usuarios de ESTE restaurante y nada más;
+> Supabase por cliente** (aislamiento físico — ver `../changelog.md` 2026-06-19 y
+> `../backlog.md` §SaaS). Estos perfiles son los usuarios de ESTE restaurante y nada más;
 > añadir una columna de tenant contradiría la arquitectura en vez de reforzarla.
 
 > **Nunca leer el rol desde el cliente.** El dashboard lo consulta a esta tabla en cada arranque
@@ -402,7 +402,7 @@ WHERE p.pedido_id = v_pedido_id;
 > DELETE, donde `NEW` es un registro nulo → el `WHERE` quedaba `pedido_id = NULL` y **borrar un
 > ítem nunca recalculaba el total**. Estaba enmascarado porque `editar_pedido` reinserta y
 > sobrescribe el total a mano. Verificado en producción antes del fix: al borrar un ítem de
-> `PED-102` el total se quedaba clavado en $332.300. Ver `docs/shared/edge-cases.md`.
+> `PED-102` el total se quedaba clavado en $332.300. Ver `docs/edge-cases.md`.
 
 ---
 

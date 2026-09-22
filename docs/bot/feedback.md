@@ -12,7 +12,7 @@ El feedback tiene **dos mitades**, las dos dentro de n8n pero con toda la lógic
 | **Preguntar** | rama `trigger_feedback` del workflow principal `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`) | `solicitar_feedback_lote(p_limite)` |
 | **Responder** | subworkflow `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`), invocado por el `Router de modo` cuando el cliente está en `esperando_feedback` | `procesar_respuesta_feedback(p_telefono, p_mensaje)` |
 
-Contrato completo de las dos funciones: [`../database/schema.md`](../database/schema.md) §Funciones.
+Contrato completo de las dos funciones: [`../database.md`](../database.md) §Funciones.
 Pruebas: `qa/sql/10-resenas.sql` T10–T15.
 
 ---
@@ -149,4 +149,4 @@ credencial `Supabase account`; el dashboard no puede.
   BUG-050 dejó el PATCH de idempotencia leyendo `$json` de la respuesta de WhatsApp (nunca marcaba),
   el DELETE de la Fase B filtraba por una columna inexistente (nunca borraba) y el INSERT chocaba con
   409 al repreguntar. Además `fecha` se guardaba 2 h adelantada. **Se movió toda la lógica a RPCs.**
-  Detalle en `docs/shared/bug-tracker.md` y lecciones en `edge-cases.md` §37–38.
+  Detalle en `docs/bug-tracker.md` y lecciones en `edge-cases.md` §37–38.

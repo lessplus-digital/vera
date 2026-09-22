@@ -1,6 +1,6 @@
 -- ============================================================================
 -- QA · 08 · Roles, RLS y triggers de columna
--- Oráculo: docs/database/schema.md §Modelo de permisos
+-- Oráculo: docs/database.md §Modelo de permisos
 -- Estado 2026-09-09: verde. Todo con BEGIN…ROLLBACK.
 --
 -- ⚠️ LA TRAMPA DE ESTA BATERÍA (falso verde que mordió el 2026-09-09):

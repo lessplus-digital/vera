@@ -71,7 +71,7 @@ npx supabase functions deploy admin-password
 
 Sin desplegarla, la tab Usuarios funciona entera salvo el botón de contraseña, que devuelve error.
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase sola: no
-hay secretos que configurar. Detalle en `docs/database/schema.md` §Edge Functions.
+hay secretos que configurar. Detalle en `docs/database.md` §Edge Functions.
 
 ## Documentación
 
@@ -82,9 +82,9 @@ La documentación completa —verificada contra n8n y Supabase reales vía MCP�
 |---|---|
 | Visión global del sistema | [`docs/architecture.md`](docs/architecture.md) |
 | **Bot** (n8n) | [`docs/bot/`](docs/bot/) — workflow, agentes, prompts, feedback, subworkflows |
-| **Base de datos** | [`docs/database/schema.md`](docs/database/schema.md) |
+| **Base de datos** | [`docs/database.md`](docs/database.md) |
 | **Dashboard** | [`docs/dashboard/components.md`](docs/dashboard/components.md) |
-| Bugs por corregir · lecciones · decisiones | [`docs/shared/`](docs/shared/) |
-| Seguridad / RLS | [`docs/database/schema.md`](docs/database/schema.md) — sección «Modelo de permisos» |
+| Bugs por corregir · lecciones · decisiones | [`bug-tracker`](docs/bug-tracker.md) · [`edge-cases`](docs/edge-cases.md) · [`changelog`](docs/changelog.md) |
+| Seguridad / RLS | [`docs/database.md`](docs/database.md) — sección «Modelo de permisos» |
 
 Contexto e instrucciones para Claude Code: [`CLAUDE.md`](CLAUDE.md).
