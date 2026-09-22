@@ -14,6 +14,43 @@
 ```
 
 ---
+### 2026-09-21 — Reorganización de `docs/` y limpieza del backlog
+
+**Contexto:** `docs/` mezclaba dos cosas en la misma jerarquía: documentos **por capa** y
+documentos de **estado del proyecto**. Además `database/` era una carpeta con un solo fichero y
+`shared/` era un nombre que no decía nada. El backlog había acumulado ítems ya hechos (con
+tachado), dos secciones `## Bot` separadas y 60 líneas de análisis de hardware del POS que
+tapaban el resto.
+
+**Decisión:**
+
+- **Una capa, un documento** en la raíz de `docs/` cuando cabe en un fichero:
+  `database/schema.md` → `database.md`. `bot/` (5 ficheros) y `dashboard/` (3) siguen siendo
+  carpetas porque de verdad lo necesitan.
+- **`shared/` disuelto** — `bug-tracker`, `backlog`, `changelog` y `edge-cases` pasan a
+  `docs/`. Son lo que más se abre; estaban un nivel más abajo de lo que merecían, tras un nombre
+  genérico.
+- **`qa/` se queda en la raíz**, fuera de `docs/`: `qa/sql/` son ficheros ejecutables, es el
+  `tests/` del repo y no documentación. Se dejó dicho explícitamente en `docs/README.md` para que
+  no vuelva a parecer un descuido.
+- **El análisis del POS sale a [`dashboard/pos.md`](dashboard/pos.md)**; el backlog conserva una
+  entrada corta que apunta ahí.
+- **El backlog estrena índice de prioridad** (valor ÷ esfuerzo, con la columna «bloqueo») y se le
+  quitaron los ítems ya hechos, conservando solo su residuo pendiente.
+
+**Impacto:** 5 ficheros movidos con `git mv` (historia intacta) y **123 referencias cruzadas
+reescritas** en 22 ficheros —`docs/`, `qa/`, `README.md`, `CLAUDE.md` y las skills/agentes de
+`.claude/`— con un reescritor que resuelve cada ruta relativa contra su fichero, no con un
+buscar-y-reemplazar. Verificado con un comprobador de enlaces: **55 enlaces, 0 rotos**.
+Backlog 292 → 257 líneas + 114 de `pos.md`.
+
+**De paso, verificado contra la BD y el código** (el backlog lo marca con ✅): los datos de prueba
+de roles **siguen en producción** (3 usuarios, 4 pedidos ficticios, 1 cliente, y 67 pedidos con
+`domiciliario_id` — eran 61); `pedidos.repartidor` sigue muerta (NULL en los 117 pedidos) y se lee
+en **dos** sitios, no uno; `useOrders` sigue sin exponer `error`; `orders.less` conserva ~10 usos
+de `--font-mono`; y `SalesChart` sigue con el eje dual.
+
+---
 ### 2026-09-15 — Tanda de fixes de la campaña de pruebas: 16 bugs (BUG-038…054)
 
 **Contexto:** con la Capa A cerrada y re-ejecutada en verde de regresión, quedaban 16 bugs abiertos
@@ -59,7 +96,7 @@ y `Pizzeria Vera` (BUG-053 `retryOnFail` ×3 en los 4 nodos del buffer, vía MCP
 `bug045c_historial_resumen_escapa_comodin`, `bug042_recotizar_misma_tarifa` · n8n `xGsKJf2u3bFmL6mA`,
 `a94A2VKvFC0ugkD3`, `8LI3J7PLi35zf4EJ` · `src/hooks/useOrderHistory.js`, `src/utils/constants.js`,
 `src/pages/reservations/{ReservationModal,ReservationDetail,ReservationsPage}.jsx` ·
-`docs/shared/bug-tracker.md`, `docs/database/schema.md`, `qa/`.
+`docs/bug-tracker.md`, `docs/database.md`, `qa/`.
 
 ---
 ### 2026-09-12 — Barrido de estado vivo: el job de expiración cancela pedidos ya pagados (BUG-052)
@@ -96,8 +133,8 @@ escribe cada camino posible. BUG-052 sobrevivió por eso: una cancelación manua
 `'pendiente'`, el texto literal del `COALESCE` de la función, y el cron corriendo a las 16:00 UTC
 del día siguiente a cada uno.
 
-**Impacto:** `docs/shared/bug-tracker.md` (BUG-052; siguiente ID libre BUG-053) ·
-`docs/shared/edge-cases.md` §33 · `qa/sql/07-housekeeping.sql` (T5b) · `qa/RESULTADOS.md`.
+**Impacto:** `docs/bug-tracker.md` (BUG-052; siguiente ID libre BUG-053) ·
+`docs/edge-cases.md` §33 · `qa/sql/07-housekeeping.sql` (T5b) · `qa/RESULTADOS.md`.
 
 ---
 ### 2026-09-12 — El flujo de reseñas lleva 51 días roto (BUG-050) + batería 10 y guiones de la Capa B
@@ -148,7 +185,7 @@ subworkflow quedó fuera. Lección operativa: **un fix repartido entre varios wo
 desplegado hasta que se verifica el `activeVersionId` de cada uno.**
 
 **Impacto:** `qa/sql/10-resenas.sql` y `qa/guiones-bot.md` (nuevos) · `qa/RESULTADOS.md` ·
-`docs/shared/bug-tracker.md` (BUG-050 🔴 y BUG-051; siguiente ID libre BUG-052) ·
+`docs/bug-tracker.md` (BUG-050 🔴 y BUG-051; siguiente ID libre BUG-052) ·
 `docs/bot/feedback.md` (documentaba un workflow independiente que no existe: la rama vive dentro
 de `Pizzeria Vera`) · `CLAUDE.md`.
 
@@ -184,9 +221,9 @@ es un `Math.max(1, …)` en React — exactamente donde la regla #1 de `CLAUDE.m
 0.5 que el prompt del Agente Menú usa para agregar al carrito sin confirmar — el mismo daño que
 BUG-039 por otra puerta, y un fix de BUG-039 que no toque la CAPA A no lo cierra.
 
-**Impacto:** `qa/sql/09-basura.sql` (nuevo) · `qa/RESULTADOS.md` · `docs/shared/bug-tracker.md`
+**Impacto:** `qa/sql/09-basura.sql` (nuevo) · `qa/RESULTADOS.md` · `docs/bug-tracker.md`
 (5 entradas nuevas, siguiente ID libre BUG-050; BUG-041 cruzado con BUG-045b) ·
-`docs/shared/edge-cases.md` §32.
+`docs/edge-cases.md` §32.
 
 **Estado de la campaña:** **Capa A cerrada** — 9 baterías, ~3.600 casos, 11 bugs (BUG-039…049),
 ninguno visible desde el código del dashboard. Sigue pendiente la **Capa B** (11 guiones por
@@ -235,8 +272,8 @@ la maquinaria de totales (14/14, incluida la regresión §22), mitad y mitad (**
 exhaustivos**, 0 fallos — cerraba el "falta probar" del changelog), el handoff con contexto (las
 cuatro trampas de §21) y el modelo de roles (el domiciliario ve 34 de 116 pedidos, todos suyos).
 
-**Impacto:** carpeta nueva `qa/` (8 baterías + `RESULTADOS.md`) · `docs/shared/bug-tracker.md`
-(5 bugs nuevos, 3 observaciones cerradas) · `docs/shared/edge-cases.md` §31 · `docs/database/schema.md`
+**Impacto:** carpeta nueva `qa/` (8 baterías + `RESULTADOS.md`) · `docs/bug-tracker.md`
+(5 bugs nuevos, 3 observaciones cerradas) · `docs/edge-cases.md` §31 · `docs/database.md`
 (documentado el índice `unique_pedido_cliente_minuto`, que no estaba) · `CLAUDE.md`.
 
 **Pendiente:** la batería `09-basura.sql`, la Capa B (11 guiones por WhatsApp desde el número de
@@ -381,8 +418,8 @@ el turno del cliente antes de `solicitar_handoff`.
 `handoff_contexto_lee_sesion_orquestador`, `guardar_datos_pedido_no_crea_fila_vacia`; en n8n
 (**draft, pendiente de publicar**) los nodos `leer_carrito1`, `AGENTE PEDIDOS`, `ORQUESTADOR`,
 `Parse Orquestador`, `Postgres Chat Memory` y los nuevos `guardar_datos_pedido`,
-`Guardar senales` y `Contexto + estado`; `docs/database/schema.md`, `docs/bot/ai-agents.md`,
-`docs/shared/bug-tracker.md`.
+`Guardar senales` y `Contexto + estado`; `docs/database.md`, `docs/bot/ai-agents.md`,
+`docs/bug-tracker.md`.
 
 ---
 ### 2026-09-01 — Usuarios sale de Configuración a tab propia, con contraseñas y foto
@@ -402,7 +439,7 @@ lista no tiene ninguno.
 `storage.objects` sobre el bucket `avatares` ya llevaban `... OR es_admin()` desde que se creó
 (2026-08-12), y `perfiles_update` ya aceptaba `es_admin()` sobre cualquier fila. El comentario de
 `src/lib/avatares.js` decía que la política solo comparaba contra `auth.uid()` — **drift**,
-corregido junto con `docs/database/schema.md` §Storage.
+corregido junto con `docs/database.md` §Storage.
 
 **La contraseña sí, y es la parte interesante.** Ponerle la contraseña a otra cuenta exige la Admin
 API con `service_role`, que no puede viajar en el bundle (mismo motivo que el token de WhatsApp y
@@ -429,7 +466,7 @@ explica. Se movió, no se resolvió.
 y su bloque `.us-*` de `settings.less`; tocados `useUsuarios`, `ProfileModal`, `Icon` (`shield`,
 `key`, `eye`, `eye-off`), `Sidebar`, `Header`, `App`, `permisos.js`, `formatters.js`
 (`nombreDeUsuario`), `avatares.js`, `SettingsPage`, `.gitignore`, `README.md`,
-`docs/dashboard/components.md` y `docs/database/schema.md`.
+`docs/dashboard/components.md` y `docs/database.md`.
 
 **Despliegue:** la función **no** se despliega con `npm run build`. Requiere
 `npx supabase login` → `npx supabase link --project-ref lwigogymjoyyzwiyewgi` →
@@ -465,7 +502,7 @@ de la zona Centro. Agregado a la zona Centro ($5.000).
 **Impacto:** migraciones `bug033_cobertura_no_promete_fuera_de_bello` y
 `bug033_cobertura_sugerencias_umbral`; nodos `consultar_cobertura`, `consultar_cobertura1`,
 `AGENTE PEDIDOS` y `AGENTE SOPORTE` en n8n (publicados y releídos del workflow);
-`docs/database/schema.md`, `docs/bot/agent-prompts.md`, `docs/bot/ai-agents.md`,
+`docs/database.md`, `docs/bot/agent-prompts.md`, `docs/bot/ai-agents.md`,
 `edge-cases.md` §27, `backlog.md`.
 
 **Verificado:** 10 municipios de fuera (Envigado, Sabaneta, Apartadó, Medellín, Itagüí, Copacabana,
@@ -536,7 +573,7 @@ transacciones separadas (`now()` es fijo dentro de una): `updated_at` pasó de `
 Falta la prueba con tráfico real → queda en "En observación".
 
 **Impacto:** `docs/bot/agent-prompts.md` (Agente Menú re-extraído verbatim), `docs/bot/ai-agents.md`,
-`docs/database/schema.md` (tabla `carritos` + triggers), `docs/shared/edge-cases.md` (#26).
+`docs/database.md` (tabla `carritos` + triggers), `docs/edge-cases.md` (#26).
 **Sin cambios en el dashboard.** Queda en el backlog fundir `crear_carrito` y `actualizar_carrito`
 en una sola tool, que con el upsert ya hacen lo mismo.
 
@@ -657,7 +694,7 @@ n8n** (BUG-030 sigue bloqueando la API, así que no hubo alternativa): se crearo
 `HTTP Request Tool` contra `/rpc/consultar_cobertura`; el prompt del Agente Pedidos ahora pide el
 barrio y usa el `costo_domicilio` devuelto; el de Soporte dejó de prometer zonas vía `info_local`.
 Verificado leyendo el workflow real por MCP (103 nodos, tools colgadas por `ai_tool` del agente
-correcto). Prompts sincronizados en [`agent-prompts.md`](../bot/agent-prompts.md).
+correcto). Prompts sincronizados en [`agent-prompts.md`](bot/agent-prompts.md).
 También quedó cableado el opcional que faltaba: `Edit Fields` pasa `barrio`, `Parse Orquestador` lo
 expone como `barrio_registrado` y el Agente Pedidos lo confirma (*"¿Sigues por el barrio …?"*) en
 vez de repreguntarlo, igual que ya hacía con `direccion_registrada`.
@@ -970,8 +1007,8 @@ expiración se probó en transacción con `ROLLBACK` sobre las tres fronteras: u
 del inicio del día se cancela; uno de las **00:05 de hoy** y uno de *ahora* sobreviven.
 **Pendiente:** el job aún no ha corrido en producción → queda en "En observación" del tracker.
 **Impacto:** Supabase — migraciones `bug028_limpiar_pedidos_colgados` y
-`bug028_expirar_pedidos_pendientes`. Docs — `database/schema.md` (función nueva + tabla de jobs de
-pg_cron, que no estaba documentada), `shared/bug-tracker.md`, `shared/backlog.md`. **Sin cambios en
+`bug028_expirar_pedidos_pendientes`. Docs — `database.md` (función nueva + tabla de jobs de
+pg_cron, que no estaba documentada), `bug-tracker.md`, `backlog.md`. **Sin cambios en
 el dashboard ni en n8n.**
 **Cabo suelto menor:** queda el blob huérfano `comprobantes/PED-109.jpg` en Storage. Ya no tiene
 referencia en la BD (`comprobante_url` es `NULL`), así que es inofensivo; borrarlo por SQL solo
@@ -1020,8 +1057,8 @@ gracias al corte por el último `mensajes_soporte`. `npm run build` limpio.
 **Falta probar con un handoff real por WhatsApp.**
 **Impacto:** Supabase — migraciones `handoff_contexto_origen_bot`, `registrar_contexto_handoff`,
 `trigger_contexto_handoff`, `registrar_contexto_handoff_orden_estricto`. Dashboard —
-`ChatBubble.jsx`, `support.less`. **Ningún cambio en n8n.** Docs — `database/schema.md`,
-`architecture.md`, `bot/ai-agents.md`, `dashboard/components.md`, `shared/edge-cases.md#21`.
+`ChatBubble.jsx`, `support.less`. **Ningún cambio en n8n.** Docs — `database.md`,
+`architecture.md`, `bot/ai-agents.md`, `dashboard/components.md`, `edge-cases.md#21`.
 
 ---
 
@@ -1059,9 +1096,9 @@ costo falso de `999` (lo ignora y pone $120.000), cambio a `sin_ocasion` ($0), c
 n8n — `Pizzeria Vera` (tool nueva `consultar_motivos_reserva`, prompt de `AGENTE RESERVAS`,
 descripción e inputs de `crear_reserva`) y `Sub — Crear Reserva` (los 4 nodos). Dashboard —
 `useReservationReasons` (nuevo), `useReservations`, `ReservationModal`, `ReservationDetail`,
-`ReservationsPage`, `constants.js` (`MOTIVO_DEFECTO`), `reservations.less`. Docs — `database/schema.md`,
+`ReservationsPage`, `constants.js` (`MOTIVO_DEFECTO`), `reservations.less`. Docs — `database.md`,
 `bot/ai-agents.md`, `bot/agent-prompts.md`, `bot/subworkflows.md`, `dashboard/components.md`,
-`shared/backlog.md`, `shared/bug-tracker.md`.
+`backlog.md`, `bug-tracker.md`.
 
 **Limitación conocida:** la plantilla `recordatorio_reserva` de Meta tiene 4 params fijos, así que
 la confirmación por WhatsApp **del dashboard** no menciona la ocasión ni su costo. Requiere aprobar
@@ -1116,7 +1153,7 @@ nodo `armar_mitad_y_mitad` y los prompts en el grafo **publicado**. `npm run bui
 `armar_mitad_y_mitad`, prompts de `AGENTE MENÚ` y `AGENTE PEDIDOS`, descripción de
 `crear_orden_completa`) y `Sub — Crear_orden_completa` (3 Code nodes + el select del HTTP de menú).
 Dashboard — `MenuPicker`, `CreateOrderModal`, `EditOrderModal`, `OrderCard`, `OrderDetailModal`,
-`useOrders`, `useOrderHistory`, `index.css` (`.mm-tag`), `orders.less`. Docs — `database/schema.md`,
+`useOrders`, `useOrderHistory`, `index.css` (`.mm-tag`), `orders.less`. Docs — `database.md`,
 `bot/ai-agents.md`, `bot/agent-prompts.md`, `bot/subworkflows.md`, `dashboard/components.md`,
 `dashboard/design-system.md`.
 
@@ -1154,7 +1191,7 @@ comprobante de un pedido todavía no creado. La misma regla se duplica en el `to
 el grafo **publicado** (`activeVersionId` regenerado 22:07:47), no solo en el draft.
 `n8n_validate_workflow`: 0 errores. **Falta probar con un pedido real por WhatsApp.**
 **Impacto:** n8n `Pizzeria Vera` (nodos `AGENTE PEDIDOS`, `crear_orden_completa`),
-`docs/bot/ai-agents.md` (§3), `docs/shared/edge-cases.md#20`. Ningún archivo del dashboard cambió.
+`docs/bot/ai-agents.md` (§3), `docs/edge-cases.md#20`. Ningún archivo del dashboard cambió.
 Datos: `PED-223` acabó bien (el cliente sí transfirió, comprobante subido, `en_cocina`);
 **`PED-224` sigue `pendiente` con un `metodo_pago = 'Efectivo'` que el cliente nunca eligió** —
 confirmarlo con el cliente antes de despacharlo.
@@ -1185,7 +1222,7 @@ se copió a `comprobantes/PED-223.jpg` (99.553 bytes, idénticos; HTTP 200 públ
 apuntando ahí y `PED-109.comprobante_url` volvió a `null`.
 **Impacto:** n8n `Pizzeria Vera` (nodos `Buscar pedido activo`, `Preparar Upload`, `Update a row`),
 datos de `pedidos` (`PED-109`, `PED-223`), Storage (`comprobantes/PED-223.jpg`),
-`docs/shared/edge-cases.md#18`, `docs/shared/bug-tracker.md` (BUG-028 nuevo, data debt residual).
+`docs/edge-cases.md#18`, `docs/bug-tracker.md` (BUG-028 nuevo, data debt residual).
 Ningún archivo del dashboard cambió.
 
 ---
@@ -1219,7 +1256,7 @@ botones: `reactivacion_cliente` (`Quiero pedir` / `No, gracias`) y `recordatorio
 **Pendiente:** **no se ha tapeado ningún botón en real después del cambio** — la verificación
 demuestra que el cableado y los labels calzan, no que el tap llegue hasta el agente.
 **Impacto:** n8n workflow `Pizzeria Vera` (nodo `Normalizar tap` nuevo + 3ª regla del `Switch` + 2
-conexiones), `docs/bot/n8n-workflow.md`, `docs/shared/backlog.md`, `docs/shared/edge-cases.md`.
+conexiones), `docs/bot/n8n-workflow.md`, `docs/backlog.md`, `docs/edge-cases.md`.
 
 ---
 
@@ -1250,7 +1287,7 @@ WhatsApp Manager (`?waba_id=`). Queda anotado en `components.md`.
 **Impacto:** `utils/constants.js` (`WA_TEMPLATES`: 3 entradas nuevas), `pages/clients/WelcomeModal.jsx`
 (nuevo), `pages/clients/ClientsPage.jsx`, `pages/reservations/ReservationsPage.jsx`,
 `pages/dashboard/CreateOrderModal.jsx`, `styles/statistics.less` (el bloque `.promo-modal` pasa a
-compartirse con `.welcome-modal`), `docs/dashboard/components.md`, `docs/shared/backlog.md`.
+compartirse con `.welcome-modal`), `docs/dashboard/components.md`, `docs/backlog.md`.
 **Pendiente:** falta el **envío real de prueba** end-to-end; la verificación anterior demuestra que
 los metadatos calzan, no que Meta entregue. Y sigue abierto el cron de `recordatorio_reserva` en n8n
 y el enrutado de los taps de Quick Reply (ver backlog).
@@ -1278,7 +1315,7 @@ Ahora `encontrados = 0` **con** `agotados` vacío es el único caso de "no está
 **Impacto:** n8n `Sub — Consultar_menu` (`r9BbkGSCNJcJ2P6t`, nodos *Construir filtros* y *Code in
 JavaScript1*), n8n `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`, nodos *consultar_menu* y *AGENTE MENÚ*),
 `docs/bot/subworkflows.md`, `docs/bot/ai-agents.md`, `docs/bot/agent-prompts.md`,
-`docs/shared/edge-cases.md`. Sin cambios en el dashboard ni en la BD.
+`docs/edge-cases.md`. Sin cambios en el dashboard ni en la BD.
 **Verificación:** `n8n_get_workflow` en modo `active` sobre el sub confirma que la **versión
 publicada** (no el draft) ya trae el `solo_disponibles: false` y el split. Agotados en el catálogo
 al momento del fix: Arepa Rellena Carne (PROD-087), Pizza M&M (PROD-062), Jarra de Sangría (PROD-129).
@@ -1315,7 +1352,7 @@ en el mismo día. Comprobado que el PDF ya se sirve: `GET https://vera.plateo.cl
 **200 · `application/pdf` · 5.262.411 bytes** (idéntico al archivo del repo).
 **Impacto:** `public/menu_vera.pdf` (nuevo), n8n `Pizzeria Vera` (nodo `AGENTE MENÚ`), BD
 `info_negocio.link_menu`, `docs/bot/agent-prompts.md`, `docs/bot/ai-agents.md`,
-`docs/database/schema.md`, `docs/shared/bug-tracker.md`, `docs/shared/backlog.md`.
+`docs/database.md`, `docs/bug-tracker.md`, `docs/backlog.md`.
 
 ---
 
@@ -1358,7 +1395,7 @@ que una reserva de 1 persona lee "para 1 personas". Se **deja así a propósito*
 editar la plantilla en Meta y pasar por re-aprobación, y el operador no lo considera prioritario. No
 volver a proponerlo como pendiente.
 **Impacto:** `pages/reservations/ReservationsPage.jsx`, `pages/statistics/PromoModal.jsx`,
-`docs/dashboard/components.md`, `docs/shared/backlog.md`.
+`docs/dashboard/components.md`, `docs/backlog.md`.
 
 ---
 
@@ -1375,7 +1412,7 @@ arrancan con **Negativas** y dejan "Todas" al final. `feedback` ya tenía `auth_
 `authenticated`, así que el UPDATE desde el dashboard no necesitó política nueva.
 **Impacto:** `hooks/useReviews.js` (`resueltaAt` + `marcarResuelta`), `pages/reviews/ReviewCard.jsx`
 (badge + sin botón), `ReplyModal.jsx` (marca al enviar), `ReviewsPage.jsx` (reorden chips + sort),
-`styles/reviews.less`, `docs/database/schema.md`.
+`styles/reviews.less`, `docs/database.md`.
 
 ---
 
@@ -1508,8 +1545,8 @@ Descartar + Guardar (solo actualiza claves cambiadas), card "Otros" para claves 
 registro. **Sin realtime a propósito** (un evento entrante pisaría lo que se está escribiendo).
 **Impacto:** BD (`info_negocio` reestructurada), `src/pages/settings/SettingsPage.jsx`,
 `src/hooks/useBusinessInfo.js`, `src/styles/settings.less`, `src/{App,main}.jsx`,
-`src/components/{Icon,layout/Sidebar,layout/Header}.jsx`, `docs/database/schema.md`,
-`docs/dashboard/components.md`, `docs/shared/bug-tracker.md` (BUG-026).
+`src/components/{Icon,layout/Sidebar,layout/Header}.jsx`, `docs/database.md`,
+`docs/dashboard/components.md`, `docs/bug-tracker.md` (BUG-026).
 
 ### 2026-07-22 — Nueva tab Menú: disponibilidad del catálogo desde el dashboard
 
@@ -1537,7 +1574,7 @@ de mostrarlos crudos.
 `src/pages/clients/ClientsPage.jsx`, `src/pages/dashboard/MenuPicker.jsx`,
 `src/utils/constants.js`, `src/{App,main}.jsx`, `src/components/{Icon,layout/Sidebar,
 layout/Header}.jsx`, BD (publicación realtime), `docs/dashboard/{components,design-system}.md`,
-`docs/database/schema.md`.
+`docs/database.md`.
 
 ### 2026-07-22 — Borrado de cliente en cascada + confirmación dentro del modal
 
@@ -1557,7 +1594,7 @@ descendente, distinto al de pedido nuevo).
 **Impacto:** BD (5 FKs), `src/pages/clients/{ClientModal,ClientsPage}.jsx`,
 `src/hooks/{useClients,useToast}.js`, `src/components/Toast.jsx`,
 `src/pages/reservations/ReservationsPage.jsx` (migrada al toast global), `src/utils/audio.js`,
-`src/styles/{index.css,clients.less,reservations.less}`, `docs/database/schema.md`,
+`src/styles/{index.css,clients.less,reservations.less}`, `docs/database.md`,
 `docs/dashboard/{components,design-system}.md`.
 
 ### 2026-07-22 — Kanban vacío de noche (BUG-025, cierra BUG-022) + drop de políticas public (BUG-024) ✅
@@ -1620,12 +1657,12 @@ Pendiente en backlog: aplicar `.btn`/`.field` a pedidos, reservas y soporte.
 MCP de Supabase. Hoy RLS ya está aplicado en las 12 tablas (BUG-012) y el estado real se
 verifica en vivo vía MCP; mantener el script versionado invitaba a drift.
 **Decisión:** eliminar `infra/` del repo. El modelo de permisos vive en
-`docs/database/schema.md` («Modelo de permisos», incluye cómo crear el primer admin). Replicar
+`docs/database.md` («Modelo de permisos», incluye cómo crear el primer admin). Replicar
 el setup a nuevos clientes (modelo silo) se hará vía MCP `apply_migration`. También se limpió
 `dist/` local (build, gitignored) y se decidió **mantener** `.env.example` y
 `.mcp.json.example` como plantillas versionadas de la config secreta.
 **Impacto:** `infra/` (eliminada); referencias actualizadas en `README.md`, `docs/README.md`,
-`docs/database/schema.md`, `src/hooks/useAuth.jsx`; drift corregido en
+`docs/database.md`, `src/hooks/useAuth.jsx`; drift corregido en
 `docs/bot/subworkflows.md` (BUG-003/006/007 ya resueltos, verificado vía MCP).
 
 ### 2026-07-23 — Reservas: cancelación cableada y subworkflows saneados (BUG-004/005/008/009) ✅
