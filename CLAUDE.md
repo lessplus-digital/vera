@@ -37,6 +37,40 @@ RPC, check whether a battery covers it and re-run it afterwards. Status and find
 that already bit (snapshot-in-subquery, the `touch_updated_at` trigger defeating a backdated
 `UPDATE`, RLS-blocked writes that don't raise).
 
+### MCP servers, skills and subagents
+
+**Two MCP servers** reach the live system: **`supabase`** and **`n8n-native`**. The community
+`n8n-mcp` (npx) was removed on 2026-09-21 — writes had already moved to `n8n-native` (BUG-030)
+and it stopped connecting. Nothing should reference `mcp__n8n-mcp__*` any more.
+
+**Skills (`.claude/skills/`)** carry the project's workflows. They are written to fire on their own
+when the situation matches, not only when typed as `/name`:
+
+| Skill | Fires when |
+|---|---|
+| `verify-against-live` | documenting or reasoning about a workflow, table, RLS policy, trigger or RPC |
+| `fix-bug` | a `BUG-NNN` is named, or a tracked defect is being fixed or closed |
+| `qa-regresion` | a DB function, trigger, RPC, constraint or policy changed — picks the battery that covers it |
+| `debug-n8n` | the bot misbehaves and the cause may be in n8n |
+| `audit` | a security / RLS / secrets sweep is asked for |
+| `new-tool` | a tool of the WhatsApp agent is added or changed |
+
+**Subagents (`.claude/agents/`)** keep huge tool output out of the main context — prefer them over
+calling the MCPs directly when the dump would be large:
+
+- **`qa-battery`** — runs one `qa/sql/` battery and returns only the verdict and the failing rows.
+- **`n8n-inspector`** — read-only n8n reader (nodes, wiring, failed executions, `versionId` vs
+  `activeVersionId`). It cannot write or publish; applying a fix stays in the main thread.
+
+**Hooks (`.claude/settings.json` + `.claude/hooks/`)** run on their own; you don't call them:
+
+- after every Write/Edit → `tidy-file.mjs`: **blocks** if a `.json` was left unparseable, and strips
+  trailing whitespace / adds the final newline on code files. It preserves CRLF and skips `.md`
+  (`docs/architecture.md` uses Markdown's two-space hard break).
+- after `update_workflow` → `n8n-publicar.mjs`: reminds you that the change is still a **draft**
+  until `publish_workflow` runs and `versionId == activeVersionId`.
+- on Stop → blocks if `src/` changed without `docs/`, and flags untracked junk (`*.bak`, `*.tmp`, …).
+
 ### Environment (`.env.local`, git-ignored)
 
 Copy `.env.example` → `.env.local`. `src/lib/supabase.js` throws at startup if the
@@ -76,7 +110,7 @@ and RLS policies read it via `public.mi_rol()`. Three rules you cannot get wrong
 3. **A `SECURITY DEFINER` function bypasses RLS**, so it must authorize itself. They all use
    the `auth.uid() IS NULL → allow` pattern so n8n/service_role keeps working.
 
-Full matrix and the verification runs in `docs/database/schema.md` §Modelo de permisos.
+Full matrix and the verification runs in `docs/database.md` §Modelo de permisos.
 
 **Creating users requires `service_role`**, which cannot ship in the bundle (same reason as
 the WhatsApp token). Accounts are created in the Supabase dashboard and land as
@@ -95,7 +129,7 @@ twice — `verify_jwt` at the gateway, then `mi_rol()` called **with the caller'
 > (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),
 > and the project migrated to Supabase's new API keys: the dashboard uses the `sb_publishable_`
 > key, n8n uses an `sb_secret_` key, and the leaked legacy JWT keys were disabled. See
-> `docs/database/schema.md` (permissions) and `docs/shared/changelog.md`.
+> `docs/database.md` (permissions) and `docs/changelog.md`.
 
 **Per-domain hooks own their data + realtime.** Each tab's data lives in one hook that
 does the fetch, subscribes to a Supabase realtime channel, and exposes mutators:
@@ -124,7 +158,7 @@ These are enforced by the shared DB and the bot, not just by this code:
 
 - **DB identifiers are Spanish + lowercase** (`pedido_id`, `tipo_pedido`,
   `direccion_principal` — *not* `direccion`/`created_at`). Full schema in
-  `docs/database/schema.md`.
+  `docs/database.md`.
 - **Order `total` is computed by a Postgres trigger**, never in JS and never by the LLM.
   When editing order items, call the `editar_pedido` RPC (not a direct update) so the
   trigger recalculates. Manual order creation inserts items and reads the total back.
@@ -154,27 +188,30 @@ silently — it's tracked.
 
 ## Deeper docs (`docs/`)
 
-Rich, authoritative docs live in **`docs/`**, organized by the three system layers.
-Start at `docs/README.md` (the index). Consult the relevant one before making a
-significant change — don't re-derive what's already written:
+Rich, authoritative docs live in **`docs/`**. Two groups: **one document per layer**
+(`architecture.md`, `database.md`, `bot/`, `dashboard/`) and, at the root of `docs/`, the
+**project-state docs** consulted daily (`bug-tracker`, `backlog`, `changelog`, `edge-cases`).
+Single-file folders were flattened on 2026-09-21: `database/schema.md` → `database.md`, and
+`shared/*` → `docs/*`. Start at `docs/README.md` (the index). Consult the relevant one before
+making a significant change — don't re-derive what's already written:
 
 | Layer | Docs |
 |---|---|
 | System-wide | `docs/architecture.md` |
 | **Bot** (n8n + WhatsApp) | `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md` |
-| **Database** (Supabase) | `docs/database/schema.md` |
+| **Database** (Supabase) | `docs/database.md` |
 | **Dashboard** (this repo) | `docs/dashboard/components.md`, `docs/dashboard/design-system.md` |
-| Cross-layer | `docs/shared/bug-tracker.md` (open bugs), `docs/shared/backlog.md` (pending features), `docs/shared/changelog.md` (done), `docs/shared/edge-cases.md` (lessons) |
+| Cross-layer | `docs/bug-tracker.md` (open bugs), `docs/backlog.md` (pending features), `docs/changelog.md` (done), `docs/edge-cases.md` (lessons) |
 | **Tests** | `qa/RESULTADOS.md` (status, findings, **and "Por dónde seguir"** — start here), `qa/sql/` (the batteries), `qa/guiones-bot.md` (Layer B: the WhatsApp conversation scripts) |
 
 When you make a significant change, update the matching doc:
 
-- DB change → `docs/database/schema.md`
+- DB change → `docs/database.md`
 - New workflow/tool → `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md`
 - New React component → `docs/dashboard/components.md`
-- Bug found → `docs/shared/bug-tracker.md` · bug resolved → remove it there + condensed
-  entry in `docs/shared/changelog.md` · lesson learned → `docs/shared/edge-cases.md`
-- Architectural decision → `docs/shared/changelog.md` · deferred feature/idea → `docs/shared/backlog.md`
+- Bug found → `docs/bug-tracker.md` · bug resolved → remove it there + condensed
+  entry in `docs/changelog.md` · lesson learned → `docs/edge-cases.md`
+- Architectural decision → `docs/changelog.md` · deferred feature/idea → `docs/backlog.md`
 - Changed a DB function/trigger/RPC → re-run the matching battery in `qa/sql/` and update
   `qa/RESULTADOS.md`; if the change is a fix for a bug the battery caught, add the regression case
 
