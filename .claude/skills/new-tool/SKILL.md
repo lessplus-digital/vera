@@ -1,17 +1,18 @@
 ---
-description: Agrega una nueva tool al agente IA (checklist + validación contra n8n/Supabase reales)
-argument-hint: [nombre de la tool, ej. consultar_horario]
-allowed-tools: mcp__n8n-mcp__get_node, mcp__n8n-mcp__search_nodes, mcp__n8n-mcp__n8n_get_workflow, mcp__supabase__list_tables, mcp__supabase__execute_sql, Read
+name: new-tool
+description: Agrega o modifica una tool del agente de WhatsApp, con checklist y verificación contra n8n y Supabase reales. Úsalo cuando se vaya a crear una tool nueva para el bot, cambiar lo que devuelve una existente, o conectar una RPC nueva a uno de los agentes (Menú / Pedidos / Soporte / Reservas).
 ---
 
-Agregar la tool **$ARGUMENTS** al agente de WhatsApp. Sigue el checklist y **verifica contra las
-fuentes reales** (MCP) — no supongas el esquema ni la config de los nodos.
+Agregar o modificar la tool indicada en el agente de WhatsApp. Sigue el checklist y **verifica
+contra las fuentes reales** (MCP) — no supongas el esquema ni la config de los nodos.
 
 ## 0. Contexto real (MCP) — antes de diseñar
 - `list_tables` / `execute_sql` (Supabase, read-only): confirma la tabla y columnas que tocará.
-- `get_node` / `search_nodes` (n8n): la config exacta del tipo de nodo.
-- `n8n_get_workflow` del workflow "Pizzeria Vera": mira cómo se cablean las tools existentes del
-  agente destino (Menú / Pedidos / Soporte / Reservas).
+- `search_nodes` → `get_node_types` (n8n): la config exacta del tipo de nodo. Nunca adivines
+  nombres de parámetros; el tipo los da literales.
+- `get_workflow_details` del workflow "Pizzeria Vera": mira cómo se cablean las tools existentes
+  del agente destino (Menú / Pedidos / Soporte / Reservas). Para no volcar el JSON entero en el
+  contexto, delega esa lectura al subagente `n8n-inspector`.
 
 ## 1. Definir la tool
 - [ ] Nombre snake_case español · descripción clara para el LLM · input schema · output.
@@ -29,7 +30,7 @@ fuentes reales** (MCP) — no supongas el esquema ni la config de los nodos.
 
 ## 5. Documentar (obligatorio en este repo)
 - [ ] `docs/bot/subworkflows.md` — el subworkflow (si aplica) · `docs/bot/ai-agents.md` — la tool.
-- [ ] `docs/bot/agent-prompts.md` — el prompt verbatim si lo tocaste · `docs/shared/changelog.md` — la decisión.
+- [ ] `docs/bot/agent-prompts.md` — el prompt verbatim si lo tocaste · `docs/changelog.md` — la decisión.
 
 ## 6. Probar
 - [ ] Caso feliz · sin resultados (sin mencionar internos) · inputs raros/vacíos · cuándo NO debe usarla.
