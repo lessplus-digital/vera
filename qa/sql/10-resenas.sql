@@ -40,9 +40,16 @@ exception when others then return '💥 '||sqlstate||': '||left(sqlerrm,60); end
 begin;
 insert into clientes (cliente_id, telefono, nombre, fecha_registro)
 values ('CLI-QA10','573000000970','QA Reseñas', now());
-insert into pedidos (pedido_id, cliente_id, telefono, tipo_pedido, estado, metodo_pago, fecha_entrega)
-values ('PED-QA10','CLI-QA10','573000000970','domicilio','entregado','Efectivo', now() - interval '2 hours'),
-       ('PED-QA10B','CLI-QA10','573000000970','recoger','entregado','Efectivo', now() - interval '3 hours');
+-- OJO con `fecha_pedido`: hay un índice único `unique_pedido_cliente_minuto` sobre
+-- (telefono, date_trunc('minute', fecha_pedido)) — el que salva de que un cliente
+-- impaciente diga "confirmo" dos veces (lo encontró la batería 07 el 2026-09-09).
+-- Estas dos filas son del MISMO teléfono, así que sin `fecha_pedido` explícito ambas
+-- heredan el mismo now(), caen en el mismo minuto y revientan con 23505 ANTES de que
+-- se ejecute un solo caso de `feedback`: T1 no mediría nada y la transacción entera
+-- abortaría. Van separadas por horas a propósito.
+insert into pedidos (pedido_id, cliente_id, telefono, tipo_pedido, estado, metodo_pago, fecha_pedido, fecha_entrega)
+values ('PED-QA10','CLI-QA10','573000000970','domicilio','entregado','Efectivo', now() - interval '4 hours', now() - interval '2 hours'),
+       ('PED-QA10B','CLI-QA10','573000000970','recoger','entregado','Efectivo', now() - interval '6 hours', now() - interval '3 hours');
 
 select 'calificacion = 0' as caso, '23514' as esperado,
        pg_temp.run($$insert into feedback (feedback_id,cliente_id,pedido_id,fecha,calificacion_general)

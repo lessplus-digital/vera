@@ -17,7 +17,8 @@ Ordenado por *valor recibido ÷ esfuerzo*, no por importancia teórica.
 | # | Ítem | Capa | Esfuerzo | Bloqueo |
 |---|---|---|---|---|
 | 1 | [Borrar los datos de prueba de roles](#datos-de-prueba-de-roles-en-producción) | BD | `[S]` | ninguno — es SQL ya escrito |
-| 2 | [`useOrders`: mostrar el error en el UI](#dashboard) | Dashboard | `[S]` | ninguno |
+| 2 | [Kanban: columna de cerrados + navegación por día](#kanban-cuarta-columna-de-cerrados--navegación-por-día-s-m) | Dashboard | `[S-M]` | ninguno — **es la otra mitad del fix de BUG-052** |
+| 2b | [`useOrders`: mostrar el error en el UI](#dashboard) | Dashboard | `[S]` | ninguno |
 | 3 | [Precios reales de `motivos_reserva`](#reservas) | BD | `[S]` | **necesita los 6 precios del cliente** |
 | 4 | [Resumen diario por WhatsApp al dueño](#features-nuevas) | Bot | `[S]` | ninguno — solo n8n |
 | 5 | [Modo TV para cocina (KDS)](#features-nuevas) | Dashboard | `[S-M]` | ninguno — alto valor en demos |
@@ -87,6 +88,11 @@ de Supabase: quitar solo la fila deja el objeto colgado en S3 (misma trampa que 
   inofensivo. **No se puede borrar por SQL**: quitar la fila de `storage.objects` dejaría el
   archivo colgado en S3. Hazlo desde el panel de Supabase (Storage → comprobantes) o con la
   Storage API usando `service_role`.
+- **Re-pinnear los `pinData` viejos de n8n** `[S]` · *cosmético* — `Sub — Crear Reserva` y
+  `Sub — Cancelar Reserva` conservan pins con las keys viejas (`cliente_id `/`telefono ` con
+  espacio al final) y `Sub — Consultar_menu` los query params del `ilike`. Solo afecta a las
+  pruebas manuales en el editor de n8n: el flujo real no los usa. Re-pinnear al abrirlos.
+  *(Estaba en el bug-tracker; no es un defecto del sistema, así que vive aquí.)*
 - **Limpiar `pedidos.repartidor`** `[S]` — columna muerta sustituida por `domiciliario_id`.
   ✅ **Verificado el 2026-09-21:** la columna existe y está **NULL en los 117 pedidos**. Se lee en
   **dos** sitios (la entrada vieja decía uno): el `select` de `useOrderHistory.js:20` y el render
@@ -122,8 +128,16 @@ de Supabase: quitar solo la fila deja el objeto colgado en S3 (misma trampa que 
   dejaría de ser un cobro raro y pasaría a ser **una venta perdida en seco**. Medido el
   2026-08-25: de 89 domicilios históricos, 88 tienen `zona IS NULL`, pero todos son anteriores a
   las zonas (2026-08-18) y ni siquiera guardaron `barrio`; el único posterior (PED-240, La
-  Milagrosa) resolvió bien. **Aún no hay evidencia de fugas del matcher: volver a medir cuando
-  haya volumen real con barrio.**
+  Milagrosa) resolvió bien.
+  🔴 **Ya hay evidencia, y cambia el cálculo (2026-09-22, BUG-061).** No es que el matcher falle:
+  es que **hay dos matchers y no emparejan igual**. `consultar_cobertura` resuelve de forma difusa
+  y devuelve `sugerencias`; **`resolver_barrio` —la que usa `trigger_tarifa_domicilio`— solo
+  resuelve el nombre canónico**. En G3, el bot guardó en el carrito el texto crudo del cliente
+  (`niqia`), que la segunda no resuelve: de convertirse en pedido, el trigger habría aplicado
+  `tarifa_base()` = $5.000 en vez de los $7.500 de Niquía. O sea que **la fuga que este ítem temía
+  ya existe, y por el lado contrario al que se vigilaba**: no un rechazo en seco, sino un cobro
+  silenciosamente barato. Antes de la reja dura, lo barato y urgente es **unificar los dos
+  matchers** (o guardar siempre el nombre canónico que devolvió la tool).
 - **Probar los 4 taps de botón en real** `[S]` — el enrutado de taps de plantilla se hizo el
   2026-07-29 (nodo `Normalizar tap`) y se verificó contra el payload de una ejecución real y los
   labels de Graph API, **pero nadie ha tapeado un botón desde WhatsApp desde entonces**. Es
@@ -157,6 +171,48 @@ de Supabase: quitar solo la fila deja el objeto colgado en S3 (misma trampa que 
   `consultar_reservas_cliente` y `cancelar_reserva`: **lo único que falta aquí es el cron.**
 
 ## Dashboard
+
+### Kanban: cuarta columna de cerrados + navegación por día `[S-M]`
+
+**No es cosmético: es la otra mitad del fix de BUG-052.** Desde el 2026-09-22 el job de expiración
+ya no cancela los pedidos con comprobante — se quedan vivos en `pendiente` a propósito, para que
+los atienda una persona. Pero el kanban solo muestra **el día actual** y **cuatro estados activos**
+(`useOrders.js:19` y `:51`), así que mañana ese pedido pagado desaparece de la vista igual que
+antes. El fix de BD se sostiene sobre esta pieza; hasta que exista, el riesgo de BUG-052 está
+mitigado a medias.
+
+Pedido explícitamente por Juan el 2026-09-22, en estos términos: poder ver *"los pedidos entregados,
+los que ya no tienen nada para hacer por nuestro lado"*, y poder *"devolverme a los pedidos de ayer,
+de antier… como si fuese un calendario"*.
+
+**1 · Cuarta columna "Cerrados"** (`entregado` + `cancelado`), debajo de las tres actuales.
+
+- `COLUMNS` (`src/utils/constants.js:1`) **ya admite `key` como array** — lo usa la tercera columna
+  (`['en_camino','recoger']`) y lo resuelve `getColumnOrders` en
+  `src/pages/dashboard/DashboardPage.jsx:32`. Es una entrada más, no un caso nuevo.
+- La rejilla `.kanban` (`src/styles/orders.less:55`) está fijada a `repeat(3, 1fr)`, con saltos a 2
+  y 1 columna por breakpoint. La cuarta va **debajo y a lo ancho**, no como cuarta columna estrecha:
+  es una lista de consulta, no una bandeja de trabajo.
+- **Un pedido cancelado con `comprobante_url` tiene que cantarse en la tarjeta.** Es dinero recibido
+  por un pedido que no existe: es exactamente el caso que nadie vio durante tres semanas con
+  PED-240 y PED-242 ($130.500).
+
+**2 · Navegación por día.** Controles `‹ ›` + "Hoy" en la cabecera del kanban.
+
+- El cambio es pequeño porque **`colombiaDayStart(date)` (`src/utils/dateRanges.js`) ya acepta una
+  fecha**: se guarda el día elegido en estado, se consulta el rango `[inicio, inicio+1d)` y se
+  amplía el `.in('estado', …)` de `useOrders` para incluir `entregado`/`cancelado`.
+- **Dos cuidados que no son obvios:**
+  - El **realtime y el sonido de pedido nuevo solo deben actuar cuando el día elegido es hoy.**
+    `useOrders` diffea contra un `knownIds` ref para detectar llegadas; navegando al pasado, todo
+    un día "llega" de golpe y sonaría como si hubieran entrado 20 pedidos.
+  - Las `stats` de cabecera se calculan con el mismo `today` (`useOrders.js:86`) y deben seguir al
+    día elegido, o la cabecera dirá una cosa y el tablero otra.
+
+**3 · Actualizar `docs/dashboard/components.md`** en el mismo commit — el hook de Stop bloquea si
+`src/` cambia sin `docs/` — y respetar `docs/dashboard/design-system.md` (un solo `.btn primary`
+por pantalla; el de "Crear pedido" ya ocupa ese sitio).
+
 
 - **`useOrders`: exponer el estado `error` en el UI** `[S]` — ✅ **verificado el 2026-09-21: sigue
   solo con `console.error`** (`useOrders.js:54` y `:89`). El spinner infinito ya se arregló en

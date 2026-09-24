@@ -53,16 +53,21 @@ insert into pedidos(pedido_id, cliente_id, telefono, tipo_pedido, metodo_pago, e
 select 'PED-QH5', 'CLI-QAH', '573000000903', 'recoger', 'Transferencia', 'pendiente',
        corte - interval '2 hours 14 minutes', 'https://ejemplo/comprobantes/PED-QH5.jpg' from c;
 
--- OJO al esperado de T1: desde que existe T5b son DOS los pendientes viejos.
--- Hoy el job cancela los dos (2) porque no distingue el pagado. Con el fix por
--- la opción 1 (excluir los que tienen comprobante) debe volver a ser 1.
-insert into qa_out(paso, esperado, valor) select 'T1 expirados en la corrida', '2 hoy · 1 tras el fix de BUG-052', expirar_pedidos_pendientes()::text;
+-- T1 afirma el comportamiento CORRECTO, no el actual. Desde que existe T5b hay DOS
+-- pendientes viejos, pero solo PED-QH1 (sin comprobante) debe cancelarse: PED-QH5 ya
+-- está pagado. Antes el `esperado` era una nota en prosa y la columna `ok` salía en ✗
+-- para siempre, indistinguible de una regresión de verdad — la misma familia de trampa
+-- que el falso verde de §34. Ahora es un valor comparable: rojo mientras BUG-052 siga
+-- abierto (el mismo rojo que T5b), verde en cuanto el job excluya los pagados.
+insert into qa_out(paso, esperado, valor) select 'T1 expirados en la corrida (solo el NO pagado)', '1', expirar_pedidos_pendientes()::text;
 insert into qa_out(paso, esperado, valor) select 'T2 -2h del corte -> cancelado', 'cancelado', estado from pedidos where pedido_id = 'PED-QH1';
 insert into qa_out(paso, esperado, valor) select 'T3 00:05 de hoy -> sobrevive', 'pendiente', estado from pedidos where pedido_id = 'PED-QH2';
 insert into qa_out(paso, esperado, valor) select 'T4 ahora mismo -> sobrevive', 'pendiente', estado from pedidos where pedido_id = 'PED-QH3';
 insert into qa_out(paso, esperado, valor) select 'T5 en_cocina viejo -> intacto', 'en_cocina', estado from pedidos where pedido_id = 'PED-QH4';
 insert into qa_out(paso, esperado, valor)
-select 'T5b BUG-052 pendiente viejo YA PAGADO', 'no cancelar (o motivo de reembolso)',
+-- Mismo arreglo que T1: el `esperado` era una nota en prosa y la columna `ok` salía
+-- en ✗ para siempre, incluso con el fix ya puesto. Ahora es el valor comparable.
+select 'T5b BUG-052 pendiente viejo YA PAGADO', 'pendiente / sin motivo',
        estado || ' / ' || coalesce(motivo_rechazo, 'sin motivo') from pedidos where pedido_id = 'PED-QH5';
 
 -- T6 · El texto tiene que encajar en la plantilla de n8n, que lo envuelve.

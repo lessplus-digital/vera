@@ -170,3 +170,54 @@ select 'T4b mover a franja llena' as caso, 'cupo_agotado · 8 confirmadas a las 
        (select res from r4b) || ' · ' || count(*)::text || ' confirmadas a las 19:00' as valor
 from reservas where fecha = (select d from t2) and hora = '19:00' and estado = 'confirmada';
 rollback;
+
+-- ---------------------------------------------------------------------------
+-- T11-T18 · REGRESIÓN de BUG-049 · `trigger_validar_ventana_reserva`.
+--       Hasta el 2026-09-22 la única validación de horario vivía en el subworkflow
+--       n8n, así que el modal del dashboard —que escribe directo a la tabla— la
+--       saltaba entera: `reservas` aceptaba fechas de 2020 y horas con el local
+--       cerrado. Ahora la frontera está en la BD.
+--       La regla: la mesa se aparta 90 min y debe caber ANTES del cierre (22:00
+--       entre semana, 23:00 el finde) → última reserva 20:30 L-V y 21:30 S-D,
+--       ambas INCLUSIVE. Apertura 12:00.
+--
+--       T18 es el control que de verdad importa: el trigger solo valida cuando
+--       `fecha` u `hora` CAMBIAN. Sin esa condición, cancelar una reserva vieja
+--       (operación legítima y diaria) quedaría bloqueada por su propia fecha
+--       pasada — y eso no lo habría visto ningún caso de rechazo.
+-- ---------------------------------------------------------------------------
+begin;
+create temp table qa_v(paso text, esperado text, valor text) on commit drop;
+create or replace function pg_temp.intento(sql text) returns text language plpgsql as $$
+begin execute sql; return 'ACEPTADO';
+exception when others then return 'RECHAZADO'; end $$;
+
+insert into clientes(cliente_id, telefono, nombre, fecha_registro)
+ values ('CLI-QAV','573000000949','QA Ventana', now()) on conflict do nothing;
+
+-- Un miércoles y un sábado, ambos siempre futuros, sea cual sea el día de hoy.
+create temp table dv on commit drop as
+select (current_date + ((3 - extract(isodow from current_date)::int + 7) % 7 + 7))::date as lv,
+       (current_date + ((6 - extract(isodow from current_date)::int + 7) % 7 + 7))::date as sd;
+
+create or replace function pg_temp.reservar(id text, f date, h text) returns text
+language sql as $$
+  select pg_temp.intento(format(
+    $x$insert into reservas(reserva_id,cliente_id,telefono,nombre_cliente,fecha,hora,personas,estado,origen)
+       values (%L,'CLI-QAV','573000000949','QA',%L,%L,2,'confirmada','dashboard')$x$, id, f, h));
+$$;
+
+insert into qa_v select 'T11 fecha en el PASADO (2020)',  'RECHAZADO', pg_temp.reservar('RSV-QV1','2020-01-15','13:00');
+insert into qa_v select 'T12 hora 04:00 (sin abrir)',     'RECHAZADO', pg_temp.reservar('RSV-QV2',(select lv from dv),'04:00');
+insert into qa_v select 'T13 hora 11:59 (un minuto antes)','RECHAZADO', pg_temp.reservar('RSV-QV3',(select lv from dv),'11:59');
+insert into qa_v select 'T14 L-V 20:30 (borde, ENTRA)',   'ACEPTADO',  pg_temp.reservar('RSV-QV4',(select lv from dv),'20:30');
+insert into qa_v select 'T15 L-V 20:31 (un minuto tarde)','RECHAZADO', pg_temp.reservar('RSV-QV5',(select lv from dv),'20:31');
+insert into qa_v select 'T16 S-D 21:30 (borde finde, ENTRA)','ACEPTADO',pg_temp.reservar('RSV-QV6',(select sd from dv),'21:30');
+insert into qa_v select 'T17 S-D 21:31',                  'RECHAZADO', pg_temp.reservar('RSV-QV7',(select sd from dv),'21:31');
+insert into qa_v select 'T18 cancelar una reserva VIEJA sigue permitido', 'ACEPTADO',
+  pg_temp.intento($x$update reservas set estado='cancelada'
+                     where reserva_id = (select reserva_id from reservas
+                                          where fecha < current_date order by fecha limit 1)$x$);
+
+select paso, esperado, valor from qa_v where valor <> esperado order by paso;
+rollback;

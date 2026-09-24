@@ -1,6 +1,11 @@
-# Campaña de pruebas — plan y resultados
+# Campaña de pruebas — estado y resultados
 
-Baterías: [`sql/`](sql/) · Bugs nuevos → [`../docs/bug-tracker.md`](../docs/bug-tracker.md)
+Baterías: [`sql/`](sql/) · Guiones: [`guiones-bot.md`](guiones-bot.md) · Bugs → [`../docs/bug-tracker.md`](../docs/bug-tracker.md)
+
+> **Este fichero solo tiene lo vigente.** El histórico corrido de cada batería (2026-09-09 al 09-16)
+> se retiró el 2026-09-22 para que no compita con el estado actual: las trampas de montaje viven en
+> la cabecera de cada `.sql`, las lecciones en `edge-cases.md`, los bugs en el tracker o el
+> changelog, y la narración íntegra en `git log -p qa/RESULTADOS.md`.
 
 ## La estrategia, en una frase
 
@@ -12,581 +17,219 @@ cliente puede romper no vive en el LLM: vive en Postgres.
 |---|---|---|---|
 | **A · SQL determinista** | funciones, triggers, constraints, RLS | ~0 (segundos, sin LLM) | sí, infinitas veces |
 | **B · Conversación WhatsApp** | el modelo: ruteo, prompts, redacción, memoria | alto (minutos + tokens) | no |
-| **C · Vitest sobre utils puras** | agregados y formateo del dashboard | ~0 | sí |
+| **C · Vitest sobre utils puras** | agregados y formateo del dashboard | ~0 | sí — **fuera del MVP** |
 
 **Cómo se ejecuta la Capa A:** cada fichero de `sql/` se pasa al MCP de Supabase. Devuelven **solo
 las filas que fallan** — resultado vacío = verde. Los que escriben van dentro de `BEGIN … ROLLBACK`
-(validado que el MCP lo respeta) y usan teléfonos ficticios `5730000009xx`, nunca uno real.
+y usan teléfonos ficticios `5730000009xx`, nunca uno real.
 
-**Regla de oro** (sale de edge-cases §11, §18, §19, §22, §31): *el verde no prueba nada por sí
-solo.* Cada aserción se hace leyendo la fila resultante o contando filas — nunca preguntando si
-algo lanzó excepción.
+Tres trampas de ejecución que muerden cada vez que se olvidan:
 
-**Número acordado para la Capa B:** el de Juan, `573113298122` (CLI-038). Reset entre guiones:
+- El MCP **solo devuelve el resultado de la última sentencia** → pasa las baterías **por bloques**.
+- El MCP **no conserva la sesión entre llamadas**: lo que abras en una llamada se revierte al
+  terminarla y `pg_temp` no sobrevive. Cada bloque debe ser autocontenido.
+- **Leer una tabla en un subquery del mismo `SELECT` que la escribe devuelve el snapshot previo.**
+  Escribe en una sentencia, lee en la siguiente.
 
-```sql
-delete from carritos where telefono = '573113298122';
-delete from feedback_pendiente where telefono = '573113298122';
-delete from n8n_mensajes_pendientes where telefono = '573113298122';  -- BUG-053
-delete from n8n_chat_histories where session_id in ('573113298122','orq:573113298122');
-update clientes set modo = 'bot' where telefono = '573113298122';
-```
+**Regla de oro** (edge-cases §11, §18, §19, §22, §31): *el verde no prueba nada por sí solo.* Cada
+aserción se hace leyendo la fila resultante o contando filas — nunca preguntando si algo lanzó
+excepción. Y su reverso (§39): **`esperado` es un valor comparable, nunca una explicación en prosa**,
+o el caso queda en rojo permanente e indistinguible de una regresión.
+
+**Cómo se ejecuta la Capa B:** protocolo, números de prueba y reset en
+[`guiones-bot.md`](guiones-bot.md).
+
+---
 
 ## Estado
 
-**Última regresión completa: 2026-09-15** — las 10 baterías re-ejecutadas contra la BD viva.
-Ningún bug cerrado se reabrió y ningún verde pasó a rojo por un cambio del sistema. Sí aparecieron
-**3 fallos de los propios tests** (corregidos) y **2 bugs nuevos** (BUG-053, BUG-054). Detalle abajo.
+**Última regresión completa: 2026-09-22** — las 10 baterías contra la BD viva tras el despliegue del
+feedback del 16-09. **Sin regresiones del sistema.**
 
-**Tanda de fixes 2026-09-15 (tarde):** 16 bugs cerrados; el estado de abajo ya los incluye.
-
-| Batería | Tras los fixes del 2026-09-15 (tarde) | Rojo que queda |
+| Batería | Estado 2026-09-22 | Rojo que queda |
 |---|---|---|
-| `01-cobertura.sql` | T1–T6 verdes · barrido de erratas **236/236** (antes 211) | — |
-| `02-menu.sql` | T1 **0/133** fuera del top-5 (antes 26) · T3 · T4 · **T5** · T6 · **T7** verdes · +**T8** banda de confianza | T2 = 19 empates legítimos (ver comentario) |
+| `01-cobertura.sql` | **6/6** · confirma que el fix de BUG-054 sigue puesto (eco de 300 chars → 60) | — · **le falta cubrir `resolver_barrio`**, ver BUG-061 |
+| `02-menu.sql` | T1 **0/133** fuera del top-5 · T3–T8 verdes · T8 20/20 | T2 = 19 empates legítimos (sin cambio) |
 | `03-mitad-y-mitad.sql` | **3047/3047** | — |
-| `04-flujo-pedido.sql` | 12/12 · +T4b (otra zona con precio viejo) | — |
-| `05-totales.sql` | **14/14** (re-ejecutada tras tocar `editar_pedido`) | — |
-| `06-reservas.sql` | **12/12** tal cual está el fichero · T4a/T4b ahora esperan el **rechazo** · +T4c control | — |
-| `07-housekeeping.sql` | 19/20 | T5b = BUG-052 🔴 (decisión de negocio) |
-| `08-roles-rls.sql` | **16/16** | — |
-| `09-basura.sql` | nulos, inyección, límites y JSONB basura sin SQLSTATE crudo; 0 filas corruptas | T9 = BUG-049 (decisión de horario) |
-| `10-resenas.sql` | T1 · T2 · T5 · T6 · T7 · T9 verdes · **2026-09-16: +T10–T15 verdes** (RPCs nuevas del feedback) | T8 es réplica documental. **La capa n8n aún corre el flujo viejo** → ver §0 abajo |
-| Capa B · 11 guiones WhatsApp | G1 corrido (antes del fix de menú) · G2 bloqueado por BUG-055 | G9 bloqueado (horario) |
-| Capa C · Vitest | ⬜ pendiente | |
+| `04-flujo-pedido.sql` | **13/13** | — |
+| `05-totales.sql` | **14/14** | — |
+| `06-reservas.sql` | **14/14** · +**T11–T18**, regresión nueva de BUG-049 | — |
+| `07-housekeeping.sql` | **19/19** ✅ — T5b verde tras el fix de BUG-052 | — |
+| `08-roles-rls.sql` | **16/16** · el domiciliario ve 34 pedidos, **todos suyos** | — |
+| `09-basura.sql` | **BUG-045/046/047/048 confirmados cerrados** | T9 = BUG-049 → cerrado en BD, falta n8n |
+| `10-resenas.sql` | **T10–T15 verdes** (las RPC nuevas del feedback aguantan) · T1 reparado | T8 es réplica documental |
 
-**Capa A cerrada.** Las 10 baterías están ejecutadas: ~3.650 casos, **14 bugs encontrados
-(BUG-039…052)**, ninguno de ellos visible desde el código del dashboard.
+**Capa B — 2 de 11 corridos.** Estado por guion en [`guiones-bot.md`](guiones-bot.md).
 
-**Capa B lista para correr:** los 11 guiones están en [`guiones-bot.md`](guiones-bot.md) con los
-mensajes exactos, la respuesta esperada y el SQL de verificación. **Solo G9 sigue bloqueado**
-(ventana de reservas por aplicar + precios placeholder de `motivos_reserva`); los otros diez se
-pueden ejecutar ya.
-
----
-
-## ▶️ Por dónde seguir (última sesión: 2026-09-16)
-
-Orden sugerido para retomar. Lo de arriba es contexto; esto es la lista de trabajo.
-
-### 0. 🟠 Incidente de feedback del 2026-09-16 — desplegado, falta probarlo por WhatsApp
-
-Juan respondió `5` dos veces a *"¿cómo estuvo tu pedido?"* y el bot no contestó nada. Causa:
-**BUG-057/058/059/060** (tracker). Los tres primeros eran el mismo fallo de diseño — la máquina de
-estados en ~20 nodos de n8n sin transacción, con pasos que fallaban en verde — así que se movió a la BD.
-
-- [x] Desatascado `CLI-038` (cola borrada, `modo = 'bot'`).
-- [x] RPCs `procesar_respuesta_feedback` y `solicitar_feedback_lote` creadas.
-- [x] Cron de expiración: 48 h/diario → **6 h/horario**. Ya protege al flujo viejo: encierro ≤ 7 h.
-- [x] `10-resenas.sql` T10–T15 verdes (T11 reproduce el 409 exacto; ya no revienta).
-- [x] n8n recableado y **publicado**: `Sub — Feedback Pendiente` `05b3415f…` (20 → 7 nodos) y
-      `Pizzeria Vera` `1f351a3b…` (rama `trigger_feedback` → RPC). Flujo nuevo en `docs/bot/feedback.md`.
-- [ ] Correr **G11** completo: nota 5 → invitación a Google · nota 2 → comentario → gracias ·
-      `5` dos veces → sin silencio · `10/10` → "responde 1–5". Y T15 tras cada prueba.
-      Para forzar la pregunta sin esperar un pedido real: un pedido `entregado` hace ~2 h con
-      `feedback_solicitado = false`, cliente en `'bot'` y sin fila en `feedback`; el cron lo toma
-      en ≤ 15 min.
-
-### 1. Hecho el 2026-09-15 (tarde) — lo que queda es verificarlo hablando con el bot
-
-**16 bugs corregidos** (detalle en `changelog.md`): BUG-038 · 039 · 040 · 041 · 042 · 043 · 044 ·
-045 · 046 · 047 · 048 · 051 · 053 · 054 + BUG-027. Siguen abiertos solo los que esperan una decisión
-(052, 049) y **BUG-055**, que registró Juan durante G2.
-
-- [x] ~~Limpiar el buffer~~ → cron `limpiar-mensajes-pendientes` cada 5 min + `retryOnFail` en n8n.
-- [x] ~~Publicar `Sub — Feedback Pendiente`~~ → publicado (`cb2ff4b5…`, luego `61dd4711…` con BUG-027).
-- [ ] **Re-correr G1.** El G1 de esta tarde corrió **antes** del cambio de `buscar_menu` (se aplicó
-      después de *"si asi"*). Ahora `pan de ajo`, `una copa de vino`, `lasaña de pollo` y
-      `una limonada de mango` deben entrar sin preguntar; `pizza de pollo` debería ofrecer opciones.
-- [ ] **G4** (número de pedido, BUG-038) y **G11** (reseñas, BUG-050/051/027) — ambos desbloqueados
-      en la tool; G4 depende además de BUG-055.
-- [x] ~~Re-ejecutar `06-reservas.sql` tal cual~~ → 12/12 tras el mantenimiento de Supabase (21:45 UTC).
-      Y de paso: `02 · T8` 20/20, `01 · T4` 7/7, job `limpiar-mensajes-pendientes` 9/9 corridas OK.
-
-### 2. Dos decisiones de negocio que bloquean fixes
-
-- [ ] **BUG-052** — ¿el job de expiración **excluye** los pedidos con comprobante, o los **cancela
-      marcando el reembolso**? Sin esto no se puede escribir el fix. Y aparte: qué se hace con los
-      **$130.500** de PED-240 y PED-242, que son de un cliente real.
-- [ ] **Ventana de reservas** — ya se decidió *"la última reserva debe caber completa antes del
-      cierre"* (20:30 entre semana, 21:30 finde), pero **falta aplicarlo**: en el subworkflow
-      `OTQp2O8QDw1mMKOZ` (hoy valida 12:00-21:00) y como CHECK en `reservas` (BUG-049). Desbloquea
-      **G9** y con él la Capa B entera. Falta también confirmar los 6 precios de `motivos_reserva`,
-      que siguen siendo el seed placeholder.
-
-### 3. Trabajo de QA pendiente, por valor
-
-- [ ] **G2 bloqueado por BUG-055 (intento 2026-09-15, `573184821317`).** No llegó ni al paso 1: el
-      agente de menú preguntó *"¿te la dejo?"* sin crear el carrito, y el *"sí"* cayó en soporte,
-      que inventó el carrito y dejó la conversación sin salida. **Fix de prompts publicado el
-      2026-09-15 (`f1f5f902`)**: ahora hay que repetir la conversación tras un reset. Tras
-      `Estofada y familiar`, `carritos` debe tener PROD-038, y el `Si` no debe ir a `soporte`.
-      Luego G2 completo y G4.
-- [ ] **Correr los 10 guiones ejecutables de la Capa B.** Es lo único que prueba al modelo. Los más
-      cargados de riesgo ya medido: **G1** (BUG-039/045, el bot agrega el producto equivocado con
-      plena confianza), **G4** (BUG-038, no le da el número de pedido al cliente) y **G11**.
-- [ ] **Capa C (Vitest)** sobre utils puras del dashboard — sin empezar.
-- [ ] **Barridos de estado vivo periódicos.** Encontraron los dos bugs 🔴 de esta semana (BUG-050 y
-      BUG-052) y ninguna batería los habría visto. Ver §33 de `edge-cases.md` para los tres filtros
-      obligatorios antes de convertir un hallazgo en bug.
-
-### 4. Lo que NO hay que volver a investigar
-
-Ya se descartó, con evidencia, en el barrido del 2026-09-12: los 88 domicilios sin barrio
-(pre-migración), las 37 transferencias sin comprobante (32 son semilla), los 8 pedidos sin líneas
-(BUG-007, cerrado), PED-235 con 31 días en `en_camino` (**dato de prueba manual de Juan**), los ids
-`RSV-M…` (dashboard viejo) y el webhook de estado disparando en cada UPDATE (`If1` sí filtra).
-
-> **Recordatorio para la próxima sesión:** de los 116 pedidos, **80 son semilla**, y además Juan
-> manipula filas a mano para probar. Ningún agregado sobre `pedidos` significa lo que parece hasta
-> partirlo por origen del dato.
-
----
-
-## 2026-09-15 · Regresión completa de la Capa A + barrido de estado vivo
-
-**Por qué:** tres días sin tocar la BD (última migración `expirar_feedback_pendiente`, 2026-09-12)
-y con BUG-050 recién desplegado. Una regresión barata antes de invertir tiempo en la Capa B.
-
-**Resultado del sistema: sin regresiones.** Cada batería da exactamente los rojos conocidos. Las
-cifras de visibilidad por rol (08) son idénticas a las del 09-09 (domiciliario 34 / 17 / 71, todo
-suyo), los 3024 pares de mitad y mitad siguen exactos, y la línea base de I3 (116 · 214 · 35 · 16 ·
-133 · 20 tablas, 0 filas corruptas) no se movió.
-
-**BUG-050 en vivo — métricas en verde, comportamiento sin probar:**
-
-| Indicador | 2026-09-12 | 2026-09-15 |
+| Guion | 22-09 | |
 |---|---|---|
-| Filas en `feedback_pendiente` | 9 (la más vieja, 108 días) | **0** |
-| Clientes en `esperando_feedback` | 7 | **0** |
-| Cola con pedido ya calificado | 4 | **0** |
-| Job `expirar-feedback-pendiente` | no existía | **3/3 OK** (07:30 UTC) |
-| Ejecuciones del job de solicitud (cada 15 min) | fallaba con 409 | **todas `success`** |
+| **G2** · carrito idempotente | ✅ **verde** | y cierra **BUG-055**: el carrito se crea de verdad |
+| **G3** · cobertura | 🔴 **5/7** | → **BUG-061** 🔴 y **BUG-062** 🟡 |
+| G1 · G4 · G5 · G6 · G7 · G8 · G10 · G11 | ⬜ | G11 es el más urgente |
+| G9 · reservas | ⛔ | faltan los 6 precios reales de `motivos_reserva` |
 
-Y un caso nuevo, **T9**, que cubre el job de expiración con las tres fronteras que importan: 49 h
-se borra y devuelve el modo a `bot`, 47 h sigue esperando, y 49 h con un operador en `humano`
-se borra **sin quitarle el modo a la conversación en curso**. Verde.
+> ⚠️ **Lo que la regresión NO prueba.** El último pedido del sistema es del **15-09** y no hay
+> ejecuciones de n8n con error desde el 15-09 23:59. Una semana sin tráfico: un flujo arreglado y
+> un flujo sin trabajo se ven exactamente igual (§32). Los ceros de la cola de feedback no
+> significan nada hasta que G11 corra por WhatsApp.
 
-> ⚠️ Por §32: **estos ceros no prueban que el flujo funcione.** El último pedido es del 2026-09-08,
-> así que el job de solicitud lleva días corriendo sin trabajo — un job arreglado y uno sin nada
-> que hacer se ven igual. La prueba de comportamiento sigue siendo G11.
+---
 
-**Tres fallos de los tests, no del sistema (corregidos en los ficheros):**
+## ▶️ Por dónde seguir
+
+### ⛳ Puerta de salida al MVP
+
+1. **Correr G11, G1, G4 y G10 por WhatsApp.** Solo Juan puede. Cinco bugs 🔴
+   (BUG-056/057/058/059/060) están desplegados y **verificados únicamente en SQL** — ninguno se ha
+   probado hablando con el bot. Es el riesgo más grande abierto. G10 subió de prioridad porque
+   BUG-062 es un fallo de ruteo que apareció de casualidad en G3.
+2. **Arreglar BUG-061** 🔴 — el bot promete tarifa cuando la tool dijo `cubierto:false`. Es el único
+   hallazgo de la Capa B con consecuencia en dinero.
+3. **Terminar BUG-049 en n8n** (la BD ya está cerrada).
+4. **Kanban: cuarta columna + navegación por día** — es la otra mitad del fix de BUG-052; sin ella
+   el pedido pagado que ya no se autocancela se entierra igual. Ficha en `docs/backlog.md`.
+5. **Limpiar los datos de prueba de roles** antes de enseñar estadísticas (4 pedidos ficticios
+   cuentan en su día, 67 pedidos con `domiciliario_id` sembrado).
+6. **Rotar `VITE_WA_ACCESS_TOKEN`**, que viaja en el bundle. El proxy es `[M]` y no cabe; rotar sí.
+
+**Fuera del MVP, decidido:** G9 y los precios de `motivos_reserva`, el FAQ de una sola fila, la
+Capa C (Vitest) y el proxy de WhatsApp.
+
+### Lo que sigue esperando una decisión de negocio (no es código)
+
+- **Los $130.500 de PED-240 y PED-242** — dinero real de un cliente real, de pedidos que el job
+  canceló antes del fix de BUG-052. Hay que decidir reembolso o reposición con él.
+- **Los 6 precios de `motivos_reserva`** — siguen siendo el seed placeholder. Bloquean G9.
+- **El FAQ** tiene una sola fila; toda pregunta frecuente que no sea del parqueadero se improvisa.
+
+### Lo que NO hay que volver a investigar
+
+Ya se descartó, con evidencia: los 88 domicilios sin barrio (pre-migración del 18-08), las 37
+transferencias sin comprobante (32 son semilla; el número real es 5), los 8 pedidos sin líneas
+(BUG-007, cerrado, todos anteriores al 01-07), PED-235 en `en_camino` desde agosto (**dato de prueba
+manual de Juan**), los ids `RSV-M…` (dashboard viejo) y el webhook de estado disparando en cada
+UPDATE (`If1` sí filtra).
+
+> **Recordatorio permanente:** de los 117 pedidos, **~80 son semilla**, y además Juan manipula filas
+> a mano para probar. Ningún agregado sobre `pedidos` significa lo que parece hasta partirlo por
+> origen del dato. Los tres filtros obligatorios antes de convertir un hallazgo en bug están en
+> `edge-cases.md` §33: ¿es dato semilla?, ¿es anterior a una migración?, ¿lo tocó alguien a mano?
+
+---
+
+## Hallazgos vivos que ninguna batería puede cazar
+
+**La banda de confianza del menú no mide unicidad.** El prompt dice *"similitud ≥ 0.5 → match
+confiable, proceder sin confirmar"*, pero `similitud` mide **contención de palabras**. Medido:
+`'quiero una pizza'` devuelve **62 productos, 59 por encima de 0.5 y cuatro empatados en 1.000**
+(Vera Pizza, Pizza Jumbo, Pizza M&M…). `02 · T8` lo da verde **con razón** —su criterio es que nada
+que no comparta las palabras de la búsqueda llegue a 0.5, y aquí todos comparten "pizza"—, así que
+**ninguna batería puede señalarlo**. Es el mecanismo de BUG-039/045. Lo mide **G1.7**.
+
+**`historial_resumen` con `p_search = ''` no filtra** y devuelve los 117 pedidos (misma forma que
+BUG-045c: `'%'||''||'%'` es `'%%'`). **No llega desde el dashboard**: `useOrderHistory` manda
+`parts.q || null`. Nota, no bug, mientras nadie más llame a la RPC con `''`.
+
+**Las dos funciones de barrio normalizan distinto.** `consultar_cobertura` tiene emparejamiento
+difuso y devuelve `sugerencias`; **`resolver_barrio` —la que usa el trigger de tarifa— solo resuelve
+el nombre canónico**. `01 · T2` prueba 295 variantes contra la primera y sale verde; **ninguna las
+prueba contra la segunda**. De ahí sale la mitad cara de BUG-061.
+
+---
+
+## 2026-09-22 · Regresión completa + barrido de estado vivo + 2 bugs cerrados
+
+**Por qué:** el 16-09 se desplegaron dos RPC nuevas (`procesar_respuesta_feedback`,
+`solicitar_feedback_lote`), se recableó n8n y el cron de expiración pasó de 48 h/diario a 6 h/horario.
+Nada de eso se había re-probado.
+
+**Resultado: sin regresiones.** Las cifras de visibilidad por rol son idénticas, los 3024 pares de
+mitad y mitad siguen exactos, y la línea base creció de forma orgánica (117 pedidos · 220 detalles,
++1 y +6 desde el 15-09) con los cuatro contadores de corrupción en 0.
+
+**Barrido de estado vivo — limpio.** Ocho chequeos de coherencia sobre pedidos, pagos, comprobantes,
+cola de feedback y handoffs. Solo dos señales, y las dos mueren en los filtros de §33: PED-235 lleva
+41 días `en_camino` (dato de prueba manual) y PED-237 es una transferencia sin comprobante (uno de
+los cuatro `PRUEBA ROLES`). Los cinco cron jobs con **0 corridas fallidas** en 7 días, incluido
+`expirar-feedback-pendiente` con el schedule nuevo (`7 * * * *`).
+
+**Dos bugs cerrados** (ficha completa en el changelog):
+
+- **BUG-052** — `expirar_pedidos_pendientes()` lleva ahora `AND comprobante_url IS NULL`: deja de
+  cancelar lo que el cliente ya pagó. Verificado **con control**: el pendiente viejo *sin*
+  comprobante se sigue cancelando, o el fix habría roto el job entero. `07 · T1` y `T5b` verdes.
+  ⚠️ **Se sostiene sobre una pieza de UI que aún no existe** (punto 4 de la puerta de salida).
+- **BUG-049, la mitad de BD** — `trigger_validar_ventana_reserva`: rechaza fecha pasada, hora < 12:00
+  y hora > 20:30 (L-V) / 21:30 (S-D), inclusive. Es trigger y no CHECK porque `current_date` no es
+  IMMUTABLE y porque las 16 reservas históricas son todas pasadas (dos a las 11:00). En UPDATE solo
+  valida si `fecha` u `hora` cambian — sin eso, **cancelar una reserva vieja quedaría bloqueado por
+  su propia fecha pasada**, que es el control que de verdad importaba (`06 · T18`).
+
+**Tres fallos de los tests, no del sistema (corregidos):**
 
 | Batería · caso | Qué pasaba | Tipo |
 |---|---|---|
-| `07 · T7` | reutilizaba `PED-QH5`, el id que T5b añadió el 12-09 → rebotaba por **`pedidos_pkey`**, no por `unique_pedido_cliente_minuto` | **falso verde** — ver edge-case §34 |
-| `04 · T1.1–T1.5` | comparaba jsonb como texto (`["a","b"]` ≠ `["a", "b"]`) | falso rojo |
-| `01 · T4` | leía `sugerencias->0->>'nombre'`, pero es un array de strings | falso rojo |
-
-El de T7 es el que importa: el constraint **sí** existe y **sí** muerde (verificado con id limpio),
-pero desde el 12-09 el test habría seguido verde aunque alguien lo borrara. Ahora afirma el nombre
-del constraint, y se comprobó con control negativo que el id repetido da ✗.
-
-Dos trampas más de ejecución, anotadas en los encabezados: en `08`, `reset role` no borra
-`request.jwt.claims` (T6 da un falso *"no autorizado"* si va detrás de una suplantación); y el MCP
-de Supabase solo devuelve el resultado de la **última** sentencia, así que las baterías de varias
-secciones hay que pasarlas por bloques.
-
-**Bugs nuevos:**
-
-- **BUG-053 🟡** — encontrado en el barrido de ejecuciones de n8n, no por una batería. La ejecución
-  `15306` (prueba de Juan, 12-09 23:13) murió por un **504 de Supabase** en `Obtener ultimo mensaje`:
-  el mensaje con la dirección nunca llegó al bot, el cliente se quedó sin respuesta, y **la fila
-  sigue en el buffer**. Como `Combinar mensajes` une todos los pendientes sin mirar la antigüedad,
-  el próximo mensaje de ese número llegará con la dirección vieja delante. Ningún nodo del buffer
-  reintenta y ningún cron limpia la tabla.
-- **BUG-054 🟢** — `consultar_cobertura` devuelve el texto del cliente sin truncar (300 chars) y lo
-  incrusta dentro de su instrucción al LLM. Lo marcaba el criterio de `01 · T5`, que el 09-09 se
-  registró como verde.
-- ~~**BUG-040 ampliado:** `navara` → *Navarra* tampoco sugiere nada.~~ **Retirado esa misma tarde:
-  Navarra no es un barrio de la tabla**; el test esperaba algo imposible (edge-case §34).
-
-**Observación para la Capa B (no es bug todavía):** en la conversación del 12-09, a *"asi está
-bien"* el bot respondió *"te lo preparo para domicilio entonces 🛵"* sin que en ese tramo el
-cliente hubiera dicho domicilio. Puede venir de un carrito previo (ya borrado por el job de 24 h,
-así que no se puede comprobar). Vigilarlo en G1/G4: **el tipo de pedido no debe asumirse**.
+| `07 · T1` y `07 · T5b` | el `esperado` era una **nota en prosa**, así que `case when valor = esperado` daba ✗ para siempre | **falso rojo permanente** — edge-case §39 |
+| `10 · T1` | los dos pedidos del fixture son del mismo teléfono y sin `fecha_pedido` explícito heredan el mismo `now()` → chocan con `unique_pedido_cliente_minuto` y **abortan la transacción antes de medir nada** | fixture |
 
 ---
 
-## 2026-09-09 · Batería 01 · Cobertura
-
-**Verde:**
-- **T1** — los 59 barrios se resuelven a sí mismos, con tarifa y tiempo. 0 fallos.
-- **T2** — 295 variantes de escritura (minúscula, sin tilde, MAYÚSCULA, prefijo "barrio"):
-  todas caen en el mismo barrio y la misma tarifa. 0 fallos.
-- **T3** — Envigado, Sabaneta, Itagüí, Medellín, Bogotá, Copacabana, Girardota, Barbosa,
-  La Estrella, Caldas → `cubierto:false` con `costo_domicilio` y `tiempo_estimado` en NULL
-  y mensaje explícito. **El invariante de edge-case §27 se sostiene.**
-- **T6** — sin argumento, `''` y `'   '` → `modo:'listado'` con las 5 zonas. Correcto.
-
-> Esto **cierra la verificación pendiente de BUG-033 en la capa SQL**. Falta solo la
-> confirmación conversacional (guion G7), porque lo que la RPC devuelve bien el prompt
-> todavía puede contarlo mal — que es exactamente la lección de edge-case §27.
-
-**Rojo → BUG-040** (ver abajo).
-
-**Descartado:** anoté que `consultar_cobertura('')` devolvía un "objeto mudo". Era un error
-de mi consulta (no seleccionaba `modo`); en modo listado `cubierto` legítimamente no existe.
-La función está bien.
-
----
-
-## 2026-09-09 · Batería 02 · Menú
-
-**Verde:**
-- **T3** — los 3 productos agotados siguen siendo visibles con `disponible:false`. El
-  riesgo de edge-case §17 ("no lo manejamos" en vez de "hoy se agotó") no se materializa
-  en la capa SQL.
-- **T4** — las 11 entradas del diccionario de correcciones funcionan (`papata`→patata,
-  `chelita`/`birra`/`servexa`→cerveza, `hamburgesa`→hamburguesa, `calson`→calzone…).
-
-**Rojo → BUG-039** (crítico, ver abajo) y **BUG-041** (categorías, menor).
-
----
-
-## 2026-09-09 · Fase 0 · Datos semilla — cerrada parcialmente
-
-`info_negocio` ya tiene los datos reales (verificado vía MCP): "La Vera Pizzería", Parque de Bello
-Calle 54 # 52-07, (604) 4799978, +573233148517, @laverapizzeria. Y **se resolvió la contradicción
-entre capas**: `datos_transferencia` ahora dice "Bancolombia ahorros 62500073329", exactamente lo
-mismo que el PASO 5 del prompt del Agente Pedidos. **BUG-026 cerrado.**
-
-**Sigue pendiente antes de la Capa B:**
-
-1. **Horarios sin tocar.** `horario_semana` ("Lunes a Viernes 11:00am - 10:00pm"),
-   `horario_finsemana` ("Sábados y Domingos 12:00pm - 11:00pm") y `horario_feriados` ("Cerrado")
-   son **idénticos a los de la plantilla de Don Carlo**. Puede ser coincidencia, pero hay que
-   confirmarlo: si el bot canta un horario falso, lo hará con total seguridad.
-2. **Incoherencia entre capas que hay que decidir:** el subworkflow de reservas valida
-   **12:00–21:00**, pero `info_negocio` dice que el local cierra a las **22:00** entre semana y
-   **23:00** el finde. Hoy un cliente no puede reservar a una hora en la que el local está abierto.
-   Y el bloque de reserva dura 90 min, así que una reserva de las 21:00 termina a las 22:30.
-3. **FAQ sigue con 1 sola fila** ("Tienen parqueadero?"). `consultar_faq` no filtra: devuelve todas
-   las activas y el emparejamiento lo hace el LLM. Con una sola fila, toda pregunta frecuente que
-   no sea del parqueadero se responde por improvisación.
-4. **`motivos_reserva` sin cambios** — los 6 precios siguen siendo los del seed documentado como
-   placeholder ($80.000 cumpleaños, $120.000 aniversario, $150.000 declaración, $90.000 grado,
-   $200.000 empresarial). Confirmar si son los reales.
-5. Detalle menor: `descripcion_general` dice "La pizza más **premiun**" (typo) y contiene un salto
-   de línea. Ojo con el salto: `WA_TEMPLATES` no admite saltos de línea en los parámetros — Meta
-   rechaza el envío.
-
----
-
-## 2026-09-09 · Batería 03 · Mitad y mitad — **verde completo**
-
-Cierra el *"falta probar"* del changelog (entrada mitad y mitad, 2026-08-10) en la capa SQL.
-
-- **T1 exhaustivo:** **3024 pares** (todas las combinaciones de pizza salada con la misma masa ×
-  los 4 tamaños). **3024 correctos, 0 fallos.** Los tres invariantes se cumplen siempre: el precio
-  es el de la **mitad más cara** (ni promedio ni suma), el `producto_id` es el de la cara, y
-  `mitades` trae exactamente 2 elementos. El cruce de categorías funciona como está documentado.
-- **T2 rechazos:** 21/21 correctos — `MASA_DISTINTA`, `TAMANO_NO_PERMITIDO` (porción),
-  `CATEGORIA_NO_PERMITIDA` (dulces, en ambas posiciones), `MITADES_IGUALES`,
-  `PRODUCTO_NO_ENCONTRADO` (incluido el caso "el LLM inventa un producto_id"), `TAMANO_INVALIDO`
-  (tamaño vacío, null, emoji, `' OR 1=1 --`), `FALTAN_PRODUCTOS`. Y los alias que dice un cliente
-  real (`personal`, `peque`, `media`, `familia`, `MEDIANA`, `pequeña`) resuelven bien.
-- **T3 `PRODUCTO_AGOTADO`:** no hay pizzas agotadas en el menú, así que se agota una dentro de una
-  transacción que se revierte. Correcto en ambos órdenes de los argumentos, y nombra la pizza
-  correcta.
-
-> De paso quedó validado que **`BEGIN … ROLLBACK` funciona a través del MCP de Supabase**, lo que
-> habilita las baterías que escriben sin dejar rastro.
-
----
-
-## 2026-09-09 · Batería 04 · Flujo del pedido
-
-**Verde:**
-- **T1** — `faltantes` pide los datos en el orden correcto: carrito → tipo_pedido → barrio →
-  cobertura → direccion_entrega → metodo_pago. Y normaliza bien: `"a domicilio"` → `domicilio`,
-  `"efectivo"` → `Efectivo`.
-- **T2** — la semántica COALESCE se sostiene: guardar solo `notas` no borró ninguno de los otros
-  cinco campos.
-- **T3** — pasar a recoger limpia barrio, dirección, envío y cobertura. Y `"para llevar"` normaliza
-  a **recoger**, que es lo correcto en Colombia (un `domicilio` habría cobrado un envío inexistente).
-- **T6** — vaciar el carrito devuelve `paso_flujo` a `armando` (caso BUG-032 / edge-case §25).
-
-**Rojo → BUG-042** (bajo, se autorrepara).
-
-> ⚠️ **Trampa metodológica que mordió aquí y quedó documentada en el encabezado de
-> `04-flujo-pedido.sql`:** leer la tabla en un subquery del mismo `SELECT` que ejecuta la función
-> devuelve el **snapshot previo**. Tres tests parecieron fallar por eso. Escribe en una sentencia,
-> lee en la siguiente.
-
----
-
-## 2026-09-09 · Batería 05 · Totales — **verde completo (14/14)**
-
-El invariante `total = SUM(items) + costo_domicilio` **una sola vez** se sostiene en todos los
-caminos, incluido el combo peligroso de edge-case §24 (cambiar de zona, que ajusta por delta, y
-luego meter un ítem, que recalcula desde cero).
-
-- **T3 · regresión de edge-case §22 cerrada:** borrar un ítem recalcula el total. El `COALESCE(NEW,
-  OLD)` está puesto y funciona; el `WHERE pedido_id = NULL` silencioso no vuelve.
-- **T5-T8:** cambios de barrio entre zonas, domicilio→recoger (envío a 0 y barrio a NULL) y la
-  vuelta, todos con el total exacto.
-- **T9:** el override manual del envío (promo / envío gratis del admin) se respeta y solo corrige
-  el total, como está documentado.
-- **T10-T14 · `editar_pedido`:** total correcto con el envío congelado sumado una vez; arrastra
-  `mitades` y `notas_item`; y los tres caminos de error responden bien (`SIN_ITEMS`,
-  `PEDIDO_NO_ENCONTRADO`, `PEDIDO_YA_PROCESADO`).
-
-Corrección de una expectativa mía: esperaba que un pedido recién creado sin ítems tuviera
-`total = costo_domicilio`. Es 0, y **es correcto** — el trigger documenta que el INSERT no toca
-`total`, lo escribe el de `detalle_pedidos` cuando entran los ítems.
-
----
-
-## 2026-09-09 · Batería 06 · Reservas
-
-**Verde:** las 8 mesas se respetan en INSERT (la 9ª revienta con `cupo_agotado`) · la frontera del
-bloque de 90 min es exacta (20:30 ya no solapa con 19:00, 20:29 sí) · `costo_motivo` lo escribe el
-trigger e **ignora el valor que mande el LLM** (probado con 999 → quedó 80000) · `motivo` vacío →
-NULL y costo 0 · los CHECK de `personas` (0, 13) y de `motivo` inexistente rechazan.
-
-**Rojo → BUG-043** (sobreventa, media) y **BUG-044** (el modal ofrece valores que la BD rechaza).
-
-> Lo que NO cubre esta batería: `consultar_disponibilidad` (horario 12:00-21:00, máx 14 días, mín
-> 5h de anticipación) vive en el subworkflow n8n `OTQp2O8QDw1mMKOZ`, no en la BD. Va en el guion G9
-> de la Capa B.
-
----
-
-## 2026-09-09 · Batería 07 · Housekeeping — **verde completo (19/19)**
-
-**Cierra la verificación pendiente de BUG-028.** El job `expirar-pedidos-pendientes` **sí ha
-corrido**: 30 ejecuciones, 30 exitosas, la última hoy a las 16:00 UTC (`cron.job_run_details`).
-Los otros dos también: `limpiar-carritos-abandonados` 655/655 y `limpiar_historial_chat_semanal`
-16/16.
-
-- **Los dos puntos que BUG-028 dejaba abiertos, verificados:**
-  (a) el job cierra solo los `pendiente` de días anteriores — probadas las tres fronteras: −2h del
-  corte se cancela, 00:05 de hoy y "ahora mismo" sobreviven, y un `en_cocina` viejo queda intacto.
-  Además **no queda ni un pendiente viejo sin cerrar** en la BD.
-  (b) el texto encaja en la plantilla: *"❌ Tu pedido fue cancelado, no alcanzamos a procesarlo
-  antes del cierre del día. Lamentamos los inconvenientes."*
-- **Carritos abandonados (regresión §26):** borra los de >24h, respeta el de 23h y el fresco, y el
-  trigger `touch_updated_at` refresca la marca al tocar el carrito, así que el job mide lo que dice
-  medir. Un carrito tocado deja de ser borrable.
-- **`registrar_contexto_handoff` — las cuatro trampas de §21, todas superadas.** Con una
-  conversación simulada de 9 filas llenas de ruido real (el mismo mensaje guardado 3 veces por dos
-  sesiones, el JSON de clasificación del orquestador, un mensaje `tool` y un `content` que no es
-  string) vuelca exactamente **4 mensajes**, en orden `cliente|bot|cliente|bot`, y **la queja del
-  cliente queda antes de la respuesta del bot** — el desempate por microsegundos funciona. La
-  segunda corrida vuelca 0: es idempotente.
-- **Hallazgo colateral en verde:** existe un constraint `unique_pedido_cliente_minuto` sobre
-  `(telefono, date_trunc('minute', fecha_pedido))` que no estaba en mi mapa. Es lo que salva de que
-  un cliente impaciente diga "confirmo" dos veces y le entren dos pedidos. Probado: el segundo
-  rebota.
-
----
-
-## 2026-09-09 · Batería 08 · Roles y RLS — **verde completo**
-
-La regla #1 de `CLAUDE.md` se sostiene: **un domiciliario no puede leer el restaurante entero.**
-
-| Ve… | domiciliario | mesero | sin perfil |
-|---|---|---|---|
-| pedidos (116) | **34** | 116 | 0 |
-| clientes (35) | **17** | 35 | 0 |
-| detalle_pedidos (214) | **71** | 214 | 0 |
-| reservas (16) | **0** | 16 | 0 |
-| soporte · carritos · chat · feedback | **0** | **0** | 0 |
-| perfiles (5) | 1 (el suyo) | 1 (el suyo) | 0 |
-| menu (133) | 133 | 133 | **133** |
-
-Los 34 pedidos del domiciliario son **todos suyos**: 0 sin asignar, 0 de otro repartidor.
-El `menu` visible sin perfil es la política `menu_lectura_publica` y es intencional — el menú ya
-es público (`vera.plateo.cloud/menu_vera.pdf`), no es una fuga.
-
-- **Triggers de columna (regla #2):** el mesero intentando asignar un domiciliario → **42501**; el
-  mesero intentando hacerse admin → **42501**; el domiciliario llamando `listar_usuarios` →
-  **42501**.
-- **Escrituras bloqueadas por RLS:** el DELETE del mesero y los dos UPDATE del domiciliario (marcar
-  entregado un pedido ajeno, auto-asignarse uno) **no cambiaron ni una fila** — verificado contando
-  antes y después, no por excepción (ver la trampa de abajo).
-- **El camino de n8n (regla #3):** sin JWT, `mi_rol()` es NULL y las cuatro tools del bot
-  responden — el patrón `auth.uid() IS NULL → dejar pasar` funciona. Y con sesión de un rol no
-  admin la misma tool se cierra: `guardar_datos_pedido` → *"no autorizado"*.
-
-> ⚠️ **Falso verde que mordió aquí y quedó documentado en `edge-cases.md` §31:** una escritura
-> bloqueada por RLS **no lanza excepción** — afecta 0 filas y devuelve éxito. Un test que solo
-> pregunte "¿lanzó?" da verde aunque la política no exista. Para RLS se cuentan filas; para
-> triggers se atrapan códigos de error.
-
----
-
-## 2026-09-12 · Batería 09 · Entrada basura — 64/71
-
-Las otras ocho baterías prueban cada función contra su contrato. Esta cruza las 15 clases de
-basura (inyección SQL, emoji, zero-width, RTL, 10.000 caracteres, comodines LIKE, NULL en todo,
-números fuera de rango, JSONB que no es un array) contra las 14 RPC. El llamador no es un cliente
-de API: es un LLM, y un LLM manda `''` con la misma facilidad que `null`.
-
-**Verde — lo que sí aguanta:**
-
-- **I3 · ninguna inyección ejecutó nada.** Contado, no supuesto: 116 pedidos · 214 detalles ·
-  35 clientes · 16 reservas · 133 menu · 20 tablas, idénticos a la línea base de la batería 08.
-  Las 4 inyecciones × 6 RPC de lectura se tratan como texto.
-- **El trigger `aplicar_tarifa_domicilio` pisa al llamador.** Un `costo_domicilio` de −5.000 o
-  `NaN` entra al INSERT de `pedidos` y queda guardado como **5.000**, la tarifa real de la zona;
-  el total sale exacto. Es el mismo patrón que `costo_motivo` en reservas: **el trigger ignora
-  lo que mande el LLM**. Es el mejor resultado de la batería.
-- Los CHECK de dominio muerden donde deben: `pedidos.estado`, `reservas.personas`,
-  `reservas.origen`, `carritos.tipo_pedido`/`metodo_pago`/`paso_flujo` → 23514.
-- El **FK `detalle_pedidos.producto_id → menu`** es el que impide materializar el producto que el
-  LLM inventa: 23503, no una línea fantasma.
-- `consultar_faq` es la única que sanea su `limite` (`greatest(1, least(p_limite, 40))`), y por eso
-  es la única que sobrevive a un límite negativo. **Ese es el patrón a copiar** en las otras dos.
-- Texto largo y unicode hostil (10k caracteres, emoji, zero-width, RTL, saltos de línea) se guarda
-  y se devuelve íntegro, sin truncar ni romper.
-
-**Rojo → BUG-045 (media), BUG-046 (baja), BUG-047 (baja), BUG-048 (media), BUG-049 (baja).**
-El que más pesa es **BUG-048**: `editar_pedido` acepta cantidad y precio negativos con
-`success:true` y deja el pedido con **total negativo** (medido: −25.000). El único guardarraíl es
-`Math.max(1, …)` en React — es decir, exactamente donde la regla #1 de `CLAUDE.md` dice que la
-frontera *no* está.
-
-> ⚠️ **Falso verde que mordió aquí y quedó documentado en `edge-cases.md` §32:**
-> `historial_resumen(null, null, …)` devuelve `total: 0` y lo leí como "fail-closed". No lo era: el
-> `WHERE` es `fecha_pedido >= p_from AND fecha_pedido < p_to`, así que con `p_from` NULL la
-> cláusula entera es NULL y no hay filas — el 0 no venía del filtro de búsqueda que yo creía estar
-> probando. Con el rango puesto, el mismo caso devuelve 116. **En una batería de basura el cero es
-> el resultado más sospechoso que hay**, porque es justo lo que devuelve un test que no llegó a
-> ejecutarse.
-
-> ⚠️ **Segunda trampa:** el FK contra `menu` dispara *antes* que cualquier validación de
-> cantidad/precio. Tres casos de cantidad negativa parecían "rechazados" y en realidad nunca se
-> habían probado — usaban un `producto_id` inventado. Con `PROD-019` real apareció BUG-048.
-
----
-
-## 2026-09-12 · Batería 10 · Flujo de reseñas — 22/32 · **el flujo está roto en producción**
-
-Ninguna batería cubría el feedback. Al mirarlo apareció que **no es un riesgo teórico: lleva
-51 días sin funcionar.**
-
-**El síntoma, medido en vivo:**
-
-| Indicador | Valor |
-|---|---|
-| Último `feedback` registrado | **2026-07-23** (hace 51 días) |
-| Última fila nueva en `feedback_pendiente` | 2026-08-13 (hace 30 días) |
-| Pedidos entregados de los últimos 30 días **sin** `feedback_solicitado` | **0** — el sistema cree que preguntó |
-| Clientes atrapados en `modo='esperando_feedback'` | **7** |
-| Filas zombis en la cola | **9**, la más vieja de **108 días** |
-
-**La causa, leída de la ejecución real de n8n `14816` (2026-09-08), no inferida.** La cadena del
-job escribe **antes** de la operación que puede fallar:
-
-```
-Marcar feedback_solicitado ✓ → Activar modo esperando_feedback ✓ → POST feedback_pendiente 💥 → Enviar WhatsApp ✗
-```
-
-`feedback_pendiente` tiene **PK `telefono`** (un slot por cliente) y el nodo hace POST sin upsert.
-Con un cliente que ya tenía fila:
-
-```
-409 · {"code":"23505","details":"Key (telefono)=(573184821317) already exists."}
-```
-
-`retryOnFail` reintenta, vuelve a chocar y **mata la ejecución**. Los dos writes anteriores quedan
-confirmados y nadie los revierte: el pedido queda marcado como "ya preguntado" **para siempre**, el
-cliente queda en un modo donde el bot solo sabe decir *"responde 1–5"*, **y el WhatsApp nunca se
-envía**. Al cliente no se le preguntó nada. → **BUG-050 🔴**
-
-Y si ese cliente responde ahora, la nota se escribe contra el pedido de la fila zombi — CLI-039
-tiene 6 pedidos entregados marcados y **cero feedback**; su cola apunta a un pedido de mayo.
-
-**T5 valida el fix:** con `on conflict (telefono) do update` (que es lo que hace la cabecera
-`Prefer: resolution=merge-duplicates` de PostgREST) el upsert pasa, queda **1 fila apuntando al
-pedido nuevo** y el reloj se reinicia.
-
-**BUG-051, el segundo hallazgo:** `Parsear calificación` coge **el primer dígito 1–5 del texto**.
-De 11 mensajes realistas, **6 fabrican una calificación que nadie dio**:
-
-| El cliente escribe | Nota que queda registrada |
-|---|---|
-| `10/10` | **1** — da la nota máxima, se guarda la mínima |
-| `me demoraron 45 minutos` | **4** → ruta positiva: le agradece y le pide reseña en Google por una queja |
-| `quiero 2 pizzas` | **2** → ruta negativa: le pide explicaciones a quien solo quería comida |
-| `mi direccion es calle 52 # 3-21` | **5** |
-
-Las dos cosas se agravan entre sí: el cliente atrapado por BUG-050 **solo tiene esa puerta**, y su
-intento natural de pedir comida es justo la frase que el parser malinterpreta.
-
-**Verde:** los constraints de ambas tablas cumplen (`calificacion` 1–5, `UNIQUE(pedido_id)` impide
-dos reseñas del mismo pedido, los FK rechazan ids inventados, `estado` acotado) y la ventana 1–6 h
-del job es exacta en las cuatro fronteras.
-
-> ⚠️ **Dos trampas mordieron aquí, las dos ya documentadas y aun así reincidentes:**
-> (a) el `UNIQUE(pedido_id)` dispara **antes** que el FK de `cliente_id`, así que el caso del
-> cliente inventado medía el constraint equivocado — la misma familia que el FK de la batería 09;
-> hay que usar un pedido distinto. (b) leer `feedback_pendiente` en un subquery del mismo `SELECT`
-> que ejecuta el upsert devuelve el **snapshot previo**: el fix de T5 parecía no funcionar y
-> funcionaba. Es literalmente la trampa del encabezado de `04-flujo-pedido.sql`.
-
----
-
-## 2026-09-12 · Barrido de estado vivo — **BUG-052** (el job cancela pedidos ya pagados)
-
-Tras lo de reseñas quedó claro que **los barridos de estado vivo encuentran lo que las baterías no
-pueden**, porque parten del resultado y no del código. Se pasó uno a todo el sistema: 8 chequeos de
-coherencia sobre pedidos, reservas, pagos y comprobantes, más los errores de n8n y las respuestas
-del webhook de estado.
-
-**El hallazgo: BUG-052 🔴.** `expirar_pedidos_pendientes()` canceló **dos pedidos que el cliente ya
-había pagado**, y le mandó el genérico *"no alcanzamos a procesarlo antes del cierre del día"*:
-
-| Pedido | Creado | Comprobante | Δ | Total |
-|---|---|---|---|---|
-| PED-242 | 2026-09-01 21:56:33 | 21:57:05 | **+32 s** | $42.500 |
-| PED-240 | 2026-08-21 17:39:23 | 17:40:49 | **+86 s** | $88.000 |
-
-$130.500 de un cliente habitual, con `estado_pago` en `'pendiente'` — nada en el dashboard señala
-que hay dinero recibido por un pedido que ya no existe. El `WHERE` del job solo mira `estado` y
-`fecha_pedido`; **no mira `comprobante_url`**.
-
-Lo que esto dice de la campaña: la batería 07 dejó ese job en **19/19 verde** — fronteras
-temporales exactas, ningún pendiente sin cerrar, texto encajando en la plantilla. Todo cierto, y el
-bug estaba ahí. La batería comprobó que el job *hace lo que dice*, no que *lo que dice sea correcto
-para un pedido pagado*. Queda como **edge-case §33** y como caso de regresión **T5b** en
-`07-housekeeping.sql` (verificado: hoy reproduce el fallo).
-
-**Lo que NO era un bug** — y costó tanto descartarlo como encontrar el bueno:
-
-| Señal del barrido | Veredicto |
-|---|---|
-| 88 domicilios sin `barrio` | Histórico: anteriores a la migración de cobertura del 2026-08-18. Desde septiembre, 4 de 4 con barrio y zona |
-| 37 transferencias sin comprobante ya en cocina, $6.3M | **32 son filas semilla.** El número real es 5 |
-| 8 pedidos sin líneas / total descuadrado | Los mismos 8 de BUG-007, ya cerrado: todos anteriores al 2026-07-01 |
-| PED-235 llevando 31 días `en_camino` | **Dato de prueba manual** ("ZZ Cliente Prueba Roles"). Lo avisó Juan; no hay columna que lo diga |
-| `RSV-M<timestamp>` junto a `RES-NNN` | El dashboard viejo generaba el id en el cliente; ya corregido |
-| Webhook `notificar-estado-pedido` disparando en cada UPDATE | `If1` filtra por `estado != old.estado`. Correcto |
-
-> ⚠️ **De ahí la regla nueva (§33): todo hallazgo de un barrido pasa por tres filtros antes de ser
-> un bug** — ¿es dato semilla?, ¿es anterior a una migración?, ¿lo tocó alguien a mano? De 116
-> pedidos, **80 son ficción**. El tercer filtro casi nunca se responde mirando la fila: hay que
-> encontrar qué escribe cada camino posible. BUG-052 sobrevivió justo por eso — una cancelación
-> manual escribe *siempre* `estado_pago='rechazado'` y uno de los cinco motivos del `RejectModal`,
-> y estos dos tenían `'pendiente'` y el texto literal del `COALESCE` de la función, con el cron
-> corriendo a las 16:00 UTC del día siguiente a cada uno. Tres huellas independientes.
-
-**Observación estructural (no es bug todavía):** solo hay job de expiración para `pendiente`. Un
-pedido abandonado en `en_cocina` o `en_camino` no lo cierra nadie. El único caso vivo hoy es el de
-prueba, así que no da para bug — pero conviene decidir si debe existir.
-
----
-
-# Bugs nuevos
-
-Los 14 bugs que encontró la Capa A (**BUG-039 … BUG-052**) viven en un solo sitio:
-[`../docs/bug-tracker.md`](../docs/bug-tracker.md) si siguen abiertos,
-[`../docs/changelog.md`](../docs/changelog.md) si ya se cerraron.
-Aquí solo quedan el veredicto por batería (arriba) y la lista de trabajo.
-
-> Antes, este fichero repetía la ficha completa de BUG-039/040/041/042. Los cuatro se cerraron el
-> 2026-09-15 y la copia quedó desfasada, así que se quitó: **un bug, un sitio**. El histórico
-> íntegro sigue en git (`git log -p qa/RESULTADOS.md`).
+## 2026-09-22 · Capa B · G2 y G3
+
+### G2 · El carrito es idempotente — ✅ **verde**
+
+**Número:** `573184821317` (CLI-039).
+
+El carrito quedó con los **dos** productos: La Vera Especial (Estofada Grande, $77.000) + Hawaiana
+(Estofada Grande, $65.000), total $142.000, `paso_flujo = 'armando'`. El producto nuevo entró y los
+anteriores se conservaron.
+
+**Dos cosas que este guion cierra de paso:**
+
+- **BUG-055 queda cerrado.** El carrito **se creó** de verdad. Antes el agente de menú preguntaba
+  *"¿te la dejo?"* sin guardar nada y el `sí` caía en soporte, que inventaba el carrito y dejaba la
+  conversación sin salida.
+- Ante `una hawaiana` el bot **preguntó** en vez de elegir:
+
+  > *"Perfecto, te agregamos una hawaiana 🍍 ¿La quieres: 1) Tradicional o Estofada? 2) En qué
+  > tamaño: porción, pequeña, mediana, grande o familiar?"*
+
+  Es exactamente el comportamiento que exige G1.7 frente a un término ambiguo, y aquí salió solo.
+  No lo da por probado —la hawaiana tiene variantes explícitas, que es un caso más fácil que un
+  genérico como "pizza"— pero es buena señal.
+
+### G3 · Cobertura — 🔴 **5 de 7** → BUG-061 y BUG-062
+
+**Número:** `573113298122` (CLI-038).
+
+**Verde:** 3.1 y 3.2 (Envigado y Sabaneta: dice que no llegan, ofrece recoger, **sin precio ni
+tiempo** — el invariante de §27 se sostiene), 3.3 ($7.500 / 30-45 min), 3.4 ($5.000 / 20-30 min).
+
+**3.7 verde, y es el que más tranquiliza:** pidió *"hazme un domicilio de patatas mexicanas, estoy
+en itagui"* y el carrito quedó con `tipo_pedido = NULL`. No se creó ningún pedido fuera de cobertura.
+El bot explicó el límite y dejó el producto en el carrito, que es razonable.
+
+**🔴 3.5 → BUG-061.** A `estoy en niqia` el bot respondió:
+
+> *"Perfecto Juan, si estás en Niquía sí te podemos llevar domicilio ✅ El envío allá está en $7.500
+> y suele tardar entre 30 y 45 minutos."*
+
+Y `consultar_cobertura('niqia')` había devuelto `cubierto:false`, `costo_domicilio:null`,
+`tiempo_estimado:null`, `sugerencias:["Niquía"]` y un mensaje que dice literalmente *"No prometas
+domicilio ni des ninguna tarifa ni tiempo de entrega. Si hay sugerencias, pregunta si el cliente se
+refería a uno de esos barrios"*. **Los números salieron de la memoria de la conversación**, del
+turno 3.3 — no de esa llamada, donde venían en `null`.
+
+Y tiene consecuencia en dinero: el carrito guardó `barrio = 'niqia'` (texto crudo), que
+`resolver_barrio` **no resuelve**. Si se convierte en pedido, el trigger cae a `tarifa_base()` =
+**$5.000 en vez de $7.500**, con `zona` en NULL.
+
+**🔴 3.6 → BUG-062.** A `pardo` el bot devolvió **el PDF del menú completo** y *"dime qué se te
+antoja"*. Ni siquiera consultó cobertura. La expectativa vieja del guion (confirmar el síntoma de
+BUG-040) quedó **obsoleta**: BUG-040 está cerrado y `consultar_cobertura('pardo')` ya devuelve
+`sugerencias:["Prado"]`. Lo que falla ahora es anterior: el ruteo.
+
+> **La lección de los dos juntos:** G3 es el guion que existe precisamente porque *"lo que la RPC
+> acierta, el prompt lo puede contar mal"* (§27). Se cumplió en los dos sentidos posibles — en 3.5
+> el prompt ignoró lo que la tool le dijo, y en 3.6 la tool ni se llamó. Las cuatro respuestas
+> verdes salieron bien; **las dos rojas son las que nadie habría visto sin hablar con el bot.**
