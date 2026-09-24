@@ -12,13 +12,85 @@
 
 ## Convención
 
-- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-061**. Los IDs no se reutilizan.
+- **ID:** `BUG-NNN` correlativo — **siguiente libre: BUG-063**. Los IDs no se reutilizan.
 - **Severidad:** 🔴 Alta · 🟡 Media · 🟢 Baja. **Estado:** 🔴 Abierto · 🟠 En progreso.
 - Cada entrada: componente, síntoma, causa (verificada vía MCP si es n8n/BD), fix propuesto.
 
 ---
 
 ## Abiertos
+
+### BUG-061 · 🔴 Alta · 🔴 Abierto — el bot promete domicilio y canta la tarifa cuando la tool dijo `cubierto: false`: se la inventa de la memoria de la conversación
+
+- **Componente:** prompt del Agente Pedidos / Cobertura (n8n) · efecto colateral en `carritos.barrio`.
+- **Encontrado en:** **G3, paso 3.5** (Capa B, 2026-09-22, `573113298122`). Ninguna batería de la
+  Capa A podía verlo: la RPC hace exactamente lo que debe.
+- **Síntoma, con la evidencia de los dos lados:**
+
+  El cliente escribe `estoy en niqia` (typo). `consultar_cobertura('niqia')` devuelve:
+
+  ```json
+  { "cubierto": false, "costo_domicilio": null, "tiempo_estimado": null,
+    "sugerencias": ["Niquía"], "coincidencia_exacta": false,
+    "mensaje": "FUERA DE COBERTURA: no hay domicilio a \"niqia\". … No prometas domicilio ni des
+                ninguna tarifa ni tiempo de entrega. Si hay sugerencias, pregunta si el cliente se
+                refería a uno de esos barrios; si no, ofrece recoger en el punto." }
+  ```
+
+  Y el bot contestó:
+
+  > *"Perfecto Juan, si estás en Niquía sí te podemos llevar domicilio ✅ El envío allá está en
+  > $7.500 y suele tardar entre 30 y 45 minutos."*
+
+  Es decir: **promete domicilio, da tarifa y da tiempo** — las tres cosas que el mensaje de la tool
+  le prohíbe explícitamente— y **no pregunta** por la sugerencia, que es lo único que le pedía.
+- **Causa:** los números no salieron de esa llamada (venían en `null`): salieron de la **memoria de
+  la conversación**, del turno anterior en el que el cliente sí había escrito «Niquía» bien. El
+  prompt no tiene una regla que ate la respuesta al `cubierto` de la **llamada actual**, así que un
+  dato correcto de hace tres turnos pisa un `false` de ahora.
+- **Por qué importa en dinero, no solo en redacción:** el carrito quedó con
+  `barrio = 'niqia'` (el texto crudo del cliente, no el nombre canónico) y
+  `cobertura_ok = null`, `costo_domicilio = null`. **`resolver_barrio('niqia')` no devuelve nada** —
+  verificado—, así que si ese carrito se convierte en pedido, el trigger `aplicar_tarifa_domicilio`
+  cae a su rama `ELSE` y aplica `tarifa_base()` = **$5.000 en vez de los $7.500 de Niquía**, con
+  `zona` en NULL. El restaurante pierde $2.500 por pedido y nada lo señala.
+- **Ojo con la asimetría que lo hace invisible:** `consultar_cobertura` tiene emparejamiento
+  difuso y devuelve `sugerencias`, pero `resolver_barrio` (la que usa el trigger) solo resuelve el
+  nombre canónico. Las dos normalizan distinto. La batería `01 · T2` prueba 295 variantes contra
+  `consultar_cobertura` y sale verde — **ninguna las prueba contra `resolver_barrio`**.
+- **Fix propuesto (dos capas, las dos hacen falta):**
+  1. **Prompt:** prohibir dar tarifa o tiempo que no venga en la respuesta de la llamada actual, y
+     obligar a preguntar cuando `cubierto = false` y `sugerencias` no está vacío ("¿te refieres a
+     Niquía?"). Es la regla de edge-case §27 escrita en el prompt.
+  2. **Dato:** que lo que se guarde en `carritos.barrio` sea el **nombre canónico** que devolvió la
+     tool, nunca el texto del cliente. Alternativa o complemento: darle a `resolver_barrio` el mismo
+     emparejamiento difuso que ya tiene `consultar_cobertura`, para que el trigger no dependa de que
+     la capa de arriba escriba bien.
+- **Regresión que falta:** un caso en `01-cobertura.sql` que cruce las mismas variantes de escritura
+  contra **`resolver_barrio`**, no solo contra `consultar_cobertura`. Hoy ese hueco no lo cubre nadie.
+
+---
+
+### BUG-062 · 🟡 Media · 🔴 Abierto — un nombre de barrio suelto se rutea al agente de Menú y el cliente recibe la carta
+
+- **Componente:** orquestador (n8n) → ruteo de intención.
+- **Encontrado en:** **G3, paso 3.6** (Capa B, 2026-09-22).
+- **Síntoma:** el cliente escribe `pardo` (una sola palabra, un barrio mal escrito) y el bot
+  responde con el **PDF del menú completo** y *"dime qué se te antoja (pizza, pastas, patatas,
+  bebidas, postres)"*. No consultó cobertura.
+- **Lo que debería haber pasado:** `consultar_cobertura('pardo')` devuelve hoy
+  `sugerencias: ["Prado"]` — verificado. O sea que **la tool ya sabe responder** y el cliente debía
+  haber recibido *"¿te refieres a Prado?"*.
+- **Nota sobre el guion:** G3.6 estaba escrito para confirmar el síntoma de BUG-040 (*"hoy responde
+  «solo repartimos en Bello» sin sugerir Prado"*). Esa expectativa está **obsoleta**: BUG-040 se
+  cerró y la sugerencia existe. Lo que falla ahora es anterior, es el ruteo: la pregunta no llega
+  al agente que sabe contestarla. El guion ya está actualizado con la expectativa nueva.
+- **Fix propuesto:** que el clasificador del orquestador mande a Cobertura los mensajes de una sola
+  palabra que parezcan topónimo, o —más barato y más robusto— que el agente de Menú, al recibir un
+  término que no empareja ningún producto, consulte cobertura antes de soltar la carta.
+
+---
+
 
 ### BUG-057 · 🔴 Alta · 🟠 En progreso (BD + n8n **publicados** · falta verificar por WhatsApp) — el cliente responde la calificación y el bot **no contesta nada**: `Guardar calificación` choca con 409 y mata el subworkflow (y deja al cliente atrapado para siempre)
 
@@ -70,7 +142,7 @@
     `Marcar pedido como solicitado` y `Activar modo esperando_feedback`; el Code solo redacta.
   - Antes de publicar se verificó que el borrador de ambos workflows era idéntico a la versión activa
     (no se arrastró ningún cambio ajeno).
-- **Falta:** verificación por WhatsApp (G11) — ver `qa/RESULTADOS.md` §0.
+- **Falta:** verificación por WhatsApp (G11) — ver el guion **G11** en `qa/guiones-bot.md`.
 - **Limpieza manual ✅ hecha (2026-09-16):** borrada la fila de `573113298122` en
   `feedback_pendiente`, `CLI-038` devuelto a `modo = 'bot'`, y `feedback_solicitado = true` en todo
   pedido que ya tenía `feedback`.
@@ -173,198 +245,36 @@
 - **Ojo:** el "segundo defecto, latente" se arregló **solo en la rama positiva**. El nodo gemelo de
   la Fase B (`Eliminar feedback pendiente1`) quedó con el mismo patrón roto → **BUG-059**.
 
-### BUG-055 · 🔴 Alta · 🟠 En progreso (aplicado, falta verificar por WhatsApp) — el agente de menú pide "¿te la dejo?" sin guardar, y el "sí" del cliente cae en soporte: el pedido no avanza
+### BUG-049 · 🟢 Baja · 🟠 En progreso (**BD cerrada 2026-09-22** · falta la capa n8n) — `reservas` aceptaba fechas pasadas y horas con el local cerrado
 
-- **Componente:** n8n `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`) → prompt de `AGENTE MENÚ` + tool
-  `actualizar_carrito` · prompt de `ORQUESTADOR` (regla de seguridad 3) · prompt de `AGENTE SOPORTE`.
-- **Síntoma medido (2026-09-15, intento de G2 desde `573184821317`, ejecuciones `15604` y `15607`):**
-  1. `Hola para hacer un pedido, dame una pizza vera` → menú: `consultar_menu` y pregunta masa y
-     tamaño. Correcto.
-  2. `Estofada y familiar` → menú responde *"¿Te la dejo 1 Vera Pizza Estofada familiar por
-     $83.000?"* **sin llamar a ninguna tool**: ni `leer_carrito` ni `crear_carrito`. El precio es
-     correcto (PROD-038, familiar = 83.000), pero **el carrito no se crea**.
-  3. `Si` → `Leer estado` devuelve `estado: null` → *"sin pedido en curso"*. El orquestador lo
-     clasifica como `soporte` (*"respuesta corta sin pedido activo ni carrito"*). Soporte, que
-     comparte la memoria del cliente, responde *"Ya tienes entonces: 1 Vera Pizza Estofada
-     familiar. […] te paso con el agente que crea pedidos."* **No existe ese carrito, no pasa a
-     nadie** y además menciona detalles internos. Queda en un callejón sin salida:
-     `carritos` sigue sin fila para ese teléfono.
-- **Causa 1 (la raíz): el prompt de `AGENTE MENÚ` se contradice.** La *SECUENCIA OBLIGATORIA* y
-  *PROHIBIDO* dicen *"NUNCA pidas confirmación para agregar items. El cliente pide → tú agregas"*,
-  pero la sección *"Regla crítica: consultar antes de actuar"* dice *"2. Muéstrale las opciones con
-  precios → 3. Cliente CONFIRMA explícitamente → 4. SOLO ENTONCES llama actualizar_carrito"*. La
-  descripción de `actualizar_carrito` refuerza la segunda (*"Usa SOLO cuando el cliente haya
-  confirmado explícitamente"*). El modelo siguió la versión con confirmación.
-- **Causa 2: el orquestador no ve lo que preguntó el agente.** Su memoria (`orq:<tel>`) solo tiene
-  los mensajes del cliente y sus propios JSON. Un "sí" sin carrito cae en la regla de seguridad 3:
-  *"Sin contexto claro → soporte"*, aunque la regla 4 diga que sin carrito se va a `menu`.
-- **Causa 3: soporte inventa el carrito.** Lo reconstruye a partir del historial compartido, y su
-  prompt no le prohíbe afirmar productos ni nombrar a otros agentes.
-- **✅ Aplicado 2026-09-15** por `n8n-native` (`update_workflow` + `publish_workflow`). Versión activa
-  **`f1f5f902`** (antes `b1b7d52f`). Antes de escribir se comprobó que el borrador era igual a la
-  versión publicada. Después, los 4 textos guardados (3 prompts + la descripción de
-  `actualizar_carrito`) se compararon **carácter por carácter** contra el texto esperado, generado
-  por un script que exige que cada fragmento reemplazado aparezca una sola vez: idénticos.
-  Copia en `docs/bot/agent-prompts.md`. Lo aplicado, respecto a lo propuesto: el orquestador manda
-  una respuesta corta sin carrito a `menu`, **o a `reservas`** si su historial muestra una reserva
-  en curso. Soporte, ante un "sí" suelto, responde *"¿me repites qué te agrego?"* para que el
-  siguiente mensaje nombre el producto y vaya a `menu`.
-- **Fix propuesto** (a mano en el editor de n8n o por `n8n-native`, porque el workflow principal no
-  acepta escrituras por el MCP de la comunidad, BUG-030):
-  1. **Menú:** quitar los pasos 2-4 de *"consultar antes de actuar"* y dejar solo lo que sí vale:
-     *"muéstrame / ¿tienen X? / ¿cuánto vale?"* es una consulta y no toca el carrito; *"dame X"* o
-     completar masa/tamaño es un pedido y se agrega **sin preguntar**. En la descripción de
-     `actualizar_carrito`, cambiar *"confirmado explícitamente"* por *"pidió el producto (no solo
-     preguntó por él)"*.
-  2. **Orquestador:** en la regla 3, cambiar *"Sin contexto claro → soporte"* por *"afirmación corta
-     (sí/dale/ok/listo) sin carrito → menu"*. Así el agente que tiene la pregunta en su memoria es
-     el que recibe la respuesta.
-  3. **Soporte:** *"NUNCA afirmes qué hay en el carrito ni menciones a otros agentes; si el cliente
-     está pidiendo productos, pregúntale qué quiere agregar"*.
-- **Verificación:** repetir los 3 mensajes tras un reset → debe existir la fila en `carritos` con
-  PROD-038 después del mensaje 2, y el "sí" no debe caer en `soporte`. Luego correr G2 completo.
-- **✅ Causa 1 verificada por WhatsApp (2026-09-23, G2 verde, `573184821317`):** *"Dame una lasaña
-  de pollo y una copa de vino"* → `crear_carrito` en el mismo turno, sin ningún *"¿te la dejo?"*.
-  *"una hawaiana"* → preguntó masa y tamaño (lo correcto, porque hay 4 variantes), y *"Tradicional
-  familiar"* → `actualizar_carrito` sin pedir confirmación. **Sin ejercitar:** las causas 2 y 3
-  (un "sí" suelto sin carrito). En este flujo el agente ya no deja la pregunta abierta, así que no
-  hubo "sí" que rutear.
+- **Componente:** BD → tabla `reservas` · subworkflow n8n `OTQp2O8QDw1mMKOZ` (*Sub — consultar_disponibilidad*).
+- **Síntoma (medido con `qa/sql/09-basura.sql · T9`, 2026-09-12):** se aceptaban sin rechistar una
+  reserva con `fecha = 2020-01-01`, otra a las **04:00** y otra a las **23:59**.
+- **Causa:** la única validación de horario vivía en el subworkflow de n8n, o sea **sólo protegía el
+  camino del bot**. El modal del dashboard hace `insert into reservas` directo y no pasa por ahí —
+  su `type="time"` es libre, sin `min`/`max`, así que un admin podía escribir cualquier hora.
 
----
+**✅ Hecho el 2026-09-22 — la mitad de BD, verificada.** Trigger `validar_ventana_reserva`
+(BEFORE INSERT OR UPDATE) que rechaza fecha+hora ya pasadas, hora < 12:00 y hora > 20:30 (L-V) /
+21:30 (S-D), ambos límites **inclusive**. Regresión en `qa/sql/06-reservas.sql · T11–T18`, y `06`
+sigue en 14/14.
 
-### BUG-052 · 🔴 Alta · 🔴 Abierto — el job de expiración cancela pedidos que el cliente YA PAGÓ, y nada marca el reembolso
+**⬜ Lo que falta, y por qué no se hizo:**
 
-- **Componente:** BD → `expirar_pedidos_pendientes()` (cron `expirar-pedidos-pendientes`, diario 16:00 UTC).
-- **Síntoma medido (2026-09-12, no son datos semilla):** dos pedidos de `573184821317` (6 entregas
-  a su nombre) con **comprobante de transferencia subido** fueron
-  cancelados por el job, y al cliente le llegó *"❌ Tu pedido fue cancelado, no alcanzamos a
-  procesarlo antes del cierre del día."*
-
-  | Pedido | Creado | Comprobante subido | Δ | Total | Estado final | `estado_pago` |
-  |---|---|---|---|---|---|---|
-  | PED-242 | 2026-09-01 21:56:33 | 2026-09-01 21:57:05 | **+32 s** | $42.500 | cancelado | `pendiente` |
-  | PED-240 | 2026-08-21 17:39:23 | 2026-08-21 17:40:49 | **+86 s** | $88.000 | cancelado | `pendiente` |
-
-  **$130.500** en comprobantes, y el bot le dijo al cliente que su pedido no se pudo procesar.
-  `motivo_rechazo` en ambos es exactamente el texto por defecto del job, así que la autoría es del
-  job, no de una cancelación manual.
-  **Aclaración 2026-09-23:** `573184821317` es el segundo número de Juan y **todos sus pedidos son
-  de prueba**. No hay dinero real ni ningún cliente afectado. **El bug sigue igual de vigente:** en
-  cuanto entre en producción, el primer cliente que transfiera y no reciba atención ese día recibirá
-  exactamente esto.
-- **Causa:** el `WHERE` del job es solo `estado = 'pendiente' AND fecha_pedido < v_inicio_dia`.
-  **No mira `comprobante_url` ni `estado_pago`.** Para el job, un pedido pagado y uno abandonado
-  son indistinguibles.
-- **Lo que agrava el daño:** `estado_pago` se queda en `'pendiente'`, así que **ningún indicador
-  del dashboard señala que hay dinero recibido por un pedido cancelado**. La plata entró, el
-  pedido no existe, y nada lo cruza. Se descubre solo si el cliente reclama.
-- **No es un fallo de la interfaz:** `OrderCard.jsx:184` sí muestra el botón "Ver comprobante de
-  pago" y `:177` avisa cuando falta. El comprobante estaba visible; lo que falló es que el job
-  pasó por encima sin preguntar.
-- **Por qué las pruebas no lo vieron:** `qa/sql/07-housekeeping.sql` verificó del job las tres
-  fronteras temporales, que no queda ningún pendiente viejo sin cerrar y que el texto encaja en la
-  plantilla de WhatsApp — **19/19 verde**. Todo correcto, y aun así el bug estaba ahí: la batería
-  comprobó que el job *hace lo que dice*, nunca que *lo que dice sea lo correcto para un pedido
-  pagado*. Ver `edge-cases.md` §33.
-- **Fix propuesto — requiere decisión de negocio** (cuál de los dos):
-  1. **Excluir y escalar** (recomendado): el job no toca pedidos con `comprobante_url is not null`;
-     quedan visibles como pendientes para que alguien los resuelva a mano. Riesgo: si nadie los
-     mira, se quedan ahí para siempre.
-  2. **Cancelar pero marcar**: se cancelan igual, pero con `motivo_rechazo` propio
-     ("pago recibido, pendiente de reembolso"), un `estado_pago = 'rechazado'` que los haga
-     visibles, y un mensaje distinto al cliente que mencione la devolución — nunca el genérico
-     actual.
-- ~~Aparte del fix, hay dos casos vivos que atender~~ → **no aplica** (2026-09-23): PED-240 y
-  PED-242 son pedidos de prueba de Juan. No hay que reembolsar ni reponer nada.
-- **Regresión:** añadir a `qa/sql/07-housekeeping.sql` el caso "pendiente viejo **con
-  comprobante**" — hoy se cancela; con el fix no debe, o debe salir con el motivo nuevo.
-
----
-
-### BUG-049 · 🟢 Baja · 🔴 Abierto — `reservas` acepta fechas pasadas y horas con el local cerrado
-
-- **Componente:** BD → tabla `reservas` (faltan CHECK) · escrito directo por el modal de reservas
-  del dashboard.
-- **Síntoma (medido con `qa/sql/09-basura.sql · T9`, 2026-09-12):** se aceptan sin rechistar una
-  reserva con `fecha = 2020-01-01` (cuatro años en el pasado), otra a las **04:00** y otra a las
-  **23:59**. Los CHECK que sí existen (`personas` 1-12, `origen`, `estado`) muerden correctamente.
-- **Causa:** la única validación de horario del sistema (12:00-21:00, máx 14 días, mín 5h de
-  anticipación) vive en el subworkflow n8n `OTQp2O8QDw1mMKOZ`, o sea **sólo protege el camino del
-  bot**. El dashboard hace `insert into reservas` directo y no pasa por ahí.
-- **Relación con BUG-044:** son el mismo hueco por los dos lados — allí el modal ofrece valores que
-  la BD rechaza; aquí la BD acepta valores que el negocio rechaza. Conviene arreglarlos juntos.
-- **Fix propuesto:** bajar la regla a la capa que comparten las tres — un CHECK de rango horario en
-  `reservas` y un trigger que rechace `fecha` anterior a hoy. Ojo antes: la ventana correcta
-  **no es 12:00-21:00** sino la que diga `info_negocio` (hoy el local cierra a 22:00/23:00, ver la
-  incoherencia abierta en la Fase 0 de `qa/RESULTADOS.md`); decidirla es prerrequisito del fix.
-
----
-
-### BUG-030 · 🟢 Baja · 🔴 Abierto — el n8n-mcp de la comunidad no puede escribir el workflow principal
-
-> **Degradado de 🔴 Alta a 🟢 Baja el 2026-08-25.** El bug sigue existiendo tal cual está descrito,
-> pero dejó de bloquear: el **MCP nativo de n8n** (`n8n-native`, `/mcp-server/http`) escribe por el
-> SDK, no por la API pública v1, y no reenvía `settings`. Las 4 ediciones de BUG-033 se aplicaron
-> por ahí sin tocar el editor. Lo que queda roto es la vía `n8n-mcp` (npx), que sí sigue rebotando.
-
-- **Componente:** n8n → workflow `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`)
-- **Síntoma:** **cualquier** `PUT` sobre el workflow falla con
-  `Invalid request: request/body/settings must NOT have additional properties`. No es específico
-  de un cambio: verificado con un `moveNode` que reposiciona un sticky note a su propia posición,
-  y con tres `updateSettings` distintos. El workflow **no se modifica** (el error es de
-  validación, previo a la escritura).
-- **Causa (identificada 2026-08-18 con el export del workflow):** `settings` contiene claves que
-  el editor de n8n escribe pero que el esquema de la API pública v1 **no** acepta. Estado real:
-
-  ```json
-  "settings": {
-    "executionOrder": "v1",              // ✔ legal
-    "timezone": "America/Bogota",        // ✔ legal
-    "availableInMCP": false,             // ✔ la tiene el subworkflow, que sí guarda
-    "binaryMode": "separate",            // ✘ fuera del esquema
-    "timeSavedMode": "fixed",            // ✘ fuera del esquema
-    "callerPolicy": "workflowsFromSameOwner"  // ✘ fuera del esquema
-  }
-  ```
-
-  El esquema solo admite `executionOrder`, `errorWorkflow`, `timezone`, `executionTimeout`,
-  `saveExecutionProgress`, `saveManualExecutions`, `saveDataErrorExecution`,
-  `saveDataSuccessExecution`. El `PUT` reenvía `settings` tal cual está guardado, así que
-  **cualquier** escritura rebota antes de tocar nada.
-- **Por qué no se puede arreglar por MCP (las 4 vías, todas descartadas con evidencia):**
-  1. `updateSettings` hace **merge**, no reemplazo — verificado mandando solo
-     `{executionOrder:"v1"}`: siguió fallando, o sea las claves viejas seguían viajando.
-  2. Pasar `null` **no elimina** la clave — verificado con las tres a la vez.
-  3. `n8n_update_full_workflow` con `settings` explícito **también mergea** — verificado
-     2026-08-18. (Efecto colateral útil: se comprobó que **no** manda `nodes: []` cuando se
-     omiten; el workflow quedó intacto en 101 nodos y ni siquiera cambió `updatedAt`.)
-  4. Guardar desde la UI tampoco sirve: esas tres claves las **escribe el editor**, así que
-     vuelven a aparecer. Verificado — tras un guardado manual el error se repitió idéntico.
-- **Impacto (actualizado 2026-08-19):** las zonas de domicilio **ya no están bloqueadas** — se
-  aplicaron a mano en el editor y el bot cobra por barrio (ver changelog 2026-08-18). Lo que queda
-  es el impacto estructural: **todo cambio futuro sobre `Pizzeria Vera` hay que hacerlo a mano**,
-  con el costo que eso tiene (en la aplicación manual de las zonas se coló un error —
-  `$[total + costo_domicilio]` en el PASO 5, que cobraba el domicilio dos veces— que solo se
-  detectó al releer el workflow por MCP; por API el diff habría sido evidente).
-- **Workaround vigente (2026-08-25):** escribir con **`n8n-native`** (`update_workflow` +
-  `publish_workflow`), que no toca la API pública v1. Antes de eso los cambios se aplicaban a
-  mano en el editor. La lectura por `n8n_get_workflow` (mode `filtered`) **sí** funciona en
-  ambas vías y sigue siendo la forma de verificar. De fondo, la vía `n8n-mcp` se destraba solo
-  con una de estas dos, ninguna urgente:
-  1. Actualizar el n8n-mcp a una versión que **filtre** `settings` a las 8 claves del esquema
-     antes del `PUT` — es lo correcto: el problema es del cliente, no del workflow.
-     **Comprobado el 2026-08-19: n8n-mcp está en 2.73.0, que es la última publicada, y sigue sin
-     filtrar.** Hay que esperar una versión nueva; no tiene sentido reintentar hasta entonces.
-  2. Actualizar n8n a una versión cuyo esquema de API pública ya incluya `binaryMode`,
-     `timeSavedMode` y `callerPolicy`. (La instancia dejó de reportar su versión a la API desde
-     n8n 1.119.0, así que hay que mirarla desde la UI.)
-- **Alcance (corregido 2026-08-25):** afecta a la vía `n8n-mcp` (npx) sobre `Pizzeria Vera`, no a
-  todo cambio futuro, como decía este entry antes. Con `n8n-native` configurado las escrituras
-  van por ahí; esto queda como registro de por qué `n8n_update_partial_workflow` sigue fallando
-  si alguien lo intenta.
-- **Recomprobado 2026-08-21** trabajando BUG-032: un `patchNodeField` de un solo header sobre
-  `crear_carrito` rebotó con el mismo `request/body/settings must NOT have additional properties`.
-  Sigue vigente; los dos cambios de BUG-032 van a mano.
+1. **El subworkflow `OTQp2O8QDw1mMKOZ`**, nodo `Validar parámetros`, sigue con
+   `HORA_INICIO='12:00'` y `HORA_LIMITE='21:00'`: una sola ventana para los siete días, sin
+   distinguir el finde, y **validando solo la hora de inicio** — hoy acepta las 21:00, que con el
+   bloque de 90 min termina a las 22:30, ya cerrado. Ese subworkflow **solo consulta
+   disponibilidad, no crea la reserva**, así que no puede meter un dato malo (la BD lo ataja
+   desde hoy); el daño es que el bot ofrezca una hora que luego se rechaza.
+   > ⚠️ El MCP de n8n **no edita un parámetro suelto: reescribe el workflow entero desde código
+   > SDK**, incluido el nodo de Supabase con su credencial. Reemplazar un subworkflow de
+   > producción para cambiar dos constantes merece hacerse con alguien delante.
+2. **Armonizar los textos.** n8n devuelve seis mensajes literales propios (entre ellos *"El horario
+   de reservas es de 12:00 PM a 9:00 PM"*) y ahora la BD rechaza con los suyos. Si no coinciden, el
+   cliente recibe un texto u otro según por dónde caiga la petición.
+3. **`min`/`max` en el `type="time"` del modal**, derivados del día elegido, con el helper debajo
+   del campo (design system). Es lo que cierra el otro lado de BUG-044.
 
 ---
 
@@ -429,77 +339,22 @@
 
 ## En observación
 
-Fixes ya aplicados cuya verificación final depende de tráfico real.
+Fixes ya aplicados y verificados en estructura (MCP, baterías), cuya confirmación final es una
+conversación real. **Una línea por bug y el guion que lo cierra** — los pasos, los mensajes exactos
+y el SQL viven en [`../qa/guiones-bot.md`](../qa/guiones-bot.md), no aquí.
 
-- **BUG-050 (flujo de reseñas) — las tres piezas EN VIVO desde el 2026-09-12.** Verificado tras el
-  despliegue: `Pizzeria Vera` tiene `versionId == activeVersionId` (`6c5b09b3…`), con la cadena
-  reordenada (*crear cola → enviar WhatsApp → marcar → cambiar modo*) y la cabecera
-  `Prefer: resolution=merge-duplicates,return=minimal` en la versión **activa**. Más el cron
-  `expirar-feedback-pendiente` y la limpieza de los 7 clientes atrapados.
-  **Qué falta confirmar con tráfico real** — nada de esto lo prueba el SQL:
-  1. Que a un cliente **con entrega reciente le LLEGUE** el WhatsApp pidiendo la nota. El síntoma
-     original era justamente que no llegaba: 51 días sin un solo feedback.
-  2. Que a un **cliente repetido** (segundo pedido entregado dentro de las 48 h) le llegue también,
-     y que su fila de cola apunte al pedido **nuevo** — ése era el caso que mataba la ejecución.
-  3. Que la nota quede guardada contra el pedido correcto y el modo vuelva a `'bot'`.
-  Es el guion **G11** de `qa/guiones-bot.md`. Hasta correrlo, el fix está verificado en estructura
-  pero no en comportamiento.
+| Bug | Qué está aplicado | Lo cierra | Estado |
+|---|---|---|---|
+| **BUG-032** carrito idempotente | upsert en `crear_carrito`, regla del Agente Menú, trigger `trg_carritos_touch_updated_at` | **G2** | ✅ **verde 2026-09-22**, repetido en verde el 23-09 con otros productos |
+| **BUG-033** cobertura fuera de Bello | `consultar_cobertura` + prompts; `01-cobertura.sql` verde | **G3** | ✅ en lo suyo (3.1-3.4, 3.7). Lo que salió rojo son bugs **nuevos**: BUG-061 y BUG-062 |
+| **BUG-039** búsqueda de menú | `buscar_menu` puntúa por cobertura de la búsqueda; `02-menu.sql` verde | **G1** | 🟡 **1.1–1.6 verdes el 2026-09-23**. Falta **G1.7** (`quiero una pizza`), que es donde la banda de confianza del prompt decide |
+| **BUG-038** número de pedido | `Sub — Crear_orden_completa` publicado (`05099286…`), `Respuesta de salida` devuelve `pedido_id` | **G4** | ⬜ si el agente sigue sin darlo, el problema pasa a ser el prompt, no la tool |
+| **BUG-050 · 051 · 027** flujo de reseñas | rehecho contra la BD el 16-09 (RPC `procesar_respuesta_feedback`), n8n republicado | **G11** | ⬜ ver también BUG-056…060, que están arriba |
+| **BUG-053** buffer de mensajes | cron `limpiar-mensajes-pendientes` (5 min) + `retryOnFail` ×3 en los 4 nodos del buffer | — | ⬜ no hay forma de provocar un 504: vigilar que no reaparezcan errores en `Obtener ultimo mensaje` ni se acumulen filas |
+| **BUG-005 · 009** cancelar reserva ajena | subworkflows saneados | **G9.7** | ⛔ G9 bloqueado (precios de `motivos_reserva`) |
+| **BUG-023 · 024 · 025** dashboard | `realtime.setAuth`, políticas `public` eliminadas, día de negocio con `colombiaDayStart` | — | ⬜ formalmente sin confirmar desde julio, pero el panel lleva dos meses en uso diario y la lógica del corte nocturno está verificada en `dateRanges.js`. Riesgo residual bajo |
 
-> **Tanda de fixes 2026-09-15** (detalle en `changelog.md`). Todo lo de BD quedó verificado con las
-> baterías; lo de abajo es lo que además necesita una conversación real.
+> ⚠️ **Por qué esta lista no se puede dar por buena sola** (§32): el último pedido del sistema es
+> del **15-09**. Los indicadores en vivo de los flujos de arriba están en cero **por falta de
+> tráfico**, no por estar arreglados. Un job arreglado y un job sin trabajo se ven idénticos.
 
-- **BUG-051 + BUG-027 (reseñas)** — `Sub — Feedback Pendiente` publicado dos veces el 2026-09-15:
-  `cb2ff4b5…` (parser estricto, BUG-051) y `61dd4711…` (saltos de línea y comillas reales en los 4
-  WhatsApp, BUG-027). `activeVersionId` verificado en ambos. **Falta G11:** que `10/10` y
-  `quiero 2 pizzas` reciban *"responde solo 1–5"*, que `5` y `cinco` guarden la nota, y que los
-  mensajes lleguen en varias líneas y sin `\n` a la vista.
-- **BUG-038 (número de pedido)** — `Sub — Crear_orden_completa` publicado (`05099286…`):
-  `Respuesta de salida` devuelve `pedido_id`. **Falta G4:** que el cliente reciba *"tu número de
-  pedido es #PED-…"* y no *"no disponible en este momento"*. Si el agente sigue sin darlo, el
-  problema pasa a ser el prompt, no la tool.
-- **BUG-053 (buffer de mensajes)** — dos capas en vivo: cron `limpiar-mensajes-pendientes` (cada
-  5 min, borra filas de más de 5 min) y `retryOnFail` ×3 en los 4 nodos del buffer de `Pizzeria
-  Vera` (publicado `b1b7d52f…`). El síntoma se reprodujo en vivo esa misma tarde: el primer mensaje
-  de G1 le llegó al bot con la dirección del 12-09 delante. **Falta:** no hay forma de provocar un
-  504; confirmar en `search_executions` que no reaparecen errores en `Obtener ultimo mensaje` y que
-  `n8n_mensajes_pendientes` no acumula filas.
-- **BUG-039 (búsqueda de menú)** — `buscar_menu` puntúa ahora por cobertura de la búsqueda.
-  Batería 02 en verde, pero **la banda de confianza del prompt (≥0.5 agregar / 0.2–0.5 confirmar)
-  es la que decide qué hace el bot**. Correr G1 otra vez: `pan de ajo`, `una copa de vino`,
-  `lasaña de pollo` y `arepa de pollo` deben agregar lo pedido sin preguntar; `pizza de pollo`
-  (varias a 0.81) debería ofrecer opciones. G1 del 2026-09-15 corrió **antes** de este cambio.
-
-> **Campaña de pruebas 2026-09-09** — la Capa A (SQL determinista, `qa/sql/`) cerró las
-> verificaciones que no necesitaban una conversación real. Lo que sigue aquí es lo que **solo** se
-> puede comprobar hablando con el bot por WhatsApp. Resultados en `qa/RESULTADOS.md`.
-
-- **BUG-033** — cobertura fuera de Bello. ✅ **Capa SQL verificada** (`qa/sql/01-cobertura.sql`):
-  los 59 barrios resuelven con tarifa y tiempo, 295 variantes de escritura son consistentes, y los
-  10 municipios de fuera devuelven `cubierto:false` con costo y tiempo en NULL. Falta **solo** la
-  prueba por WhatsApp, que es la única que ejercita al modelo — y sigue siendo necesaria porque la
-  RPC ya devolvía bien el dato cuando el prompt mentía (edge-case §27):
-  «¿Tienen servicio en Envigado?» y «¿Llegan a Sabaneta?» → debe decir que no llegan y ofrecer
-  recoger, **sin precio ni tiempo**; «¿Llegan a Niquía?» → $7.500, 30 a 45 min; «estoy en niqia»
-  → debe preguntar «¿te refieres a Niquía?»; «¿cuánto el domicilio al centro?» → $5.000; y un
-  pedido a domicilio diciendo «estoy en Itagüí» **no** puede terminar creado como domicilio.
-- **BUG-032** — carrito idempotente. Las tres capas están aplicadas y verificadas por MCP (upsert
-  en `crear_carrito`, regla nueva en el Agente Menú, trigger `trg_carritos_touch_updated_at`), pero
-  el camino completo solo se prueba con una conversación real: **dejar un carrito con items sin
-  convertirlo en pedido y, desde ese mismo teléfono, pedir otra cosa**. El producto debe entrar y el
-  carrito quedar con los items nuevos (`select * from carritos where telefono = '...'`). Confirmar
-  también que si la escritura falla el bot **no** muestra el 🛒 — antes lo cantaba igual.
-  **✅ Camino feliz verificado 2026-09-23 (G2):** después de 4 minutos sin actividad, *"quiero algo
-  más: una hawaiana"* conservó Lasaña Pollo y Copa de Vino y añadió la Hawaiana. Total $97.000,
-  `updated_at` refrescado. Queda sin probar el camino de fallo (el 🛒 cuando la escritura falla),
-  que no se puede provocar desde WhatsApp.
-- **BUG-025** — tras desplegar, confirmar en una noche real (19:00–24:00 Colombia) que el
-  kanban muestra los pedidos que entran (antes se vaciaba en esa franja).
-- **BUG-023/024** — tras desplegar el build con `realtime.setAuth`, confirmar que el badge
-  de soporte y el panel siguen actualizándose en vivo (las políticas `public` de
-  `mensajes_soporte` ya no existen; todo el realtime va autenticado).
-
-- **BUG-005/009** — probar una cancelación de reserva real por WhatsApp: camino feliz
-  y un intento con reserva ajena (debe responder "esta reserva no es tuya").
-- **pinData viejo (cosmético)** — `Sub — Crear Reserva` y `Sub — Cancelar Reserva` conservan
-  pins con las keys viejas (`cliente_id `/`telefono ` con espacio), y `Sub — Consultar_menu`
-  los query params del `ilike`. Solo afecta pruebas manuales en el editor — re-pinnear al abrirlos.

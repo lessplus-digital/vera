@@ -14,6 +14,137 @@
 ```
 
 ---
+### 2026-09-22 (noche) — Limpieza de `docs/`: el tracker deja de ser una segunda copia de los guiones
+
+**Contexto:** tras limpiar `qa/`, se revisaron los nueve documentos de `docs/` buscando lo que
+sobra. El hallazgo no fue volumen sino **duplicación y deriva**: la sección «En observación» del
+bug-tracker había ido acumulando, bug a bug, los pasos y los mensajes exactos de las pruebas por
+WhatsApp — es decir, una segunda copia de `qa/guiones-bot.md`, que puede desincronizarse y de hecho
+ya lo estaba (seguía pidiendo para BUG-033 pruebas que G3 acababa de correr).
+
+**Decisión 1 · «En observación» pasa a ser un índice, no un manual.** Una fila por bug: qué está
+aplicado, **qué guion lo cierra** y en qué estado está. Los pasos, los mensajes y el SQL viven solo
+en `qa/guiones-bot.md`. Es la misma regla de «un bug, un sitio» que ya se aplicó a `RESULTADOS.md`
+el 15-09, extendida a las verificaciones. 72 → 22 líneas, y de paso quedan marcados como verdes
+BUG-032 y BUG-033, que G2 y G3 confirmaron hoy.
+
+**Decisión 2 · BUG-030 cerrado por desaparición de su objeto.** Describía que el MCP comunitario
+`n8n-mcp` (npx) no podía escribir el workflow principal porque reenviaba `settings` fuera de
+esquema. Ese servidor **se retiró del proyecto el 2026-09-21**: las escrituras van por `n8n-native`
+desde agosto y el comunitario dejó de conectar. Un bug sobre una herramienta que ya no está
+instalada no es un bug abierto. La causa técnica queda aquí por si alguna vez se reinstala:
+`n8n-mcp` 2.73.0 (la última publicada a 2026-08-19) seguía sin filtrar `settings` a las 8 claves
+del esquema, y la API pública v1 rechazaba el resto.
+
+**Decisión 3 · el changelog no se toca.** Se midió antes de decidir: 62 entradas, 1.935 líneas,
+**media de 31 líneas por entrada y 20 en las 33 anteriores a agosto**. No está inflado — es largo
+porque hay cuatro meses de decisiones, y es el único sitio que dice *por qué* el sistema es como
+es. Condensarlo habría cambiado historia por espacio. Se comprobó además que no arrastra deriva:
+las referencias a `n8n-mcp`, a `database/schema.md` y a `shared/` que quedan están todas dentro de
+las entradas que precisamente describen esos cambios.
+
+**Decisión 4 · el backlog corrige un ítem que la sesión de hoy desmintió.** «Reja dura de cobertura
+en la BD» cerraba con *«aún no hay evidencia de fugas del matcher»*. Ya la hay, y por el lado
+contrario al que se vigilaba: no un rechazo en seco, sino **un cobro silenciosamente barato**
+(BUG-061). El problema real no es que el matcher falle, es que **hay dos y no emparejan igual** —
+`consultar_cobertura` resuelve de forma difusa, `resolver_barrio` solo el nombre canónico. Antes
+de la reja dura, lo barato es unificarlos. El ítem cosmético de los `pinData` viejos de n8n se
+movió del tracker aquí: no es un defecto del sistema.
+
+**Impacto:** `docs/bug-tracker.md` (479 → 360 líneas), `docs/backlog.md`, `docs/changelog.md`.
+`architecture.md`, `edge-cases.md`, `database.md`, `README.md`, `bot/` y `dashboard/` se revisaron
+y **no necesitaban cambios**.
+
+---
+### 2026-09-22 (tarde) — Capa B: G2 verde cierra BUG-055 · G3 destapa dos bugs que ninguna batería podía ver
+
+**Contexto:** con la Capa A cerrada, lo único que queda por probar es el modelo. Se corrieron los
+dos primeros guiones por WhatsApp.
+
+**G2 · verde — BUG-055 cerrado.** El fix de prompts del 15-09 (versión `f1f5f902`) estaba aplicado
+y verificado carácter por carácter, pero **sin probar hablando con el bot**, que es donde el bug
+aparecía. Corrido desde `573184821317`: el carrito quedó con los dos productos (La Vera Especial
+Estofada Grande + Hawaiana Estofada Grande, $142.000) y `paso_flujo = 'armando'`. El carrito **se
+crea**; ya no hay *"¿te la dejo?"* sin guardar, ni el `sí` cayendo en soporte. De paso queda
+confirmado BUG-032 (el carrito es idempotente: el producto nuevo entra y los anteriores se
+conservan).
+
+**G3 · 5 de 7 — dos bugs nuevos.** Los dos son de la clase que solo la Capa B encuentra: la RPC
+hace exactamente lo que debe y el fallo está por encima.
+
+- **BUG-061 🔴** — a `estoy en niqia` (typo), `consultar_cobertura` devolvió `cubierto:false` con
+  la tarifa y el tiempo en `null`, sugerencia `["Niquía"]` y un mensaje que prohíbe expresamente
+  prometer domicilio o dar tarifa. El bot prometió el domicilio y cantó *"$7.500, 30 a 45 minutos"*
+  — **sacados de la memoria de la conversación**, de un turno anterior donde el cliente sí había
+  escrito «Niquía» bien. Además el carrito guardó el texto crudo `'niqia'`, que `resolver_barrio`
+  no resuelve: de convertirse en pedido, el trigger aplicaría `tarifa_base()` = $5.000 en vez de
+  $7.500. **Es el primer hallazgo de la campaña con consecuencia directa en dinero por pedido.**
+- **BUG-062 🟡** — a `pardo` el bot devolvió el PDF del menú: el mensaje se ruteó al agente de Menú
+  y nunca llegó a Cobertura, que ya sabía responder (`sugerencias:["Prado"]`).
+
+**Decisión · las dos funciones de barrio normalizan distinto, y eso es un hueco de cobertura de
+pruebas, no solo un bug.** `consultar_cobertura` empareja de forma difusa; `resolver_barrio` —la
+que usa el trigger de tarifa— solo resuelve el nombre canónico. La batería `01 · T2` prueba 295
+variantes de escritura contra la primera y sale verde desde el 09-09; **ninguna las prueba contra
+la segunda**. Queda anotado como regresión pendiente en la ficha de BUG-061.
+
+**Decisión · limpieza de los documentos de QA.** `qa/RESULTADOS.md` acumulaba la narración corrida
+de cada batería desde el 09-09 (679 líneas) compitiendo con el estado actual. Se dejó solo lo
+vigente (235 líneas): estrategia, estado por batería y por guion, puerta de salida al MVP, los
+hallazgos que ninguna batería puede cazar, y la última regresión. Lo retirado no se pierde — las
+trampas de montaje viven en la cabecera de cada `.sql`, las lecciones en `edge-cases.md`, los bugs
+en el tracker o aquí, y la narración íntegra en `git log -p`. `qa/guiones-bot.md` ganó una tabla de
+estado por guion, el SQL pasó a `:tel` (se usan dos números, no uno), y se corrigieron las
+expectativas obsoletas — G3.6 seguía pidiendo confirmar el síntoma de un bug ya cerrado.
+
+**Impacto:** `docs/bug-tracker.md` (BUG-055 fuera; BUG-061 y BUG-062 dentro), `qa/RESULTADOS.md`,
+`qa/guiones-bot.md`, `docs/backlog.md` (ficha del kanban), `docs/README.md`.
+
+---
+### 2026-09-22 — Regresión completa de la Capa A, BUG-052 cerrado y la ventana de reservas bajada a la BD
+
+**Contexto:** el 16-09 se desplegaron dos RPC nuevas del feedback, se recableó n8n y el cron de
+expiración cambió de schedule, y nada de eso se había re-probado. Además el sistema lleva una
+semana sin tráfico (último pedido: 15-09), así que todos los indicadores en vivo estaban en cero
+por inactividad, no por corrección (§32). Se corrió la regresión antes de invertir en la Capa B.
+
+**Decisión 1 · BUG-052 — el job deja de cancelar pedidos pagados.** Se plantearon las dos opciones
+del tracker (excluirlos, o cancelarlos marcando reembolso) y se descartaron las dos: lo que se pidió
+fue que **el pedido no desaparezca de la vista**. `expirar_pedidos_pendientes()` lleva ahora
+`AND comprobante_url IS NULL`, así que un pedido con comprobante se queda en `pendiente` para que
+una persona lo atienda en vez de recibir el genérico *"no alcanzamos a procesarlo"*. Es deliberado
+que no se autocancele, y **se sostiene sobre dos piezas de UI que aún faltan**: la cuarta columna de
+cerrados del kanban y la navegación por día. Sin ellas, el pedido pagado se entierra igual.
+Verificado con control: el pendiente viejo *sin* comprobante se sigue cancelando.
+
+**Decisión 2 · BUG-049 — la ventana de reservas es un trigger, no un CHECK.** La regla decidida el
+12-09 ("la última reserva debe caber completa antes del cierre" → 20:30 L-V, 21:30 S-D, con bloques
+de 90 min) por fin se aplicó, en la BD. Va como `trigger_validar_ventana_reserva` y no como CHECK
+por dos razones comprobadas: `current_date` no es IMMUTABLE y un CHECK no admite funciones no
+inmutables; y las 16 reservas históricas son todas pasadas (dos a las 11:00), así que un CHECK no
+habría pasado la validación del histórico. En UPDATE solo valida si `fecha` u `hora` cambian —
+sin esa condición, **cancelar una reserva vieja quedaría bloqueado por su propia fecha pasada**.
+La mitad de n8n queda pendiente y se explica en el tracker.
+
+**Decisión 3 · `esperado` es un valor, no una explicación.** Dos casos de `07-housekeeping.sql`
+tenían prosa en la columna `esperado`, lo que los dejaba en rojo permanente, indistinguibles de una
+regresión. Se convirtieron en valores comparables que afirman el comportamiento correcto. Lección
+en `edge-cases.md` §39.
+
+**Impacto:**
+- BD: `expirar_pedidos_pendientes()`, `validar_ventana_reserva()` + `trigger_validar_ventana_reserva`.
+- `qa/sql/06-reservas.sql` (+T11–T18, regresión de BUG-049), `qa/sql/07-housekeeping.sql`
+  (T1 y T5b comparables), `qa/sql/10-resenas.sql` (fixture de T1: los dos pedidos del mismo teléfono
+  chocaban con `unique_pedido_cliente_minuto` y abortaban la transacción antes de medir nada).
+- `qa/RESULTADOS.md`, `docs/bug-tracker.md` (BUG-052 fuera), `docs/edge-cases.md` (§39).
+
+**Resultado de la regresión:** 10/10 baterías sin regresiones del sistema. Confirmados cerrados
+BUG-045/046/047/048 (incluido el crítico BUG-048: cantidad y precio negativos ya se rechazan) y
+verdes las RPC nuevas del feedback (`10 · T10–T15`). Los cinco cron jobs con 0 corridas fallidas
+en 7 días. **Lo que sigue sin probarse es el comportamiento**: los seis bugs del feedback y de
+prompts (BUG-055/056/057/058/059/060) están desplegados y verificados solo en SQL.
+
+---
 ### 2026-09-21 — Reorganización de `docs/` y limpieza del backlog
 
 **Contexto:** `docs/` mezclaba dos cosas en la misma jerarquía: documentos **por capa** y

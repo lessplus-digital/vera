@@ -34,7 +34,7 @@ documentación: `qa/sql/` son ficheros **ejecutables** — es el `tests/` de est
 (el informe y los guiones) vive junto a las pruebas que describe:
 
 ```
-qa/                        ← campaña de pruebas (2026-09-09 · última sesión 2026-09-12)
+qa/                        ← campaña de pruebas (Capa A cerrada · última sesión 2026-09-22)
 ├── RESULTADOS.md          ← EMPIEZA AQUÍ: estado por batería, hallazgos, y "Por dónde seguir"
 ├── guiones-bot.md         ← Capa B: los 11 guiones de conversación por WhatsApp
 └── sql/                   ← 10 baterías deterministas, ejecutables vía el MCP de Supabase

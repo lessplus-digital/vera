@@ -610,3 +610,34 @@ bien**: un job de expiración por antigüedad que borre la fila y devuelva `modo
 cualquier fallo a mitad de camino no degrada el servicio — lo cancela, para ese cliente, para
 siempre. Y una PK determinista (`FB-{pedido_id}`) es una aserción de unicidad: el flujo que la
 escribe tiene que asumir el reintento (upsert u `onError`), no romperse con él.
+
+---
+
+## 39. Un test que no puede salir verde jamás es indistinguible de una regresión (2026-09-22)
+
+**Dónde mordió:** `qa/sql/07-housekeeping.sql`, casos T1 y T5b, dos corridas seguidas y por dos
+lectores distintos.
+
+Las baterías comparan `valor` contra `esperado` con un `case when valor = esperado`. Cuando BUG-052
+apareció, a esas dos filas se les puso en `esperado` una **nota en prosa** explicando la situación:
+
+```sql
+'2 hoy · 1 tras el fix de BUG-052'          -- T1
+'no cancelar (o motivo de reembolso)'        -- T5b
+```
+
+Como documentación son excelentes. Como aserción son veneno: **ningún valor real puede igualarlas**,
+así que la columna `ok` sale en ✗ para siempre — con el bug abierto y también con el bug arreglado.
+El día que se aplicó el fix, T5b siguió marcado en rojo aunque el dato (`pendiente / sin motivo`)
+era exactamente el correcto; hizo falta leer la fila a mano para darse cuenta.
+
+**El daño real no es el falso rojo de hoy, es el de mañana.** Una batería con un rojo permanente
+entrena a quien la corre a ignorar ese rojo, y el día que ese caso falle de verdad nadie lo va a
+mirar. Es la misma familia que §34 con el signo cambiado: allí un caso quedó en verde para siempre,
+aquí en rojo para siempre. En los dos, el test dejó de ser capaz de cambiar de opinión.
+
+**La regla:** `esperado` es un **valor comparable**, nunca una explicación. Si hay que explicar,
+se explica en un comentario SQL encima. Y el `esperado` afirma el **comportamiento correcto**, no el
+actual: un caso que documenta un bug abierto debe estar rojo *porque el bug está abierto*, y pasar a
+verde solo por el fix. Si arreglas un `esperado` de este tipo, **búscalos todos a la vez** — en
+07-housekeeping se corrigió T1 y se dejó T5b, y el rojo huérfano sobrevivió una corrida entera.
