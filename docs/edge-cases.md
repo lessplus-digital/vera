@@ -427,7 +427,9 @@ verde**: las tres fronteras temporales exactas, ningún pendiente viejo sin cerr
 cancelación encajando en la plantilla de WhatsApp. Cerró BUG-028 con eso. Un mes después, un
 barrido del estado vivo encontró que ese mismo job había cancelado **dos pedidos que el cliente ya
 había pagado** —PED-242 y PED-240, $130.500 de un cliente habitual que transfirió 32 y 86 segundos
-después de pedir— mandándoles *"no alcanzamos a procesarlo antes del cierre del día"*.
+después de pedir— mandándoles *"no alcanzamos a procesarlo antes del cierre del día"*. (Resultó ser
+el segundo número de Juan, con pedidos de prueba; lo confirmó el 2026-09-23. La lección no cambia:
+con un cliente real habría pasado igual.)
 
 **Por qué el verde no lo vio.** Cada aserción de la batería estaba bien escrita y era cierta. La
 batería preguntaba *"¿cancela los pendientes de días anteriores y solo esos?"* y la respuesta era

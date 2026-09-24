@@ -52,7 +52,7 @@ Ningún bug cerrado se reabrió y ningún verde pasó a rojo por un cambio del s
 | `08-roles-rls.sql` | **16/16** | — |
 | `09-basura.sql` | nulos, inyección, límites y JSONB basura sin SQLSTATE crudo; 0 filas corruptas | T9 = BUG-049 (decisión de horario) |
 | `10-resenas.sql` | T1 · T2 · T5 · T6 · T7 · T9 verdes · **2026-09-16: +T10–T15 verdes** (RPCs nuevas del feedback) | T8 es réplica documental. **La capa n8n aún corre el flujo viejo** → ver §0 abajo |
-| Capa B · 11 guiones WhatsApp | G1 corrido (antes del fix de menú) · G2 bloqueado por BUG-055 | G9 bloqueado (horario) |
+| Capa B · 11 guiones WhatsApp | **G1 · G2 verdes (2026-09-23)** | G9 bloqueado (horario) |
 | Capa C · Vitest | ⬜ pendiente | |
 
 **Capa A cerrada.** Las 10 baterías están ejecutadas: ~3.650 casos, **14 bugs encontrados
@@ -95,9 +95,9 @@ estados en ~20 nodos de n8n sin transacción, con pasos que fallaban en verde �
 
 - [x] ~~Limpiar el buffer~~ → cron `limpiar-mensajes-pendientes` cada 5 min + `retryOnFail` en n8n.
 - [x] ~~Publicar `Sub — Feedback Pendiente`~~ → publicado (`cb2ff4b5…`, luego `61dd4711…` con BUG-027).
-- [ ] **Re-correr G1.** El G1 de esta tarde corrió **antes** del cambio de `buscar_menu` (se aplicó
-      después de *"si asi"*). Ahora `pan de ajo`, `una copa de vino`, `lasaña de pollo` y
-      `una limonada de mango` deben entrar sin preguntar; `pizza de pollo` debería ofrecer opciones.
+- [x] ~~Re-correr G1~~ → **verde el 2026-09-23** (`573184821317`). Los 6 pasos entraron con el
+      producto correcto; ver la entrada del 2026-09-23 abajo. No hace falta repetirlo salvo que se
+      toque `buscar_menu` o el prompt del agente de menú.
 - [ ] **G4** (número de pedido, BUG-038) y **G11** (reseñas, BUG-050/051/027) — ambos desbloqueados
       en la tool; G4 depende además de BUG-055.
 - [x] ~~Re-ejecutar `06-reservas.sql` tal cual~~ → 12/12 tras el mantenimiento de Supabase (21:45 UTC).
@@ -106,8 +106,8 @@ estados en ~20 nodos de n8n sin transacción, con pasos que fallaban en verde �
 ### 2. Dos decisiones de negocio que bloquean fixes
 
 - [ ] **BUG-052** — ¿el job de expiración **excluye** los pedidos con comprobante, o los **cancela
-      marcando el reembolso**? Sin esto no se puede escribir el fix. Y aparte: qué se hace con los
-      **$130.500** de PED-240 y PED-242, que son de un cliente real.
+      marcando el reembolso**? Sin esto no se puede escribir el fix. (PED-240 y PED-242 resultaron
+      ser pedidos de prueba de Juan, confirmado el 2026-09-23: no hay dinero real que resolver.)
 - [ ] **Ventana de reservas** — ya se decidió *"la última reserva debe caber completa antes del
       cierre"* (20:30 entre semana, 21:30 finde), pero **falta aplicarlo**: en el subworkflow
       `OTQp2O8QDw1mMKOZ` (hoy valida 12:00-21:00) y como CHECK en `reservas` (BUG-049). Desbloquea
@@ -116,15 +116,16 @@ estados en ~20 nodos de n8n sin transacción, con pasos que fallaban en verde �
 
 ### 3. Trabajo de QA pendiente, por valor
 
-- [ ] **G2 bloqueado por BUG-055 (intento 2026-09-15, `573184821317`).** No llegó ni al paso 1: el
+- [x] ~~G2~~ → **verde el 2026-09-23** tras el fix de BUG-055 (entrada abajo). **Siguiente: G4.**
+      Historial del intento anterior: **G2 bloqueado por BUG-055 (intento 2026-09-15, `573184821317`).** No llegó ni al paso 1: el
       agente de menú preguntó *"¿te la dejo?"* sin crear el carrito, y el *"sí"* cayó en soporte,
       que inventó el carrito y dejó la conversación sin salida. **Fix de prompts publicado el
       2026-09-15 (`f1f5f902`)**: ahora hay que repetir la conversación tras un reset. Tras
       `Estofada y familiar`, `carritos` debe tener PROD-038, y el `Si` no debe ir a `soporte`.
       Luego G2 completo y G4.
-- [ ] **Correr los 10 guiones ejecutables de la Capa B.** Es lo único que prueba al modelo. Los más
-      cargados de riesgo ya medido: **G1** (BUG-039/045, el bot agrega el producto equivocado con
-      plena confianza), **G4** (BUG-038, no le da el número de pedido al cliente) y **G11**.
+- [ ] **Correr los guiones ejecutables de la Capa B** (G1 y G2 ya verdes; quedan 8). Es lo único que
+      prueba al modelo. Los más cargados de riesgo ya medido: **G4** (BUG-038, no le da el número de
+      pedido al cliente) y **G11**.
 - [ ] **Capa C (Vitest)** sobre utils puras del dashboard — sin empezar.
 - [ ] **Barridos de estado vivo periódicos.** Encontraron los dos bugs 🔴 de esta semana (BUG-050 y
       BUG-052) y ninguna batería los habría visto. Ver §33 de `edge-cases.md` para los tres filtros
@@ -140,6 +141,70 @@ Ya se descartó, con evidencia, en el barrido del 2026-09-12: los 88 domicilios 
 > **Recordatorio para la próxima sesión:** de los 116 pedidos, **80 son semilla**, y además Juan
 > manipula filas a mano para probar. Ningún agregado sobre `pedidos` significa lo que parece hasta
 > partirlo por origen del dato.
+
+---
+
+## 2026-09-23 · Guion G2 · El carrito es idempotente — **verde**
+
+Número `573184821317`. Hubo reset tras G1: no queda historial de G1 y el primer paso usa
+`crear_carrito`, que reemplaza el carrito de G1. Ejecuciones de n8n `16537…16546`.
+
+**Verde:**
+- **Paso 1** (00:43 UTC): *"Dame una lasaña de pollo y una copa de vino"* → `crear_carrito` en el
+  mismo turno con PROD-068 + PROD-127, $38.500. **No hubo "¿te la dejo?"**: la causa 1 de BUG-055
+  queda corregida en conversación real.
+- **Pausa de ~4 min** sin confirmar el pedido.
+- **Paso 2** (00:47 UTC): *"Quiero algo más: una hawaiana"* → `consultar_menu` → preguntó masa,
+  normal/Premium y tamaño. Es correcto: hay 4 variantes y el prompt exige completar masa y tamaño.
+  *"Tradicional familiar"* → `actualizar_carrito`.
+- **Carrito final:** Lasaña Pollo $23.000 · Copa de Vino $15.500 · Hawaiana (PROD-010, familiar)
+  $58.500 = **$97.000**. Conservó los anteriores, sin reinicio ni duplicados. El 🛒 que mostró el bot
+  coincide con la fila (`paso_flujo = armando`, `updated_at` 00:48:07). El orquestador mandó los 3
+  turnos a `menu`.
+
+**Rojo:** ninguno.
+
+**Sin cubrir:** el camino *"escritura falla → no mostrar el 🛒"* (BUG-032), porque no se puede
+provocar desde WhatsApp. Tampoco las causas 2 y 3 de BUG-055 (un "sí" suelto sin carrito), porque el
+agente ya no deja preguntas de confirmación abiertas.
+
+**Observación (no es rojo):** `variante` se guardó como texto libre, `"Tradicional familiar"`. En
+`detalle_pedidos` ya conviven `Familiar`, `Mediana Tradicional` y `Tradicional - grande` para el
+mismo producto. El precio sale bien; conviene vigilarlo en G4, cuando el carrito pase a pedido.
+
+---
+
+## 2026-09-23 · Guion G1 · El menú devuelve lo que el cliente pidió — **verde (6/6)**
+
+Número `573184821317`, conversación limpia (el historial arranca en el *"Hola"* y el primer paso
+usa `crear_carrito`). Revisado contra `n8n_chat_histories`, `carritos`, `menu` y las ejecuciones de
+n8n `16516…16536`.
+
+**Verde:**
+| # | Pidió | Entró | Cómo |
+|---|---|---|---|
+| 1.1 | pan de ajo | PROD-001 Pan de Ajo $13.900 | directo (`similitud` 1) |
+| 1.2 | copa de vino | PROD-127 Copa de Vino $15.500 | directo, **no** Limonada de Vino Tinto |
+| 1.3 | lasaña de pollo | PROD-068 Lasaña Pollo $23.000 | directo, **no** Pollo Champiñón |
+| 1.4 | limonada de mango | PROD-099 Limonada Mango Biche $12.500 | directo; es la **única** limonada de mango del menú (9 limonadas), así que agregarla sin preguntar es correcto |
+| 1.5 | chelita | — | listó las 6 cervezas con precio y preguntó; con *"Corona"* agregó PROD-124 $10.500 |
+| 1.6 | papata mexicana | PROD-091 Patatas Mexicanas $21.500 | directo, a pesar del typo |
+
+Carrito final: los 6 productos pedidos, ninguno de más, total **$96.900**. Los precios coinciden con
+`menu`. El orquestador mandó los 7 turnos al agente de menú.
+
+**Rojo:** ninguno.
+
+**Nota para quien revise la memoria:** en `n8n_chat_histories` solo aparece la llamada a
+`consultar_menu` del turno de la chelita. En los demás turnos parece que el agente armó el carrito
+**sin consultar el menú**, pero no fue así: el subworkflow `r9BbkGSCNJcJ2P6t` corrió una vez por turno
+(7 ejecuciones; por ejemplo, la `16517` recibió `filtro: "pan de ajo"`). La memoria no guarda todos
+los pasos intermedios. **Para auditar las tools hay que mirar las ejecuciones, no el historial.**
+
+**Textual del bot** (paso 1.5):
+> Juan, ¿qué chelita te antoja? 🍺 Tengo estas opciones: Águila — $7.500 · Pilsen — $7.500 ·
+> Águila Light — $8.000 · Club Colombia — $8.500 · Tres Cordilleras — $9.500 · Corona — $10.500.
+> También puedo agregar adición de michelada o michelada saborizada si quieres.
 
 ---
 
@@ -545,7 +610,8 @@ había pagado**, y le mandó el genérico *"no alcanzamos a procesarlo antes del
 | PED-242 | 2026-09-01 21:56:33 | 21:57:05 | **+32 s** | $42.500 |
 | PED-240 | 2026-08-21 17:39:23 | 17:40:49 | **+86 s** | $88.000 |
 
-$130.500 de un cliente habitual, con `estado_pago` en `'pendiente'` — nada en el dashboard señala
+$130.500 de un cliente habitual (*corrección 2026-09-23: es el segundo número de Juan y los pedidos
+son de prueba; el defecto del job es el mismo*), con `estado_pago` en `'pendiente'` — nada en el dashboard señala
 que hay dinero recibido por un pedido que ya no existe. El `WHERE` del job solo mira `estado` y
 `fecha_pedido`; **no mira `comprobante_url`**.
 

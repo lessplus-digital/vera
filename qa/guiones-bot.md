@@ -62,7 +62,7 @@ Cada uno ataca un riesgo concreto y ya identificado. No son paseos por la aplica
 
 ---
 
-## G1 · El menú devuelve lo que el cliente pidió — **BUG-039 y BUG-045**
+## G1 · El menú devuelve lo que el cliente pidió — **BUG-039 y BUG-045** · ✅ verde 2026-09-23
 
 **Por qué existe:** la Capa A midió que `buscar_menu` empata productos distintos en el score
 máximo y que el prompt usa ese score como confianza (*"≥0.5 → agregar sin confirmar"*). La BD ya
@@ -73,7 +73,7 @@ demostró que la herramienta miente; falta ver **qué hace el modelo con la ment
 | 1.1 | `hola, me das el pan de ajo?` | ofrecer **Pan de Ajo**. Rojo si ofrece "De Mi Tierra" o una limonada |
 | 1.2 | `quiero una copa de vino` | ofrecer un **vino**. Rojo si ofrece Limonada de Vino Tinto |
 | 1.3 | `una lasaña de pollo` | ofrecer **Lasaña Pollo**. Rojo si ofrece Pollo Champiñón |
-| 1.4 | `me das una limonada de mango` | preguntar si se refiere a **Limonada Mango Biche** — o decir que no la tiene. Rojo si agrega otra limonada sin preguntar |
+| 1.4 | `me das una limonada de mango` | agregar **Limonada Mango Biche** (es la única de mango) o preguntar si se refiere a ella. Rojo si agrega otra limonada |
 | 1.5 | `quiero una chelita` | ofrecer **cerveza** (valida que el diccionario sobrevive a cualquier fix de BUG-039) |
 | 1.6 | `agrégame una papata mexicana` | ofrecer **Patatas Mexicanas** |
 
@@ -86,7 +86,7 @@ select items from carritos where telefono = '573113298122';
 
 ---
 
-## G2 · El carrito es idempotente — **BUG-032 (en observación desde el 2026-08-19)**
+## G2 · El carrito es idempotente — **BUG-032 (en observación desde el 2026-08-19)** · ✅ verde 2026-09-23
 
 **Por qué existe:** las tres capas del fix están aplicadas y verificadas por MCP, pero el camino
 completo solo lo prueba una conversación real.

@@ -223,14 +223,20 @@
      está pidiendo productos, pregúntale qué quiere agregar"*.
 - **Verificación:** repetir los 3 mensajes tras un reset → debe existir la fila en `carritos` con
   PROD-038 después del mensaje 2, y el "sí" no debe caer en `soporte`. Luego correr G2 completo.
+- **✅ Causa 1 verificada por WhatsApp (2026-09-23, G2 verde, `573184821317`):** *"Dame una lasaña
+  de pollo y una copa de vino"* → `crear_carrito` en el mismo turno, sin ningún *"¿te la dejo?"*.
+  *"una hawaiana"* → preguntó masa y tamaño (lo correcto, porque hay 4 variantes), y *"Tradicional
+  familiar"* → `actualizar_carrito` sin pedir confirmación. **Sin ejercitar:** las causas 2 y 3
+  (un "sí" suelto sin carrito). En este flujo el agente ya no deja la pregunta abierta, así que no
+  hubo "sí" que rutear.
 
 ---
 
 ### BUG-052 · 🔴 Alta · 🔴 Abierto — el job de expiración cancela pedidos que el cliente YA PAGÓ, y nada marca el reembolso
 
 - **Componente:** BD → `expirar_pedidos_pendientes()` (cron `expirar-pedidos-pendientes`, diario 16:00 UTC).
-- **Síntoma medido (2026-09-12, datos reales, no semilla):** dos pedidos de un cliente habitual
-  (`573184821317`, 6 entregas a su nombre) con **comprobante de transferencia subido** fueron
+- **Síntoma medido (2026-09-12, no son datos semilla):** dos pedidos de `573184821317` (6 entregas
+  a su nombre) con **comprobante de transferencia subido** fueron
   cancelados por el job, y al cliente le llegó *"❌ Tu pedido fue cancelado, no alcanzamos a
   procesarlo antes del cierre del día."*
 
@@ -239,9 +245,13 @@
   | PED-242 | 2026-09-01 21:56:33 | 2026-09-01 21:57:05 | **+32 s** | $42.500 | cancelado | `pendiente` |
   | PED-240 | 2026-08-21 17:39:23 | 2026-08-21 17:40:49 | **+86 s** | $88.000 | cancelado | `pendiente` |
 
-  **$130.500** transferidos por un cliente real al que el bot le dijo que su pedido no se pudo
-  procesar. `motivo_rechazo` en ambos es exactamente el texto por defecto del job, así que la
-  autoría es del job, no de una cancelación manual.
+  **$130.500** en comprobantes, y el bot le dijo al cliente que su pedido no se pudo procesar.
+  `motivo_rechazo` en ambos es exactamente el texto por defecto del job, así que la autoría es del
+  job, no de una cancelación manual.
+  **Aclaración 2026-09-23:** `573184821317` es el segundo número de Juan y **todos sus pedidos son
+  de prueba**. No hay dinero real ni ningún cliente afectado. **El bug sigue igual de vigente:** en
+  cuanto entre en producción, el primer cliente que transfiera y no reciba atención ese día recibirá
+  exactamente esto.
 - **Causa:** el `WHERE` del job es solo `estado = 'pendiente' AND fecha_pedido < v_inicio_dia`.
   **No mira `comprobante_url` ni `estado_pago`.** Para el job, un pedido pagado y uno abandonado
   son indistinguibles.
@@ -264,8 +274,8 @@
      ("pago recibido, pendiente de reembolso"), un `estado_pago = 'rechazado'` que los haga
      visibles, y un mensaje distinto al cliente que mencione la devolución — nunca el genérico
      actual.
-- **Aparte del fix, hay dos casos vivos que atender:** PED-240 y PED-242 son dinero real de un
-  cliente real. Hay que decidir reembolso o reposición con él.
+- ~~Aparte del fix, hay dos casos vivos que atender~~ → **no aplica** (2026-09-23): PED-240 y
+  PED-242 son pedidos de prueba de Juan. No hay que reembolsar ni reponer nada.
 - **Regresión:** añadir a `qa/sql/07-housekeeping.sql` el caso "pendiente viejo **con
   comprobante**" — hoy se cancela; con el fix no debe, o debe salir con el motivo nuevo.
 
@@ -478,6 +488,10 @@ Fixes ya aplicados cuya verificación final depende de tráfico real.
   convertirlo en pedido y, desde ese mismo teléfono, pedir otra cosa**. El producto debe entrar y el
   carrito quedar con los items nuevos (`select * from carritos where telefono = '...'`). Confirmar
   también que si la escritura falla el bot **no** muestra el 🛒 — antes lo cantaba igual.
+  **✅ Camino feliz verificado 2026-09-23 (G2):** después de 4 minutos sin actividad, *"quiero algo
+  más: una hawaiana"* conservó Lasaña Pollo y Copa de Vino y añadió la Hawaiana. Total $97.000,
+  `updated_at` refrescado. Queda sin probar el camino de fallo (el 🛒 cuando la escritura falla),
+  que no se puede provocar desde WhatsApp.
 - **BUG-025** — tras desplegar, confirmar en una noche real (19:00–24:00 Colombia) que el
   kanban muestra los pedidos que entran (antes se vaciaba en esa franja).
 - **BUG-023/024** — tras desplegar el build con `realtime.setAuth`, confirmar que el badge
