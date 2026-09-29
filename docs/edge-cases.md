@@ -641,3 +641,23 @@ se explica en un comentario SQL encima. Y el `esperado` afirma el **comportamien
 actual: un caso que documenta un bug abierto debe estar rojo *porque el bug está abierto*, y pasar a
 verde solo por el fix. Si arreglas un `esperado` de este tipo, **búscalos todos a la vez** — en
 07-housekeeping se corrigió T1 y se dejó T5b, y el rojo huérfano sobrevivió una corrida entera.
+
+## 40. "Publicado" no es "vigente": verifica el valor en la ruta que el motor lee (2026-09-29)
+
+Durante semanas se aplicaron por MCP parches de prompt y de código a `Pizzeria Vera` (BUG-061,
+BUG-062), cada uno **publicado** y con `versionId == activeVersionId`. Los reintentos por WhatsApp
+siguieron rojos y se concluyó que "el LLM no respeta la excepción". La causa real (BUG-063): el texto
+nuevo quedó en `parameters.parameters.…`, una clave que n8n ignora. El motor seguía ejecutando la
+versión vieja; la ejecución 17030 citaba "la regla vieja" porque **era** la regla vigente.
+
+Tres lecciones:
+
+1. **Un paso de despliegue que sale verde no prueba que el cambio esté activo.** El hook
+   `n8n-publicar.mjs` comprobaba que se publicara; nada comprobaba que el valor estuviera donde n8n
+   lo lee. Tras un `update_workflow`, releer el nodo publicado y buscar el texto nuevo en la ruta
+   efectiva.
+2. **Antes de culpar al LLM, confirma que corrió lo que crees.** "El modelo ignora mi regla" y "mi
+   regla no está en el prompt" producen exactamente el mismo síntoma. La segunda es más barata de
+   descartar y se descarta primero.
+3. **Es un argumento a favor de mover la lógica a código versionado:** en `server/` el código que
+   corre es el del commit, y una prueba unitaria que falla lo dice en segundos.

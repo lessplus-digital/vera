@@ -20,6 +20,29 @@
 
 ## Abiertos
 
+### BUG-063 · 🔴 Alta · 🔴 Abierto — los últimos parches de prompt y código de `Pizzeria Vera` están en una clave anidada que n8n NO ejecuta
+
+- **Componente:** n8n `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`), versión publicada `1d7f7d87…`.
+- **Encontrado:** 2026-09-29, leyendo el workflow publicado para portarlo al servidor Node
+  (subagente `n8n-inspector`; draft = publicada, `versionId == activeVersionId`).
+- **Síntoma:** en los nodos `ORQUESTADOR`, `AGENTE MENÚ`, `AGENTE PEDIDOS`, `AGENTE SOPORTE`,
+  `Parse Orquestador`, `consultar_cobertura` y `consultar_cobertura1`, el texto nuevo quedó en
+  `parameters.parameters.options.systemMessage` / `parameters.parameters.jsCode` /
+  `parameters.parameters.toolDescription`. n8n solo lee la clave de primer nivel
+  (`parameters.options.systemMessage`, `parameters.jsCode`, `parameters.toolDescription`), que
+  sigue teniendo la versión **vieja**.
+- **Consecuencia:** los fixes de **BUG-061** (fixes 1–4, incluido el override determinista en
+  `Parse Orquestador`) y de **BUG-062** nunca corrieron. Por eso los reintentos por WhatsApp seguían
+  rojos y la ejecución 17030 citaba "la regla vieja": **era** la regla vigente. Los diagnósticos de
+  esos bugs sobre "el LLM no respeta la excepción" deben leerse con esto en mente.
+- **Causa probable (hipótesis):** los `update_workflow` por MCP escribieron el objeto de parámetros
+  un nivel más abajo de lo debido. El hook `n8n-publicar.mjs` verificaba que se publicara, no que el
+  valor quedara en la ruta que n8n lee.
+- **Decisión:** no se arregla en n8n. El bot se está migrando al servidor Node (`docs/bot/servidor.md`)
+  y ahí esas reglas viven en código con pruebas unitarias. Se cierra cuando se apague n8n. Si hubiera
+  que volver a n8n, el fix es subir el valor anidado a la clave de primer nivel y borrar
+  `parameters.parameters`, y **verificarlo leyendo el nodo publicado**, no el resultado del update.
+
 ### BUG-061 · 🔴 Alta · 🟠 En progreso (n8n publicado 2026-09-28 · falta verificar por WhatsApp) — el bot promete domicilio y canta la tarifa cuando la tool dijo `cubierto: false`: se la inventa de la memoria de la conversación
 
 - **Componente:** prompt del Agente Pedidos / Cobertura (n8n) · efecto colateral en `carritos.barrio`.
