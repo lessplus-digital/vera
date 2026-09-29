@@ -1,0 +1,7 @@
+nombre: Eco — varios mensajes seguidos se responden en un solo turno
+critico: true
+pasos:
+  - envia: ["hola", "quiero una pizza", "hawaiana"]
+    debe:
+      coincide: "hola\nquiero una pizza\nhawaiana"
+      respuestas: 1

@@ -1,0 +1,67 @@
+import { crearBot, type Bot } from '../bot.js'
+import { loggerMudo, type Logger } from '../log.js'
+import { FakeWhatsApp } from '../whatsapp/cliente.js'
+import { firmar } from '../whatsapp/firma.js'
+import type { ProcesadorTurno } from '../cola/buffer.js'
+import { payloadBoton, payloadEstado, payloadImagen, payloadTexto, payloadTipo } from './meta.js'
+
+// Un bot completo en memoria: mismo código que producción (crearBot), con
+// WhatsApp falso. Los mensajes entran por el webhook HTTP real — firmados como
+// los firma Meta — sin abrir puertos ni tocar la red.
+
+const SECRETO_SIM = 'secreto-del-simulador'
+
+export type OpcionesEntorno = {
+  bufferMs?: number
+  log?: Logger
+  procesador?: (wa: FakeWhatsApp) => ProcesadorTurno
+}
+
+export class EntornoSim {
+  readonly wa = new FakeWhatsApp()
+  readonly bot: Bot
+
+  constructor(o: OpcionesEntorno = {}) {
+    const log = o.log ?? loggerMudo
+    this.bot = crearBot({
+      verifyToken: 'verify-sim',
+      appSecret: SECRETO_SIM,
+      bufferMs: o.bufferMs ?? 30,
+      wa: this.wa,
+      log,
+      ...(o.procesador ? { procesador: o.procesador(this.wa) } : {}),
+    })
+  }
+
+  /** POST firmado al webhook, igual que Meta. Devuelve el status HTTP. */
+  async postear(cuerpo: unknown, firma?: string): Promise<number> {
+    const json = JSON.stringify(cuerpo)
+    const res = await this.bot.app.request('/webhook/whatsapp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-hub-signature-256': firma ?? firmar(json, SECRETO_SIM) },
+      body: json,
+    })
+    return res.status
+  }
+
+  enviarTexto(telefono: string, texto: string, nombre?: string) {
+    return this.postear(payloadTexto({ telefono, texto, ...(nombre ? { nombre } : {}) }))
+  }
+  enviarBoton(telefono: string, texto: string) {
+    return this.postear(payloadBoton({ telefono, texto }))
+  }
+  enviarImagen(telefono: string, imagenId: string, mime?: string, caption?: string) {
+    return this.postear(payloadImagen({ telefono, imagenId, ...(mime ? { mime } : {}), ...(caption ? { caption } : {}) }))
+  }
+  enviarTipo(telefono: string, tipo: string) {
+    return this.postear(payloadTipo({ telefono, tipo }))
+  }
+  enviarEstado(telefono: string) {
+    return this.postear(payloadEstado(telefono))
+  }
+
+  /** Espera a que el bot termine todo lo pendiente (buffer + turnos). */
+  esperar() {
+    return this.bot.buffer.esperarInactivo()
+  }
+}

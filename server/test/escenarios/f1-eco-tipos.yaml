@@ -1,0 +1,14 @@
+nombre: Eco — botones, imágenes y tipos no soportados
+pasos:
+  - envia_boton: Confirmar
+    debe:
+      contiene: ["Confirmar mi reserva"]
+      respuestas: 1
+  - envia_imagen: { id: img-1 }
+    debe:
+      contiene: ["imagen"]
+      respuestas: 1
+  - envia_tipo: audio
+    debe:
+      contiene: ["solo puedo leer mensajes de texto"]
+      respuestas: 1

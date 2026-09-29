@@ -14,6 +14,39 @@
 ```
 
 ---
+### 2026-09-29 — Se decide reemplazar n8n por un servidor Node propio · Fases 0 y 1 hechas
+
+**Contexto:** Vera no ha salido a producción porque el bot de n8n no es fiable. El orquestador es
+un LLM que decide solo guiado por reglas en texto y no las respeta: BUG-061/062 necesitaron tres
+rondas de prompt (la ejecución 17030 seguía citando la regla vieja) y solo cedieron con un override
+en JavaScript. Además no había pruebas unitarias y las de WhatsApp eran manuales.
+
+**Decisión:** migrar el bot **completo y de una vez** a un servidor Node/TypeScript en `server/`
+(este repo), desplegado con Docker en el VPS de Hostinger donde corre n8n, que queda apagado como
+respaldo. Principio: **la IA conversa, el código decide** — acciones críticas en código probado,
+el LLM clasifica y redacta. Jev queda para un piloto posterior, detrás de una interfaz `Decisor`.
+El dashboard sigue en Vercel. Nueve fases: 0 respaldo · 1 esqueleto + simulador · 2 BD ·
+3 núcleo determinista · 4 decisión · 5 handlers · 6 escenarios G1–G11 · 7 proxy de envíos del
+dashboard (cierra el riesgo de `VITE_WA_ACCESS_TOKEN`) · 8 despliegue y corte · 9 docs.
+
+**Fase 0 · respaldo:** tag git `pre-migracion-node` (commit `2daa7ba`); versiones vigentes de los 7
+workflows, crons, trigger `notificar-estado-pedido` y runbook de vuelta atrás en un manifiesto
+**fuera del repo** (`Plateo/backups/2026-09-29-pre-migracion-node/`). Motivo: **el repo de GitHub
+es público** — ningún export, dump ni dato operativo va a git.
+
+**Fase 1 · esqueleto:** webhook con firma HMAC de Meta, parseo (texto/imagen/botón remapeado/tipos
+no soportados, que ahora se contestan), dedupe por wamid, buffer por teléfono con turnos en serie,
+cliente Graph + `FakeWhatsApp`, procesador eco provisional, Docker. Simulador (`npm run sim`,
+escenarios YAML con esquema estricto y umbrales crítico 100% / normal ≥ 90%), `npm run chat` y
+subagente `bot-sim`. 39 pruebas unitarias en verde. Probado contra WhatsApp real con el número de
+pruebas de Plateo (322) vía túnel cloudflared: verificación de Meta, firma, agrupado de 5 mensajes,
+foto y audio, todo correcto. `vercel.json` hace que Vercel ignore los cambios que solo tocan
+`server/`. Seguimiento de la ruta en un tablero kanban compartido (artifact de claude.ai).
+
+**Impacto:** `server/` (nuevo), `docs/bot/servidor.md` (nuevo), `.claude/agents/bot-sim.md`,
+`CLAUDE.md`, `docs/README.md`.
+
+---
 ### 2026-09-22 (noche) — Limpieza de `docs/`: el tracker deja de ser una segunda copia de los guiones
 
 **Contexto:** tras limpiar `qa/`, se revisaron los nueve documentos de `docs/` buscando lo que

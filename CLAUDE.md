@@ -16,6 +16,13 @@ Supabase database) live outside this repo but share the same PostgreSQL schema:
 - **This dashboard** — real-time admin panel to manage orders, support chat, clients,
   reservations, and statistics.
 
+> **Migration in progress (2026-09-29): the bot is moving from n8n to a Node server in
+> `server/` (this repo).** Principle: *the AI talks, the code decides* — critical actions live in
+> tested code, the LLM only classifies and writes. n8n stays the live bot until the cutover
+> (Phase 8); until then `docs/bot/n8n-*.md` describe production and `docs/bot/servidor.md`
+> describes the new server and its phase status. Rollback point: git tag `pre-migracion-node`.
+> **The GitHub repo is public** — never commit n8n exports, DB dumps or operational data.
+
 ## Commands
 
 ```bash
@@ -24,8 +31,20 @@ npm run build     # production build
 npm run preview   # serve the production build locally
 ```
 
-There is **no test runner, linter, or typecheck** configured. `package.json` has only
-`dev`/`build`/`preview`. Don't invent `npm test`/`npm run lint` — they don't exist.
+The **dashboard** has no test runner, linter, or typecheck — its `package.json` has only
+`dev`/`build`/`preview`. Don't invent `npm test`/`npm run lint` at the root.
+
+The **bot server** (`server/`, its own `package.json`) does have them — run from `server/`:
+
+```bash
+npm test           # Vitest unit tests (no network)
+npm run typecheck
+npm run sim        # WhatsApp simulator: server/test/escenarios/*.yaml, 5 runs each (thresholds: critico 100%, rest ≥90%)
+npm run chat       # talk to the bot from the terminal
+```
+
+Prefer the **`bot-sim`** subagent for simulator runs (returns only failures). Simulator phones use
+the test range `5730000009xx`, same as the SQL batteries.
 
 **But there IS a test suite** (2026-09-09), and it's not JavaScript: `qa/sql/` holds 10
 deterministic SQL batteries (~3.650 cases) covering the RPCs, triggers, constraints and RLS —
@@ -59,6 +78,8 @@ when the situation matches, not only when typed as `/name`:
 calling the MCPs directly when the dump would be large:
 
 - **`qa-battery`** — runs one `qa/sql/` battery and returns only the verdict and the failing rows.
+- **`bot-sim`** — runs the Node bot's WhatsApp simulator (`server/`) and returns only the verdict
+  and the failing steps, classified as real / scenario / infrastructure failures.
 - **`n8n-inspector`** — read-only n8n reader (nodes, wiring, failed executions, `versionId` vs
   `activeVersionId`). It cannot write or publish; applying a fix stays in the main thread.
 

@@ -12,6 +12,7 @@ docs/
 ├── architecture.md        ← visión global del sistema (las 3 capas juntas)
 ├── database.md            ← Capa 2 · Supabase: tablas, triggers, RPCs, permisos
 ├── bot/                   ← Capa 1 · Automatización WhatsApp (n8n + OpenAI)
+│   ├── servidor.md        ← NUEVO: servidor Node que reemplaza a n8n (en construcción, server/)
 │   ├── n8n-workflow.md    ← workflow principal (trigger → routing → agentes)
 │   ├── feedback.md        ← feedback: job que pide la nota + subworkflow que la procesa
 │   ├── ai-agents.md       ← agentes IA: arquitectura, tools, reglas (referencia)

@@ -1,0 +1,16 @@
+# En el VPS: copiar .env.example → .env, completar, y `docker compose up -d --build`.
+# El puerto solo escucha en localhost: el HTTPS lo pone el proxy del VPS
+# (el mismo que ya publica n8n), apuntando bot.plateo.cloud → 127.0.0.1:3000.
+services:
+  bot:
+    build: .
+    container_name: plateo-bot
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3000:3000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
