@@ -361,6 +361,17 @@ Creada con la migración `roles_etapa1_perfiles_y_helpers` (2026-08-12).
 ### `n8n_mensajes_pendientes` — buffer de acumulación de mensajes (RLS ✅)
 `id` uuid 🔑, `telefono`, `mensaje`, `creado_el`.
 
+### Tablas del servidor Node del bot (2026-09-29 · RLS ✅ solo admin)
+Creadas por la migración `bot_node_tablas_y_carrito` (fuente en
+`supabase/migrations/20260929200000_…`). Las escribe el servidor con la clave `sb_secret_`;
+en el dashboard solo un admin las ve. Ver `docs/bot/servidor.md`.
+
+| Tabla | Columnas | Para qué |
+|---|---|---|
+| `wa_eventos` | `wamid` 🔑, `telefono`, `recibido_el` | Dedupe persistente de webhooks de Meta (Meta reintenta). Purga a 7 días (`limpiar-wa-eventos`) |
+| `bot_turnos` | `id` 🔑, `telefono`, `inicio`, `duracion_ms`, `entrada`, `contexto`, `clasificacion`, `decision`, `herramientas`, `salida`, `guardia`, `error`, `costo` (jsonb salvo los obvios) | La "caja negra": un registro por turno de conversación. Reemplaza a abrir la ejecución de n8n para depurar. Purga a 30 días (`limpiar-bot-turnos`) |
+| `conversaciones` | `telefono` 🔑, `handler`, `ultima_pregunta`, `pendiente` jsonb, `actualizado_el` | Qué preguntó el bot por última vez y qué handler lleva el hilo; la política de decisión lo usa para interpretar un "sí"/"dale" |
+
 ---
 
 ## Triggers
@@ -440,6 +451,29 @@ WHERE p.pedido_id = v_pedido_id;
 | `crear_perfil_nuevo_usuario` / `proteger_perfil` / `proteger_ultimo_admin` | `() → trigger` | Triggers de `auth.users` y `perfiles` (ver §Triggers). |
 | `limpiar_carritos_abandonados` / `limpiar_historial_chat` | `()` | Housekeeping. |
 
+#### RPC del servidor Node del bot (2026-09-29)
+
+Migraciones `bot_node_tablas_y_carrito` y `bot_node_pedido_y_reservas` (fuente en
+`supabase/migrations/`, deshacer con `supabase/rollback/20260929_bot_node_fase2_rollback.sql`).
+Principio: **el precio y las acciones críticas los decide la BD, nunca el LLM.** Todas devuelven
+`{ok, error?, message?, …}` con códigos estables en vez de reventar, y siguen el patrón
+`auth.uid() IS NULL → backend` (**SECURITY DEFINER**, salvo las marcadas). Cubiertas por
+`qa/sql/11-carrito-bot.sql` y `qa/sql/12-pedido-reservas-bot.sql`. n8n no las usa.
+
+| Función | Firma | Qué hace |
+|---|---|---|
+| `normalizar_tamano` | `(text) → text` | Alias de tamaño (`personal`→`pequena`, `media`→`mediana`, tildes fuera). STABLE · INVOKER |
+| `precio_producto` | `(p_producto_id, p_tamano=null) → jsonb` | **Única fuente de precio del bot.** Pizzas/adiciones: precio por tamaño desde el JSON de `menu."tamaño"`; resto: `menu.precio`. Un solo tamaño se asume. Errores: `PRODUCTO_NO_ENCONTRADO`, `PRODUCTO_AGOTADO`, `TAMANO_REQUERIDO`, `TAMANO_NO_DISPONIBLE`. STABLE · INVOKER |
+| `carrito_agregar_item` | `(p_telefono, p_producto_id, p_tamano=null, p_cantidad=1, p_notas=null) → jsonb` | Agrega con el precio de `precio_producto`. Misma línea (producto+tamaño+notas) suma cantidad. Cantidad 1–50. Devuelve `estado` (fila de `estado_pedido`) |
+| `carrito_agregar_mitad` | `(p_telefono, p_producto_a, p_producto_b, p_tamano, p_cantidad=1, p_notas=null) → jsonb` | Usa `cotizar_mitad_y_mitad` (se cobra la mitad más cara). Nunca se funde con otra línea |
+| `carrito_quitar_item` | `(p_telefono, p_linea, p_cantidad=null) → jsonb` | Línea 1-based; `p_cantidad` null = quitar la línea entera. `CARRITO_VACIO`, `LINEA_INVALIDA` |
+| `carrito_vaciar` | `(p_telefono) → jsonb` | `items=[]`, `total=0` (el trigger devuelve `paso_flujo` a `armando`) |
+| `crear_orden_desde_carrito` | `(p_telefono, p_cliente_id) → jsonb` | Crea pedido + detalle y borra el carrito **en una transacción**. Exige `faltantes=[]` y `paso_flujo='resumen'` (`SIN_RESUMEN`: el cliente no vio el resumen). Domicilio: barrio resuelto por `resolver_barrio` (`BARRIO_NO_RESUELTO`) y tarifa igual a la real (`TARIFA_ACTUALIZADA`). Re-cotiza cada línea contra el menú (`PRECIOS_ACTUALIZADOS`, `PRODUCTO_NO_DISPONIBLE`: el carrito queda corregido y vuelve a `datos`). Doble "sí" → `PEDIDO_DUPLICADO` (índice por minuto). Devuelve `total` real (ítems + domicilio) |
+| `consultar_disponibilidad_reserva` | `(p_fecha, p_hora, p_personas=null) → jsonb` | 12:00 → 20:30 L-V / 21:30 S-D (la del trigger, BUG-049), ≤14 días, ≥5 h si es hoy, 1–12 personas, 8 mesas × 90 min. Hora Colombia. STABLE |
+| `crear_reserva_bot` | `(p_telefono, p_cliente_id, p_nombre, p_fecha, p_hora, p_personas, p_motivo=null, p_notas=null) → jsonb` | Valida motivo contra `motivos_reserva`, guarda `notas` (BUG-029), idempotente (misma fecha y hora → `ya_existia:true`), traduce el choque de los triggers a `SIN_CUPO` / `RESERVA_INVALIDA` |
+| `cancelar_reserva_bot` | `(p_telefono, p_reserva_id) → jsonb` | Ajena = `RESERVA_NO_ENCONTRADA` (no confirma que exista). `RESERVA_YA_CANCELADA` |
+| `reservas_del_cliente` | `(p_telefono) → jsonb` | Reservas confirmadas de hoy en adelante. STABLE |
+
 ### Jobs programados (`pg_cron`)
 
 | Job | Cron | Qué corre |
@@ -448,6 +482,8 @@ WHERE p.pedido_id = v_pedido_id;
 | `limpiar_historial_chat_semanal` | `0 3 * * 1` | `limpiar_historial_chat()` |
 | `expirar-pedidos-pendientes` | `0 16 * * *` | `expirar_pedidos_pendientes()` — 16:00 UTC = **11:00 Colombia**: el corte (00:00) ya pasó, pero la notificación de cancelación le llega al cliente a una hora decente y no a medianoche. Mientras tanto el pedido viejo no estorba, porque el kanban solo muestra los del día actual |
 | `expirar-feedback-pendiente` | `7 * * * *` | `expirar_feedback_pendiente()` — borra filas de `feedback_pendiente` de más de **6 h** y devuelve a `'bot'` a esos clientes si seguían en `esperando_feedback` (nunca pisa un `humano`). BUG-050, 2026-09-12. **2026-09-16 (BUG-057):** era 48 h con corrida diaria — un cliente atrapado podía pasar ~3 días sin bot. Es la red de seguridad de todo el flujo: acota cualquier fallo futuro a ≤ 7 h. |
+| `limpiar-wa-eventos` | `20 3 * * *` | Borra `wa_eventos` de más de 7 días (servidor Node, 2026-09-29) |
+| `limpiar-bot-turnos` | `25 3 * * *` | Borra `bot_turnos` de más de 30 días (servidor Node, 2026-09-29) |
 | `limpiar-mensajes-pendientes` | `*/5 * * * *` | `delete from n8n_mensajes_pendientes where creado_el < now() - interval '5 minutes'` — un turno que muere a mitad del buffer dejaba la fila, y `Combinar mensajes` la pegaba delante del próximo mensaje del cliente aunque llegara días después. Un flujo sano la borra a los ~3 s. BUG-053, 2026-09-15 |
 
 > ✅ Desde 2026-07-22 **`Sub — Consultar_menu` llama a `buscar_menu`** (POST
