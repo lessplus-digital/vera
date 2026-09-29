@@ -60,10 +60,10 @@ describe('veredicto', () => {
   })
 })
 
-describe('correrEscenario (de punta a punta con el bot eco)', () => {
-  it('los escenarios de la Fase 1 pasan', async () => {
+describe('correrEscenario (de punta a punta)', () => {
+  it('los escenarios de la Fase 3 pasan', async () => {
     const dir = join(import.meta.dirname, '..', 'escenarios')
-    for (const f of readdirSync(dir).filter((f) => f.startsWith('f1-'))) {
+    for (const f of readdirSync(dir).filter((f) => f.startsWith('f3-'))) {
       const r = await correrEscenario(cargarEscenario(join(dir, f)))
       expect(r.pasos.flatMap((p) => p.fallos), f).toEqual([])
     }

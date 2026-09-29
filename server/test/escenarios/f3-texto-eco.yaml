@@ -1,0 +1,9 @@
+nombre: Texto en modo bot llega al conversador (eco hasta la Fase 4)
+descripcion: >
+  Tubería completa Meta → firma → dedupe → buffer → procesador → conversador → envío.
+  Se reemplaza cuando exista el conversador de verdad (Fases 4–5).
+pasos:
+  - envia: hola
+    debe:
+      contiene: ["Eco: hola"]
+      respuestas: 1

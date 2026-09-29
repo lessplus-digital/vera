@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-09-29): en construcción — Fase 1 de 9.** El bot en producción sigue siendo el
+> **Estado (2026-09-29): en construcción — Fases 1–3 de 9 hechas.** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -42,10 +42,34 @@ Meta ─POST─▶ /webhook/whatsapp  (src/http/app.ts)
   3. Dedupe por wamid (Meta reintenta)                     → src/cola/dedupe.ts
   4. BufferPorTelefono: espera BUFFER_MS desde el ÚLTIMO mensaje y junta el turno;
      nunca dos turnos del mismo teléfono a la vez           → src/cola/buffer.ts
-  5. Procesador de turno — hoy un ECO provisional           → src/turno/eco.ts
+  5. Procesador de turno (determinista, sin LLM)            → src/turno/procesador.ts
   6. Envío por la Graph API (o FakeWhatsApp en pruebas)     → src/whatsapp/cliente.ts
+  7. Registro del turno en bot_turnos                        → src/log/turnos.ts
   Responde 200 a Meta en el paso 3; el turno corre después.
 ```
+
+### El procesador de turno (Fase 3)
+
+Decide por el **modo del cliente** (`clientes.modo`) y el **tipo de mensaje**; no hay LLM aquí.
+Toda la BD pasa por la interfaz `Repo` (`src/bd/repo.ts`): `RepoSupabase` en producción y
+`RepoMemoria` (`src/sim/`) en pruebas y simulador. Los textos fijos viven en `src/textos.ts`.
+
+| Modo | Texto | Foto | Audio / ubicación / sticker |
+|---|---|---|---|
+| `humano` | al chat de soporte (`mensajes_soporte`), el bot no contesta | se sube a `comprobantes/soporte/<tel>/…` y va a soporte como imagen | nota para el operador en soporte |
+| `esperando_feedback` | RPC `procesar_respuesta_feedback` → texto fijo según la acción. Si ya no había calificación pendiente (`sin_pendiente`), **el texto sigue al bot** (en n8n se perdía) | "No aceptamos imágenes…" | igual que foto |
+| `bot` | `Conversador` (hoy un eco; Fases 4–5 = clasificador → política → agentes), con historial en `n8n_chat_histories` | **comprobante**: pedido pendiente por transferencia más reciente sin comprobante → `comprobantes/<PED>.<ext>` + `pedidos.comprobante_url` | texto "solo puedo leer texto y fotos" |
+
+- **Nunca silencio:** si el conversador falla, el cliente recibe `ERROR_GENERICO`; si la descarga
+  de un comprobante falla, `COMPROBANTE_ERROR`. Ambos quedan con `error` en `bot_turnos`.
+- **Avisos de estado del pedido:** `POST /hooks/estado-pedido` (`src/http/hooks.ts`), autenticado
+  con `x-webhook-token` = `HOOK_TOKEN`. Solo avisa si cambió `estado`. En el corte (Fase 8) el
+  trigger `notificar-estado-pedido` se apunta aquí. Mejora: un cancelado sin motivo ya no dice "null".
+- **Calificaciones:** `src/cron/feedback.ts` cada 15 min (RPC `solicitar_feedback_lote`, tandas de 5
+  con 2 s de pausa). **Apagado por defecto** (`FEEDBACK_ACTIVO=false`) mientras n8n tenga su propio
+  job; se enciende en el corte.
+- **Paso a humano:** `repo.pasarAHumano()` pone `modo='humano'` y el trigger `trigger_contexto_handoff`
+  copia el historial al chat de soporte. Lo dispara la política de la Fase 4 (y el Agente Soporte).
 
 `src/bot.ts` es el **único punto de ensamblado**: lo usan `index.ts` (producción), el
 simulador y las pruebas, así que el simulador ejercita exactamente el código de producción
@@ -104,5 +128,6 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
   en `bot_turnos` (clase `Turno` en `src/log/turnos.ts`: entrada, decisión, herramientas con
   resultado y duración, salida). Sin `SUPABASE_URL`/`SUPABASE_SECRET_KEY` arranca en modo
   desarrollo (memoria + log). Pruebas de integración en `test/integracion/` (se saltan sin claves).
-- **Fases 3–6:** núcleo determinista, clasificador + política + guardia, handlers, escenarios
-  G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.
+- **Fase 3:** ✅ núcleo determinista (2026-09-29): modos, soporte, calificaciones, comprobantes,
+  avisos de estado, historial. 86 pruebas (79 unitarias + 7 de integración contra Supabase real).
+- **Fases 4–6:** clasificador + política + guardia, agentes, escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.

@@ -1,4 +1,4 @@
-nombre: Eco — varios mensajes seguidos se responden en un solo turno
+nombre: Varios mensajes seguidos se responden en un solo turno
 critico: true
 pasos:
   - envia: ["hola", "quiero una pizza", "hawaiana"]

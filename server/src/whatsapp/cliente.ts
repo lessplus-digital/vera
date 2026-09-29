@@ -3,8 +3,12 @@
 
 export type ParametroPlantilla = string
 
+export type Media = { bytes: Uint8Array; mime: string }
+
 export interface WhatsApp {
   enviarTexto(telefono: string, texto: string): Promise<{ id: string }>
+  /** Descarga una foto/archivo que mandó el cliente (por su media id). */
+  descargarMedia(mediaId: string): Promise<Media>
   enviarPlantilla(
     telefono: string,
     nombre: string,
@@ -60,6 +64,22 @@ export class GraphWhatsApp implements WhatsApp {
     })
   }
 
+  // Meta en dos pasos: GET /{media-id} da una URL temporal; esa URL también exige el token.
+  async descargarMedia(mediaId: string): Promise<Media> {
+    const auth = { Authorization: `Bearer ${this.o.accessToken}` }
+    const info = await this.fetch(`https://graph.facebook.com/${this.o.apiVersion}/${mediaId}`, { headers: auth })
+    const meta = (await info.json().catch(() => ({}))) as { url?: string; mime_type?: string; error?: { message?: string; code?: number } }
+    if (!info.ok || !meta.url) {
+      throw new ErrorWhatsApp(meta.error?.message ?? `media ${mediaId}: HTTP ${info.status}`, info.status, meta.error?.code ?? null)
+    }
+    const archivo = await this.fetch(meta.url, { headers: auth })
+    if (!archivo.ok) throw new ErrorWhatsApp(`descarga de media: HTTP ${archivo.status}`, archivo.status, null)
+    return {
+      bytes: new Uint8Array(await archivo.arrayBuffer()),
+      mime: meta.mime_type ?? archivo.headers.get('content-type') ?? 'application/octet-stream',
+    }
+  }
+
   private async enviar(cuerpo: Record<string, unknown>): Promise<{ id: string }> {
     const res = await this.fetch(this.url, {
       method: 'POST',
@@ -84,7 +104,16 @@ export type Enviado =
 /** Guarda en memoria todo lo que "se envió". Para pruebas, simulador y WA_MODO=fake. */
 export class FakeWhatsApp implements WhatsApp {
   readonly enviados: Enviado[] = []
+  /** Media ids que fallan al descargar (para probar el camino de error). */
+  readonly mediaQueFalla = new Set<string>()
+  /** mime de cada media id (como lo reporta Meta); el simulador lo registra al enviar la foto. */
+  readonly mimes = new Map<string, string>()
   private n = 0
+
+  async descargarMedia(mediaId: string): Promise<Media> {
+    if (this.mediaQueFalla.has(mediaId)) throw new ErrorWhatsApp(`media ${mediaId} no disponible`, 404, null)
+    return { bytes: new TextEncoder().encode(`imagen-falsa:${mediaId}`), mime: this.mimes.get(mediaId) ?? 'image/jpeg' }
+  }
 
   async enviarTexto(telefono: string, texto: string) {
     const id = `wamid.fake.${++this.n}`

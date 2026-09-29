@@ -4,6 +4,8 @@ import { FakeWhatsApp } from '../whatsapp/cliente.js'
 import { firmar } from '../whatsapp/firma.js'
 import type { ProcesadorTurno } from '../cola/buffer.js'
 import { RegistroMemoria } from '../log/turnos.js'
+import type { Conversador } from '../turno/procesador.js'
+import { RepoMemoria } from './repo-memoria.js'
 import { payloadBoton, payloadEstado, payloadImagen, payloadTexto, payloadTipo } from './meta.js'
 
 // Un bot completo en memoria: mismo código que producción (crearBot), con
@@ -12,14 +14,19 @@ import { payloadBoton, payloadEstado, payloadImagen, payloadTexto, payloadTipo }
 
 const SECRETO_SIM = 'secreto-del-simulador'
 
+export const HOOK_TOKEN_SIM = 'token-de-hook-del-simulador'
+
 export type OpcionesEntorno = {
   bufferMs?: number
   log?: Logger
+  conversador?: Conversador
   procesador?: (wa: FakeWhatsApp) => ProcesadorTurno
 }
 
 export class EntornoSim {
   readonly wa = new FakeWhatsApp()
+  /** BD en memoria: clientes, modos, pedidos, soporte, historial, calificaciones. */
+  readonly repo = new RepoMemoria()
   /** Los turnos del bot, para verificar decisiones y herramientas (no solo textos). */
   readonly registro = new RegistroMemoria()
   readonly bot: Bot
@@ -30,11 +37,24 @@ export class EntornoSim {
       verifyToken: 'verify-sim',
       appSecret: SECRETO_SIM,
       bufferMs: o.bufferMs ?? 30,
+      hookToken: HOOK_TOKEN_SIM,
       wa: this.wa,
+      repo: this.repo,
       log,
       registro: this.registro,
+      ...(o.conversador ? { conversador: o.conversador } : {}),
       ...(o.procesador ? { procesador: o.procesador(this.wa) } : {}),
     })
+  }
+
+  /** Simula el trigger notificar-estado-pedido de la BD. */
+  async hookEstado(cuerpo: unknown, token = HOOK_TOKEN_SIM) {
+    const res = await this.bot.app.request('/hooks/estado-pedido', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-webhook-token': token },
+      body: JSON.stringify(cuerpo),
+    })
+    return { status: res.status, cuerpo: await res.json().catch(() => null) }
   }
 
   /** POST firmado al webhook, igual que Meta. Devuelve el status HTTP. */
@@ -55,6 +75,7 @@ export class EntornoSim {
     return this.postear(payloadBoton({ telefono, texto }))
   }
   enviarImagen(telefono: string, imagenId: string, mime?: string, caption?: string) {
+    if (mime) this.wa.mimes.set(imagenId, mime)
     return this.postear(payloadImagen({ telefono, imagenId, ...(mime ? { mime } : {}), ...(caption ? { caption } : {}) }))
   }
   enviarTipo(telefono: string, tipo: string) {

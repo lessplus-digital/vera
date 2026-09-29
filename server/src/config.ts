@@ -18,19 +18,21 @@ const esquema = z
     BUFFER_MS: z.coerce.number().int().min(0).default(3000),
 
     // Supabase con la clave SECRETA (sb_secret_…): solo vive en el servidor.
-    // Sin ellas el bot arranca igual (desarrollo) pero sin dedupe persistente
-    // ni log de turnos; en producción son obligatorias.
-    SUPABASE_URL: z.url().optional(),
-    SUPABASE_SECRET_KEY: z.string().min(1).optional(),
-    NODE_ENV: z.string().default('development'),
+    // Desde la Fase 3 son obligatorias: sin BD el bot no sabe quién es el cliente
+    // ni en qué modo está. (El simulador y las pruebas usan una BD en memoria.)
+    SUPABASE_URL: z.url(),
+    SUPABASE_SECRET_KEY: z.string().min(1),
+
+    // Token que manda el trigger notificar-estado-pedido en `x-webhook-token`.
+    // Sin él, /hooks/estado-pedido queda deshabilitado (404).
+    HOOK_TOKEN: z.string().min(16).optional(),
+
+    // Job que pide calificaciones cada 15 min. APAGADO por defecto: mientras n8n
+    // siga activo tiene su propio job, y un servidor de pruebas no debe escribirle
+    // a clientes por su cuenta. Se enciende en el corte (Fase 8).
+    FEEDBACK_ACTIVO: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   })
   .superRefine((c, ctx) => {
-    if (!!c.SUPABASE_URL !== !!c.SUPABASE_SECRET_KEY) {
-      ctx.addIssue({ code: 'custom', path: ['SUPABASE_SECRET_KEY'], message: 'SUPABASE_URL y SUPABASE_SECRET_KEY van juntas' })
-    }
-    if (c.NODE_ENV === 'production' && !c.SUPABASE_URL) {
-      ctx.addIssue({ code: 'custom', path: ['SUPABASE_URL'], message: 'obligatoria en producción' })
-    }
     if (c.WA_MODO === 'graph') {
       if (!c.WA_ACCESS_TOKEN) ctx.addIssue({ code: 'custom', path: ['WA_ACCESS_TOKEN'], message: 'obligatorio con WA_MODO=graph' })
       if (!c.WA_PHONE_NUMBER_ID) ctx.addIssue({ code: 'custom', path: ['WA_PHONE_NUMBER_ID'], message: 'obligatorio con WA_MODO=graph' })

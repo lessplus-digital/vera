@@ -64,7 +64,13 @@ describe('webhook /webhook/whatsapp', () => {
 })
 
 describe('cargarConfig', () => {
-  const minimo = { WA_VERIFY_TOKEN: 'v', WA_APP_SECRET: 's', WA_MODO: 'fake' }
+  const minimo = {
+    WA_VERIFY_TOKEN: 'v',
+    WA_APP_SECRET: 's',
+    WA_MODO: 'fake',
+    SUPABASE_URL: 'https://ejemplo.supabase.co',
+    SUPABASE_SECRET_KEY: 'sb_secret_x',
+  }
 
   it('aplica valores por defecto', () => {
     const c = cargarConfig(minimo)
@@ -77,5 +83,19 @@ describe('cargarConfig', () => {
 
   it('falla con mensaje claro si falta el secreto de la app', () => {
     expect(() => cargarConfig({ WA_VERIFY_TOKEN: 'v' })).toThrow(/WA_APP_SECRET/)
+  })
+
+  it('exige Supabase (sin BD el bot no sabe quién es el cliente)', () => {
+    const { SUPABASE_URL: _u, SUPABASE_SECRET_KEY: _k, ...sinBD } = minimo
+    expect(() => cargarConfig(sinBD)).toThrow(/SUPABASE_URL[\s\S]*SUPABASE_SECRET_KEY/)
+  })
+
+  it('el job de calificaciones viene apagado salvo FEEDBACK_ACTIVO=true', () => {
+    expect(cargarConfig(minimo).FEEDBACK_ACTIVO).toBe(false)
+    expect(cargarConfig({ ...minimo, FEEDBACK_ACTIVO: 'true' }).FEEDBACK_ACTIVO).toBe(true)
+  })
+
+  it('HOOK_TOKEN demasiado corto se rechaza', () => {
+    expect(() => cargarConfig({ ...minimo, HOOK_TOKEN: 'corto' })).toThrow(/HOOK_TOKEN/)
   })
 })

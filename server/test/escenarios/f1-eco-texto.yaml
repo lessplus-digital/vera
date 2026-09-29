@@ -1,9 +1,0 @@
-nombre: Eco — tubería completa con texto
-descripcion: >
-  Fase 1. Verifica Meta → firma → dedupe → buffer → envío. Se reemplaza cuando
-  exista el bot real (Fases 3–5).
-pasos:
-  - envia: hola
-    debe:
-      contiene: ["Eco: hola"]
-      respuestas: 1

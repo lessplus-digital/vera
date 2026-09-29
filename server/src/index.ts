@@ -4,8 +4,10 @@ import { crearLogger } from './log.js'
 import { crearBot } from './bot.js'
 import { FakeWhatsApp, GraphWhatsApp, type WhatsApp } from './whatsapp/cliente.js'
 import { crearSupabase } from './bd/supabase.js'
+import { RepoSupabase } from './bd/repo-supabase.js'
 import { DedupeBD, DedupeEnCapas, DedupeMemoria, insertarWaEventoSupabase } from './cola/dedupe.js'
-import { RegistroBD, RegistroLog } from './log/turnos.js'
+import { RegistroBD } from './log/turnos.js'
+import { programarFeedback } from './cron/feedback.js'
 
 const config = cargarConfig()
 const log = crearLogger(config.LOG_LEVEL)
@@ -19,31 +21,34 @@ const wa: WhatsApp =
       })
     : new FakeWhatsApp()
 
-const sb =
-  config.SUPABASE_URL && config.SUPABASE_SECRET_KEY
-    ? crearSupabase(config.SUPABASE_URL, config.SUPABASE_SECRET_KEY)
-    : null
-if (!sb) log.warn('sin Supabase: dedupe solo en memoria y turnos solo en el log (modo desarrollo)')
+const sb = crearSupabase(config.SUPABASE_URL, config.SUPABASE_SECRET_KEY)
+const repo = new RepoSupabase(sb)
 
 const { app, buffer } = crearBot({
   verifyToken: config.WA_VERIFY_TOKEN,
   appSecret: config.WA_APP_SECRET,
   bufferMs: config.BUFFER_MS,
+  hookToken: config.HOOK_TOKEN,
   wa,
+  repo,
   log,
-  dedupe: sb
-    ? new DedupeEnCapas([new DedupeMemoria(), new DedupeBD(insertarWaEventoSupabase(sb), log)])
-    : new DedupeMemoria(),
-  registro: sb ? new RegistroBD(sb, log) : new RegistroLog(log),
+  dedupe: new DedupeEnCapas([new DedupeMemoria(), new DedupeBD(insertarWaEventoSupabase(sb), log)]),
+  registro: new RegistroBD(sb, log),
 })
 
+const detenerFeedback = config.FEEDBACK_ACTIVO ? programarFeedback({ repo, wa, log }) : () => {}
+
 const servidor = serve({ fetch: app.fetch, port: config.PORT }, (info) =>
-  log.info({ puerto: info.port, waModo: config.WA_MODO, supabase: !!sb }, 'bot escuchando'),
+  log.info(
+    { puerto: info.port, waModo: config.WA_MODO, hooks: !!config.HOOK_TOKEN, feedback: config.FEEDBACK_ACTIVO },
+    'bot escuchando',
+  ),
 )
 
 // Apagado ordenado (docker stop): deja de aceptar peticiones y termina los turnos en curso.
 async function apagar(senal: string) {
   log.info({ senal }, 'apagando')
+  detenerFeedback()
   servidor.close()
   await buffer.esperarInactivo()
   process.exit(0)

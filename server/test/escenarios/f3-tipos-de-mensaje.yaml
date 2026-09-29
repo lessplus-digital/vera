@@ -1,12 +1,13 @@
-nombre: Eco — botones, imágenes y tipos no soportados
+nombre: Botones, fotos sin pedido y tipos no soportados
 pasos:
   - envia_boton: Confirmar
     debe:
       contiene: ["Confirmar mi reserva"]
       respuestas: 1
+  # Una foto en modo bot es un comprobante; sin pedido por transferencia pendiente:
   - envia_imagen: { id: img-1 }
     debe:
-      contiene: ["imagen"]
+      contiene: ["No encontré ningún pedido pendiente de pago"]
       respuestas: 1
   - envia_tipo: audio
     debe:
