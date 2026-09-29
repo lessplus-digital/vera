@@ -5,6 +5,7 @@ import { crearApp } from './http/app.js'
 import { DedupeMemoria, type Dedupe } from './cola/dedupe.js'
 import { BufferPorTelefono, type ProcesadorTurno } from './cola/buffer.js'
 import { crearProcesadorEco } from './turno/eco.js'
+import { RegistroLog, type RegistroTurnos } from './log/turnos.js'
 
 // Punto único donde se arma el bot. Lo usan el servidor real (index.ts), el
 // simulador y las pruebas: así el simulador ejercita EXACTAMENTE el mismo
@@ -17,6 +18,7 @@ export type OpcionesBot = {
   wa: WhatsApp
   log: Logger
   dedupe?: Dedupe
+  registro?: RegistroTurnos
   /** Para pruebas: reemplaza el procesador de turnos. */
   procesador?: ProcesadorTurno
 }
@@ -27,7 +29,8 @@ export type Bot = {
 }
 
 export function crearBot(o: OpcionesBot): Bot {
-  const procesador = o.procesador ?? crearProcesadorEco(o.wa, o.log)
+  const registro = o.registro ?? new RegistroLog(o.log)
+  const procesador = o.procesador ?? crearProcesadorEco(o.wa, registro, o.log)
   const buffer = new BufferPorTelefono(o.bufferMs, procesador, (telefono, err) =>
     o.log.error({ telefono, err }, 'turno falló'),
   )

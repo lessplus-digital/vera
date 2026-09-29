@@ -3,6 +3,7 @@ import { loggerMudo, type Logger } from '../log.js'
 import { FakeWhatsApp } from '../whatsapp/cliente.js'
 import { firmar } from '../whatsapp/firma.js'
 import type { ProcesadorTurno } from '../cola/buffer.js'
+import { RegistroMemoria } from '../log/turnos.js'
 import { payloadBoton, payloadEstado, payloadImagen, payloadTexto, payloadTipo } from './meta.js'
 
 // Un bot completo en memoria: mismo código que producción (crearBot), con
@@ -19,6 +20,8 @@ export type OpcionesEntorno = {
 
 export class EntornoSim {
   readonly wa = new FakeWhatsApp()
+  /** Los turnos del bot, para verificar decisiones y herramientas (no solo textos). */
+  readonly registro = new RegistroMemoria()
   readonly bot: Bot
 
   constructor(o: OpcionesEntorno = {}) {
@@ -29,6 +32,7 @@ export class EntornoSim {
       bufferMs: o.bufferMs ?? 30,
       wa: this.wa,
       log,
+      registro: this.registro,
       ...(o.procesador ? { procesador: o.procesador(this.wa) } : {}),
     })
   }

@@ -98,7 +98,11 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
   n8n no recibe mensajes de ese número; volver = restaurar la URL de n8n en Meta. Si Meta dice
   "no se pudo validar", el log `verificación de Meta rechazada` indica si el token coincidió
   (registra solo su largo, nunca el valor). Falta: construir la imagen de Docker.
-- **Fase 2:** RPCs nuevas (`carrito_agregar_item`/`quitar`, `crear_orden_desde_carrito`,
-  reservas), tablas `wa_eventos`, `bot_turnos`, `conversaciones`.
+- **Fase 2:** ✅ RPCs y tablas aplicadas en la BD el 2026-09-29 (`docs/database.md` §RPC del
+  servidor Node; QA 11 y 12 verdes). El servidor ya las usa: dedupe en capas (memoria →
+  `wa_eventos`; si la BD falla se procesa igual para no perder mensajes) y un registro por turno
+  en `bot_turnos` (clase `Turno` en `src/log/turnos.ts`: entrada, decisión, herramientas con
+  resultado y duración, salida). Sin `SUPABASE_URL`/`SUPABASE_SECRET_KEY` arranca en modo
+  desarrollo (memoria + log). Pruebas de integración en `test/integracion/` (se saltan sin claves).
 - **Fases 3–6:** núcleo determinista, clasificador + política + guardia, handlers, escenarios
   G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.

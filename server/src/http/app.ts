@@ -51,7 +51,7 @@ export function crearApp(d: DepsApp): Hono {
     // Se encola y se responde 200 enseguida: el turno corre fuera de esta
     // petición. Si tardáramos, Meta reintentaría y duplicaría mensajes.
     for (const m of parsearWebhook(cuerpo)) {
-      if (!(await d.dedupe.primeraVez(m.wamid))) {
+      if (!(await d.dedupe.primeraVez(m.wamid, m.telefono))) {
         d.log.info({ wamid: m.wamid }, 'mensaje duplicado ignorado')
         continue
       }
