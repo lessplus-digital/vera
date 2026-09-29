@@ -20,7 +20,7 @@
 
 ## Abiertos
 
-### BUG-061 · 🔴 Alta · 🔴 Abierto — el bot promete domicilio y canta la tarifa cuando la tool dijo `cubierto: false`: se la inventa de la memoria de la conversación
+### BUG-061 · 🔴 Alta · 🟠 En progreso (n8n publicado 2026-09-28 · falta verificar por WhatsApp) — el bot promete domicilio y canta la tarifa cuando la tool dijo `cubierto: false`: se la inventa de la memoria de la conversación
 
 - **Componente:** prompt del Agente Pedidos / Cobertura (n8n) · efecto colateral en `carritos.barrio`.
 - **Encontrado en:** **G3, paso 3.5** (Capa B, 2026-09-22, `573113298122`). Ninguna batería de la
@@ -58,20 +58,106 @@
   difuso y devuelve `sugerencias`, pero `resolver_barrio` (la que usa el trigger) solo resuelve el
   nombre canónico. Las dos normalizan distinto. La batería `01 · T2` prueba 295 variantes contra
   `consultar_cobertura` y sale verde — **ninguna las prueba contra `resolver_barrio`**.
-- **Fix propuesto (dos capas, las dos hacen falta):**
-  1. **Prompt:** prohibir dar tarifa o tiempo que no venga en la respuesta de la llamada actual, y
-     obligar a preguntar cuando `cubierto = false` y `sugerencias` no está vacío ("¿te refieres a
-     Niquía?"). Es la regla de edge-case §27 escrita en el prompt.
-  2. **Dato:** que lo que se guarde en `carritos.barrio` sea el **nombre canónico** que devolvió la
-     tool, nunca el texto del cliente. Alternativa o complemento: darle a `resolver_barrio` el mismo
-     emparejamiento difuso que ya tiene `consultar_cobertura`, para que el trigger no dependa de que
-     la capa de arriba escriba bien.
-- **Regresión que falta:** un caso en `01-cobertura.sql` que cruce las mismas variantes de escritura
-  contra **`resolver_barrio`**, no solo contra `consultar_cobertura`. Hoy ese hueco no lo cubre nadie.
+- **Fix aplicado (2026-09-28, n8n `8LI3J7PLi35zf4EJ`, versión `8c21cac4…`, publicado):**
+  Solo capa de **prompt** — ver la re-verificación de la capa "Dato" abajo, no hacía falta tocarla.
+  1. `AGENTE PEDIDOS` (`options.systemMessage`): la sección **"Cambios de opinión"** ahora dice
+     explícitamente que un cambio de BARRIO invalida la tarifa sin excepción, obliga a releer
+     `faltantes` (`'cobertura'` vuelve a aparecer) y a **volver a llamar `consultar_cobertura` en
+     el mismo turno** antes de responder nada de envío — nunca citar el costo/tiempo de un mensaje
+     anterior de la misma conversación, aunque el barrio suene parecido. Se agregó también un bullet
+     gemelo en `PROHIBIDO ASUMIR DATOS`. La sección `'cobertura' →` (que ya decía correctamente
+     "pregunta '¿te refieres a…?' y solo si confirma, guarda ESE barrio") no se tocó: el hueco no
+     era esa lógica, era que un barrio corregido a mitad de flujo nunca llegaba a ejecutarla porque
+     el agente respondía de memoria antes de volver a leer `faltantes`.
+  2. Nodos `consultar_cobertura` y `consultar_cobertura1` (`toolDescription`): mismo refuerzo —
+     "si el cliente cambia de barrio o lo corrige, vuelve a llamar esta herramienta, nunca
+     reutilices el resultado de una llamada anterior, ni para el mismo barrio".
+  3. **`AGENTE SOPORTE`** (`options.systemMessage`, versión `a5fea00b…`, publicado por separado):
+     tiene su **propia** sección `consultar_cobertura` (para "¿a dónde llevan?" sin pedido activo) y
+     tenía el mismo hueco. G3 son preguntas sueltas de cobertura sin carrito armado — lo más probable
+     es que el orquestador las mande a **este** agente, no a AGENTE PEDIDOS, así que sin este tercer
+     cambio el fix de los puntos 1-2 no se habría ejercitado en la prueba real. Mismo refuerzo:
+     "vuelve a llamar la herramienta, nunca repitas de memoria, ni para el mismo barrio".
+- **Re-verificación de la capa "Dato" (2026-09-28):** la sospecha original — que `resolver_barrio`
+  debería tener el mismo emparejamiento difuso que `consultar_cobertura` — **no aplica**:
+  `resolver_barrio('niqia')` no devuelve nada porque su umbral (`similarity ≥ 0.45`) es **a propósito**
+  más estricto que el de las *sugerencias* de `consultar_cobertura` (`≥ 0.40` + una segunda pasada de
+  transposición/deleción) — "niqia" da 0.444, justo por debajo. Es el guardián de que el trigger
+  `aplicar_tarifa_domicilio` nunca cobre una zona por una corazonada: si el LLM guarda un barrio sin
+  confirmar, cae a `tarifa_base()`, no a una zona equivocada. Bajar ese umbral para que alcance a
+  "niqia" reabriría exactamente el riesgo que `resolver_barrio` existe para evitar, y no está probado
+  contra las 295 variantes de la batería. La capa de datos correcta ya existía en el prompt (guardar
+  el barrio **canónico** de la sugerencia confirmada, no el texto crudo) — el fix de arriba es lo que
+  hacía falta para que esa ruta se ejecute siempre que cambie el barrio.
+- **Primer retest, 🔴 rojo (2026-09-28 18:57, `573113298122`, Juan por WhatsApp real):**
+  ```
+  Juan: ¿llegan a Niquía?
+  Bot:  ¡Hola Juan! Sí, sí llegamos a Niquía 🙌 El domicilio a Niquía tiene un costo
+        de $7.500 y el tiempo estimado de entrega es de 30 a 45 minutos.
+  Juan: estoy en niqia
+  Bot:  Perfecto, Juan 😊 Sí cubrimos Niquía sin problema.
+        Si quieres, dime qué se te antoja (pizza, patatas, bebidas, postres) y te
+        ayudo a armar el pedido y dejarlo listico en el carrito 🍕
+  ```
+  **Mejoró** (no repitió "$7.500" ni "30-45 min" — el refuerzo de AGENTE PEDIDOS/SOPORTE sí surtió
+  efecto ahí), pero **sigue afirmando cobertura sin verificarla** ("sí cubrimos… sin problema") y
+  la frase "dime qué se te antoja (pizza, patatas, bebidas, postres)" es literal de **AGENTE MENÚ**
+  (la misma que documenta BUG-062). Diagnóstico: `estoy en niqia` se enrutó a **menú**, no a
+  soporte ni a pedidos — un agente que **no tiene** `consultar_cobertura` y que improvisó una
+  confirmación de cobertura por su cuenta. Causa raíz: "estoy en niqia" es una **frase corta**, no
+  una palabra suelta, así que no calzaba en la excepción que el fix de BUG-062 le puso a la Regla 3
+  del orquestador — y la Regla 1 ("no hay carrito → menu") ganaba primero.
+- **Segundo fix (2026-09-28/29, n8n, versión `67272ec5…`, publicado):**
+  1. `ORQUESTADOR` — **Regla de seguridad #1** (antes solo tenía la excepción en la Regla 3): ahora
+     dice explícitamente que un barrio/lugar suelto o dentro de una frase corta, sin carrito armado,
+     NO es "menu" — es "soporte", aunque la Regla 1 general diga "no hay carrito → menu".
+  2. `AGENTE MENÚ` — refuerzo defensivo por si el ruteo falla otra vez: se agregó a su lista
+     `PROHIBIDO` "confirmar, negar o cotizar si hay domicilio a un barrio — no tienes esa
+     herramienta", con la respuesta de respaldo "¡Claro! ¿Qué te gustaría pedir?".
+- **Segundo retest, 🔴 rojo otra vez (2026-09-28 19:09, `573113298122`, misma secuencia):**
+  ```
+  Juan: ¿llegan a Niquía?
+  Bot:  Hola Juan 🙌 Sí, sí llegamos a Niquía 🏍️ El domicilio tiene un costo de $7.500
+        y el tiempo estimado de entrega es de 30 a 45 minutos.
+  Juan: estoy en niqia
+  Bot:  Perfecto, a Niquía sí llegamos sin problema 😊
+        Cuéntame qué se te antoja de Vera y te ayudo a armar el pedido 🍕🥤
+  ```
+  **Diagnóstico con la ejecución real (n8n, id `17030`), no solo con el texto del bot:** el propio
+  `ORQUESTADOR` devolvió `{"agente":"menu","razon":"respuesta corta sin carrito se asume para
+  menú","senales":{"barrio":"niqia"}}` — la `razon` es casi literal la regla **vieja** que ya se
+  había reemplazado dos veces. **El LLM clasificador no respeta de forma confiable una excepción de
+  texto** enterrada entre docenas de reglas, aunque sí extrae bien `senales.barrio` de forma
+  consistente. `AGENTE MENÚ` (que recibió el mensaje) hizo **0 llamadas a herramientas**
+  (`tool_calls.requested: 0`) — "sí llegamos sin problema" es 100% improvisado, no viene de
+  `consultar_cobertura`.
+- **Tercer fix, definitivo (2026-09-29, n8n, versión `7bd2f302…`, publicado):** se abandona el
+  enfoque de prompt para este caso — **override determinista en código**, en el nodo
+  `Parse Orquestador` (el mismo que ya sanea `agente` contra una lista blanca): si
+  `senales.barrio` viene poblado (eso sí es confiable) y no hay carrito armado, se fuerza
+  `agente = 'soporte'` **en JavaScript**, sin importar lo que haya decidido el LLM. No depende de
+  que el modelo "se acuerde" de una regla de texto.
+- **Verificación pendiente (expectativa actualizada tras la decisión de UX):** repetir **G3.5
+  completo** (`¿llegan a Niquía?` → `estoy en niqia`, número `573113298122`, reset ya hecho) y
+  confirmar que responde algo como *"¡A Niquía sí llegamos! El domicilio cuesta $7.500 y tarda
+  30-45 min"* — directo, sin preguntar "¿te refieres a…?", pero **verificado**: debe venir de una
+  llamada real a `consultar_cobertura('Niquía')` en ese turno (revisar la ejecución en n8n, no solo
+  el texto), no de lo que se dijo 2 mensajes atrás. Rojo si vuelve a decir "sin problema" sin tarifa,
+  o si el mensaje se enruta a `menu` otra vez. Solo entonces pasa a cerrado.
+- **Decisión de negocio de Juan (2026-09-29):** preguntar "¿te refieres a Niquía?" para un typo
+  obvio es fricción innecesaria — confirmó la propuesta de responder directo cuando hay una sola
+  sugerencia clara, siempre que sea con dato verificado (no de memoria).
+- **Cuarto cambio, UX (2026-09-29, n8n, versión `1d7f7d87…`, publicado):** en `AGENTE PEDIDOS`,
+  `AGENTE SOPORTE` y las dos tools `consultar_cobertura`/`consultar_cobertura1`: cuando
+  `sugerencias` trae **exactamente una**, ya no se pregunta — se vuelve a llamar
+  `consultar_cobertura` con esa sugerencia (nombre canónico) y se responde directo con el
+  `costo_domicilio`/`tiempo_estimado` reales de esa nueva llamada. Con **0 o 2+** sugerencias
+  sigue preguntando (ahí sí hay ambigüedad real entre lugares distintos). Sigue siendo dato
+  verificado en el turno, nunca de memoria — solo cambia si se pregunta o no antes de responder.
 
 ---
 
-### BUG-062 · 🟡 Media · 🔴 Abierto — un nombre de barrio suelto se rutea al agente de Menú y el cliente recibe la carta
+### BUG-062 · 🟡 Media · 🟠 En progreso (n8n publicado 2026-09-28 · falta verificar por WhatsApp) — un nombre de barrio suelto se rutea al agente de Menú y el cliente recibe la carta
 
 - **Componente:** orquestador (n8n) → ruteo de intención.
 - **Encontrado en:** **G3, paso 3.6** (Capa B, 2026-09-22).
@@ -85,9 +171,23 @@
   «solo repartimos en Bello» sin sugerir Prado"*). Esa expectativa está **obsoleta**: BUG-040 se
   cerró y la sugerencia existe. Lo que falla ahora es anterior, es el ruteo: la pregunta no llega
   al agente que sabe contestarla. El guion ya está actualizado con la expectativa nueva.
-- **Fix propuesto:** que el clasificador del orquestador mande a Cobertura los mensajes de una sola
-  palabra que parezcan topónimo, o —más barato y más robusto— que el agente de Menú, al recibir un
-  término que no empareja ningún producto, consulte cobertura antes de soltar la carta.
+- **Fix aplicado (2026-09-28, n8n `8LI3J7PLi35zf4EJ`, versión `2576a6b7…`, publicado):** se eligió
+  la primera opción, no la del agente de Menú — AGENTE MENÚ no tiene conectada la tool de cobertura
+  (solo la tienen AGENTE PEDIDOS y AGENTE SOPORTE, ver `consultar_cobertura`/`consultar_cobertura1`
+  en el grafo del workflow), así que hacerlo ahí habría exigido cablear una tool nueva. En vez de
+  eso, `ORQUESTADOR` → `options.systemMessage` → **Reglas de seguridad #3**: cuando no hay carrito
+  ni reserva en curso y el mensaje de una sola palabra **parece nombre de barrio/lugar** (y no es
+  talla, sabor, ingrediente ni una confirmación tipo "sí"/"no"/"dale"), rutea a **"soporte"** — que
+  ya tiene `consultar_cobertura1` — en vez de caer al default "menu". No se tocó nada de AGENTE MENÚ
+  ni de las tools.
+- **Riesgo aceptado:** depende de que el LLM del orquestador reconozca "parece un nombre de lugar"
+  sin ver la lista real de 59 barrios (no se le dio esa lista para no inflar el prompt en cada
+  turno). Si en la verificación por WhatsApp confunde un barrio real con un ingrediente o viceversa,
+  la vía más robusta sí sería la del agente de Menú con la tool cableada — queda anotado como
+  alternativa si este fix no basta.
+- **Verificación pendiente:** repetir **G3.6** (`pardo` suelto, sin carrito ni reserva activa) y
+  **G10.6** (regresión de ruteo) y confirmar que llega *"¿te refieres a Prado?"* del agente de
+  soporte, no el PDF del menú. Solo entonces pasa a cerrado.
 
 ---
 

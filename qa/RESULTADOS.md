@@ -80,12 +80,14 @@ feedback del 16-09. **Sin regresiones del sistema.**
 
 ### ⛳ Puerta de salida al MVP
 
-1. **Correr G11, G1.7, G4 y G10 por WhatsApp** (G1.1–1.6 ya verdes el 23-09). Solo Juan puede. Cinco bugs 🔴
+1. **Repetir G3.5 y G3.6** (reset primero) — BUG-061 y BUG-062 ya tienen fix de prompt **publicado
+   en n8n el 2026-09-28**, pero ninguno de los dos pasa a cerrado hasta confirmar por WhatsApp que
+   el bot pregunta "¿te refieres a Niquía?"/"¿te refieres a Prado?" en vez de inventar tarifa o
+   mandar el PDF del menú. Ver el detalle del fix en `docs/bug-tracker.md`.
+2. **Correr G11, G1.7, G4 y G10 por WhatsApp** (G1.1–1.6 ya verdes el 23-09). Solo Juan puede. Cinco bugs 🔴
    (BUG-056/057/058/059/060) están desplegados y **verificados únicamente en SQL** — ninguno se ha
-   probado hablando con el bot. Es el riesgo más grande abierto. G10 subió de prioridad porque
-   BUG-062 es un fallo de ruteo que apareció de casualidad en G3.
-2. **Arreglar BUG-061** 🔴 — el bot promete tarifa cuando la tool dijo `cubierto:false`. Es el único
-   hallazgo de la Capa B con consecuencia en dinero.
+   probado hablando con el bot. Es el riesgo más grande abierto. G10.6 confirma además la regresión
+   de ruteo de BUG-062.
 3. **Terminar BUG-049 en n8n** (la BD ya está cerrada).
 4. **Kanban: cuarta columna + navegación por día** — es la otra mitad del fix de BUG-052; sin ella
    el pedido pagado que ya no se autocancela se entierra igual. Ficha en `docs/backlog.md`.
