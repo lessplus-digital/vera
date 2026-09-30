@@ -1,0 +1,36 @@
+nombre: Reservas arma una reserva de punta a punta
+descripcion: >
+  Fase 5, agentes reales. Una pregunta por mensaje (personas → día → hora →
+  ocasión), la disponibilidad la consulta el código antes de seguir, el costo
+  de la ocasión sale de motivos_reserva y la reserva la crea el código SOLO con
+  el "sí" al resumen.
+critico: true
+bot: decision
+telefono: '573000000911'
+pasos:
+  - envia: hola, quiero reservar una mesa
+    debe:
+      contiene: ['¿Para cuántas personas']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: somos 4
+    debe:
+      contiene: ['¿Para qué día']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: el sábado
+    debe:
+      contiene: ['¿A qué hora']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: a las 7 de la noche
+    debe:
+      contiene: ['ocasión especial']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: es el cumpleaños de mi mamá
+    debe:
+      contiene: ['7:00 PM', '4 personas', 'Cumpleaños — $80.000', '¿Te la reservo?']
+      no_contiene: ['confirmada']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: sí, dale
+    debe:
+      contiene: ['Reserva confirmada', '7:00 PM', 'Cumpleaños — $80.000']
+      respuestas: 1
+      turno: { regla: 'reserva:si', acciones: [crear_reserva] }

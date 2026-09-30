@@ -14,6 +14,45 @@
 ```
 
 ---
+### 2026-09-30 — Bot Node, Fase 5: agente de Reservas · borrador de la reserva en `conversaciones`
+
+**Contexto:** en n8n el agente de Reservas llamaba a `crear_reserva` cuando el modelo creía que el
+cliente había confirmado, con los datos que recordaba de la conversación.
+
+**Decisión:** el borrador vive en la BD (columna `conversaciones.reserva`, migración
+`20260930180000`, aditiva). El código decide qué preguntar, consulta la disponibilidad antes de
+seguir, empareja la ocasión contra `motivos_reserva` y arma el resumen; la reserva la crea el
+ejecutor solo con "sí" al resumen y el borrador completo con cupo verificado (invariante con
+barrido en `politica.test.ts`). De paso: la lectura de `conversaciones` en `repo-supabase` perdía
+las preguntas `nombre` y `ofrecer_humano` (lista a mano); ahora es exhaustiva por tipo.
+
+**Impacto:** `server/src/handlers/reservas.ts`, `decision/reserva.ts`, `politica.ts` (regla 3b),
+`ejecutor.ts`, `conversador.ts`, `textos.ts`, `Repo` (5 métodos), `docs/database.md`. 309 pruebas
+(17 de integración). Escenarios `f5-reservas-*` escritos, sin correr: la cuenta de OpenAI se quedó
+sin crédito.
+
+---
+### 2026-09-30 — Bot Node, Fase 5: agentes de Pedidos y Soporte, sin herramientas para el LLM
+
+**Contexto:** en n8n, Pedidos y Soporte eran LLMs con herramientas y reglas en texto ("pregunta
+un dato a la vez", "no des tarifa sin cobertura", "llama `solicitar_handoff` si…"). Al portarlos
+se vio que casi todo es decidible en código con lo que ya hay en la BD.
+
+**Decisión:** ninguno de los dos tiene herramientas. **Pedidos**: qué preguntar sale de
+`faltantes`, el resumen y sus cuentas los arma el código, el LLM solo escribe una frase de enlace.
+**Soporte**: el código le pasa `info_negocio`, las FAQ (como datos) y los 3 últimos pedidos del
+cliente — "¿cómo va mi pedido?" ahora tiene respuesta real —; el nombre lo guarda la política con
+`nombreValido`; el paso a humano lo ejecuta el código (el modelo solo lo señala, y el "sí" a "¿te
+conecto con alguien?" es una regla). Una corrida real de `f5-pedidos-domicilio` (crítico, 4/5)
+destapó que un barrio suelto clasificado como pregunta de cobertura no se guardaba; quedó como
+regla + prueba.
+
+**Impacto:** `server/src/handlers/pedidos.ts`, `soporte.ts`, `formato.ts` (cobertura compartida),
+`decision/politica.ts` (`guardar_nombre`, `ofrecer_humano`), `Repo` (nombre, info_negocio, FAQ,
+pedidos recientes), escenarios `f5-pedidos-*`, `f5-soporte-*`; `f4-decision-critica` ya espera la
+tarifa de Niquía (la dice Soporte con el dato de `consultar_cobertura`). 260 pruebas.
+
+---
 ### 2026-09-30 — Bot Node, Fase 5: agente de Menú · cambiar el pedido tras el resumen lo saca del resumen
 
 **Contexto:** portando el agente de Menú se comprobó en la BD que un carrito en `resumen` seguía

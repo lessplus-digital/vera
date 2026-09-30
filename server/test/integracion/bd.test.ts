@@ -89,10 +89,18 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
   // ── Fase 4: lo que lee y escribe la decisión ─────────────────────────────
   it('RepoSupabase: conversación — guarda y lee la última pregunta completa', async () => {
     const repo = new RepoSupabase(sb)
-    expect(await repo.leerConversacion(TEL)).toEqual({ handler: null, ultima_pregunta: null })
-    const c = { handler: 'pedidos' as const, ultima_pregunta: { tipo: 'sugerir_barrio' as const, barrio: 'Niquía' } }
+    expect(await repo.leerConversacion(TEL)).toEqual({ handler: null, ultima_pregunta: null, reserva: null })
+    const c = { handler: 'pedidos' as const, ultima_pregunta: { tipo: 'sugerir_barrio' as const, barrio: 'Niquía' }, reserva: null }
     await repo.guardarConversacion(TEL, c)
     expect(await repo.leerConversacion(TEL)).toEqual(c)
+    // El borrador de la reserva (columna conversaciones.reserva) va y vuelve completo.
+    const r = {
+      handler: 'reservas' as const,
+      ultima_pregunta: { tipo: 'nombre' as const },
+      reserva: { personas: 4, fecha: '2026-10-03', hora: '19:00', motivo: 'cumpleanos', verificado: '2026-10-03|19:00|4' },
+    }
+    await repo.guardarConversacion(TEL, r)
+    expect(await repo.leerConversacion(TEL)).toEqual(r)
   })
 
   it('RepoSupabase: consultar_cobertura — errata con sugerencia, y barrio cubierto con tarifa', async () => {
@@ -109,6 +117,27 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
     expect(await repo.estadoPedido(TEL)).toBeNull()
     await repo.guardarDatosPedido(TEL, { tipo_pedido: 'domicilio', metodo_pago: 'Efectivo' })
     expect(await repo.estadoPedido(TEL)).toMatchObject({ n_items: 0, paso_flujo: 'armando', faltantes: ['carrito'], tipo_pedido: 'domicilio' })
+  })
+
+  // ── Fase 5: agente Pedidos ───────────────────────────────────────────────
+  it('RepoSupabase: estado_pedido trae lo que necesita el resumen (dirección, pago, tarifa)', async () => {
+    const repo = new RepoSupabase(sb)
+    await repo.guardarDatosPedido(TEL, { barrio: 'Niquía', costo_domicilio: 7500, cobertura_ok: true, direccion_entrega: 'Calle 1 # 2-3' })
+    expect(await repo.estadoPedido(TEL)).toMatchObject({
+      direccion_entrega: 'Calle 1 # 2-3',
+      metodo_pago: 'Efectivo',
+      costo_domicilio: 7500,
+      cobertura_ok: true,
+    })
+  })
+
+  it('RepoSupabase: info_negocio y dirección registrada del cliente', async () => {
+    const repo = new RepoSupabase(sb)
+    expect(await repo.infoNegocio('datos_transferencia')).toMatch(/\d{6,}/)
+    expect(await repo.infoNegocio('clave_que_no_existe')).toBeNull()
+    const c = await repo.clientePorTelefono(TEL)
+    await repo.actualizarDireccionCliente(c.cliente_id, { direccion_principal: 'Calle 1 # 2-3', barrio: 'Niquía' })
+    expect(await repo.clientePorTelefono(TEL)).toMatchObject({ direccion_principal: 'Calle 1 # 2-3', barrio: 'Niquía' })
   })
 
   it('RepoSupabase: crear_orden_desde_carrito — sin productos no crea nada', async () => {
@@ -143,5 +172,42 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
     expect((await repo.carrito(TEL)).lineas[0]?.cantidad).toBe(1)
     expect(await repo.cotizarMitad('PROD-010', 'PROD-015', 'grande')).toMatchObject({ ok: false, error: 'MASA_DISTINTA' })
     await repo.carritoVaciar(TEL)
+  })
+
+  // ── Fase 5: soporte ──────────────────────────────────────────────────────
+  it('RepoSupabase: soporte — info_negocio completa, FAQ activas, pedidos del cliente y nombre', async () => {
+    const repo = new RepoSupabase(sb)
+    const info = await repo.infoNegocioTodo()
+    expect(info.direccion).toBeTruthy()
+    expect(Object.values(info).every((v) => v.trim().length > 0)).toBe(true)
+    const faqs = await repo.consultarFaq('parqueadero')
+    expect(faqs.every((f) => typeof f.pregunta === 'string' && typeof f.respuesta === 'string')).toBe(true)
+    expect(await repo.pedidosRecientes(TEL, 3)).toEqual([]) // el teléfono de prueba no tiene pedidos
+    const c = await repo.clientePorTelefono(TEL)
+    await repo.actualizarNombreCliente(c.cliente_id, 'Prueba Soporte')
+    expect((await repo.clientePorTelefono(TEL)).nombre).toBe('Prueba Soporte')
+  })
+
+  // ── Fase 5: reservas (sin crear ninguna: solo caminos que no escriben) ────
+  it('RepoSupabase: reservas — motivos, disponibilidad, lista y los rechazos de crear/cancelar', async () => {
+    const repo = new RepoSupabase(sb)
+    const motivos = await repo.motivosReserva()
+    expect(motivos.find((m) => m.clave === 'sin_ocasion')).toMatchObject({ costo: 0 })
+    expect(motivos.every((m) => typeof m.costo === 'number')).toBe(true)
+
+    // Un sábado dentro de 14 días, a una hora válida.
+    const d = new Date()
+    d.setUTCDate(d.getUTCDate() + ((6 - d.getUTCDay() + 7) % 7 || 7))
+    const sabado = d.toISOString().slice(0, 10)
+    expect(await repo.consultarDisponibilidadReserva(sabado, '19:00', 4)).toMatchObject({ ok: true, fecha: sabado, hora: '19:00' })
+    expect(await repo.consultarDisponibilidadReserva(sabado, '23:00', 4)).toMatchObject({ ok: false, error: 'FUERA_DE_HORARIO' })
+    expect(await repo.consultarDisponibilidadReserva(sabado, '19:00', 20)).toMatchObject({ ok: false, error: 'PERSONAS_FUERA_DE_RANGO' })
+
+    expect(await repo.reservasDelCliente(TEL)).toEqual([])
+    expect(await repo.cancelarReserva(TEL, 'RES-NO-EXISTE')).toMatchObject({ ok: false, error: 'RESERVA_NO_ENCONTRADA' })
+    const c = await repo.clientePorTelefono(TEL)
+    const r = await repo.crearReserva({ telefono: TEL, cliente_id: c.cliente_id, nombre: 'Prueba', fecha: sabado, hora: '19:00', personas: 2, motivo: 'no_existe' })
+    expect(r).toMatchObject({ ok: false, error: 'MOTIVO_INVALIDO' })
+    expect(await repo.reservasDelCliente(TEL)).toEqual([])
   })
 })

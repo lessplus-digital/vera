@@ -60,10 +60,16 @@ export function describirPregunta(u: UltimaPregunta | null): string {
     case undefined: return '(ninguna registrada)'
     case 'confirmar_pedido': return 'Le mostró el resumen del pedido y preguntó si lo confirma.'
     case 'dato_pedido': return DATO[u.dato]
-    case 'sugerir_barrio': return `¿Quisiste decir el barrio ${u.barrio}?`
+    case 'sugerir_barrio': return `¿El barrio es ${u.barrio}? (si dice sí, es ese barrio; si nombra otro, es el otro)`
+    case 'usar_direccion': return `¿Te lo enviamos a ${u.direccion}? (su dirección registrada)`
+    case 'ofrecer_recoger': return 'No hay domicilio a su barrio; le preguntó si lo recoge en el local.'
     case 'agregar_producto': return `¿Te agrego ${u.producto}?`
     case 'algo_mas': return '¿Quieres algo más?'
+    case 'ofrecer_humano': return '¿Quieres que te conecte con alguien del equipo?'
+    case 'nombre': return '¿Con quién tengo el gusto? (le preguntó su nombre)'
     case 'confirmar_reserva': return 'Le mostró los datos de la reserva y preguntó si la confirma.'
+    case 'dato_reserva': return ({ personas: '¿Para cuántas personas es la reserva?', fecha: '¿Para qué día es la reserva?', hora: '¿A qué hora sería la reserva?', motivo: '¿La reserva es para alguna ocasión especial (cumpleaños, aniversario…) o normal?' })[u.dato]
+    case 'elegir_reserva': return 'Tiene varias reservas y le preguntó cuál quiere cancelar.'
     case 'cancelar_reserva': return `¿Cancelo la reserva ${u.reserva_id}?`
   }
 }

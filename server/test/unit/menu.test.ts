@@ -54,7 +54,7 @@ describe('agregar al carrito', () => {
     expect(r).toContain('1. 2x Hawaiana Tradicional (Mediana) — $75.000')
     expect(r).toContain('*Subtotal: $75.000*')
     expect(r.endsWith(PREGUNTA_ALGO_MAS)).toBe(true)
-    expect(await sim.repo.leerConversacion(TEL)).toEqual({ handler: 'menu', ultima_pregunta: { tipo: 'algo_mas' } })
+    expect(await sim.repo.leerConversacion(TEL)).toEqual({ handler: 'menu', ultima_pregunta: { tipo: 'algo_mas' }, reserva: null })
   })
 
   it('distingue la masa: la hawaiana estofada tiene otro precio y otra línea', async () => {

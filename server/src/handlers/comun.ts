@@ -4,7 +4,7 @@ import type { MensajeLLM } from '../llm/llm.js'
 
 // Piezas que comparten los cuatro agentes.
 
-const primerNombre = (n: string | null) => {
+export const primerNombre = (n: string | null) => {
   const p = (n ?? '').trim().split(/\s+/)[0] ?? ''
   return p && p.toLowerCase() !== 'pendiente' ? p : null
 }

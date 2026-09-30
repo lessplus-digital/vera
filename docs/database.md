@@ -370,7 +370,7 @@ en el dashboard solo un admin las ve. Ver `docs/bot/servidor.md`.
 |---|---|---|
 | `wa_eventos` | `wamid` 🔑, `telefono`, `recibido_el` | Dedupe persistente de webhooks de Meta (Meta reintenta). Purga a 7 días (`limpiar-wa-eventos`) |
 | `bot_turnos` | `id` 🔑, `telefono`, `inicio`, `duracion_ms`, `entrada`, `contexto`, `clasificacion`, `decision`, `herramientas`, `salida`, `guardia`, `error`, `costo` (jsonb salvo los obvios) | La "caja negra": un registro por turno de conversación. Reemplaza a abrir la ejecución de n8n para depurar. Purga a 30 días (`limpiar-bot-turnos`) |
-| `conversaciones` | `telefono` 🔑, `handler`, `ultima_pregunta`, `pendiente` jsonb, `actualizado_el` | Qué preguntó el bot por última vez y qué handler lleva el hilo; la política de decisión lo usa para interpretar un "sí"/"dale" |
+| `conversaciones` | `telefono` 🔑, `handler`, `ultima_pregunta`, `pendiente` jsonb, **`reserva` jsonb**, `actualizado_el` | Qué preguntó el bot por última vez y qué handler lleva el hilo; la política de decisión lo usa para interpretar un "sí"/"dale". `reserva` (2026-09-30, migración `20260930180000_conversaciones_borrador_reserva`) es el borrador de la reserva en curso (`personas`, `fecha`, `hora`, `motivo`, `verificado`): el "sí" al resumen crea **eso** con `crear_reserva_bot`. El servidor lo descarta si la fila lleva más de 6 h sin tocarse |
 
 ---
 

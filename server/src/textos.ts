@@ -1,4 +1,5 @@
 import { pesos } from './guardia/guardia.js'
+import { fechaLegible, horaLegible } from './decision/reserva.js'
 
 // Textos fijos que el bot envía (no los redacta el LLM). Copiados de los nodos de
 // n8n publicados el 2026-09-29, salvo donde se indica una mejora.
@@ -25,18 +26,41 @@ export const TEXTO_SEGURO =
   'Déjame revisar bien eso para no darte un dato equivocado 🙏 ¿Me confirmas qué necesitas?'
 
 /** Confirmación del pedido: la arma el código con los datos que devolvió la BD, nunca el LLM. */
-export function pedidoCreado(p: { pedido_id: string; total: number; tipo_pedido: string; metodo_pago: string }): string {
+export function pedidoCreado(
+  p: { pedido_id: string; total: number; tipo_pedido: string; metodo_pago: string },
+  /** info_negocio.datos_transferencia: la cuenta sale de la BD (la edita el dueño), no del código. */
+  datosTransferencia: string | null = null,
+): string {
   const total = pesos(p.total)
   const pago =
     p.metodo_pago === 'Transferencia'
-      ? '\n\nCuando hagas la transferencia, envíame por aquí la foto del comprobante 📸'
+      ? `${datosTransferencia ? `\n\nTe paso los datos para la transferencia 👇\n${datosTransferencia}` : ''}\n\nCuando hagas la transferencia, envíame por aquí la foto del comprobante 📸`
       : ''
   const entrega = p.tipo_pedido === 'domicilio' ? 'te lo enviamos apenas esté listo 🛵' : 'te avisamos cuando esté listo para recoger 🏃'
   return `✅ ¡Pedido registrado! Tu número es *${p.pedido_id}* y el total es *${total}*.\n\nEl equipo lo revisa y ${entrega}${pago}`
 }
 
+// ── Reservas ───────────────────────────────────────────────────────────────
+/** Confirmación de la reserva: fecha, hora, personas y costo tal como los devolvió crear_reserva_bot. */
+export function reservaCreada(
+  r: { reserva_id: string; fecha: string; hora: string; personas: number; costo_motivo: number },
+  /** Nombre de la ocasión (motivos_reserva.nombre); null o sin costo = reserva normal. */
+  ocasion: string | null,
+): string {
+  const montaje = r.costo_motivo > 0 && ocasion ? `\n🎉 ${ocasion} — ${pesos(r.costo_motivo)} (se paga en el local)` : ''
+  return `✅ ¡Reserva confirmada!\n\n📅 ${fechaLegible(r.fecha)} — ${horaLegible(r.hora)}\n👥 ${r.personas} ${r.personas === 1 ? 'persona' : 'personas'}${montaje}\n\n¡Te esperamos! Si necesitas cancelar, me escribes por aquí 😊`
+}
+
+export function reservaCancelada(r: { fecha: string; hora: string }): string {
+  return `Listo, cancelé tu reserva del ${fechaLegible(r.fecha)} a las ${horaLegible(r.hora)} ✅\n\nSi quieres reservar otro día, me dices 😊`
+}
+
 // ── Paso a humano ──────────────────────────────────────────────────────────
 export const HANDOFF = 'Te conecto con nuestro equipo. Un momento por favor 🙋'
+// Nuevo: crear_orden_desde_carrito falló por algo que el cliente no puede arreglar
+// (en n8n el prompt decía "voy a escalarlo" pero nadie lo escalaba).
+export const PEDIDO_FALLO_HANDOFF =
+  'Tuve un problema registrando tu pedido 😔 Ya le avisé al equipo y una persona te escribe por aquí en un momento 🙏'
 
 // ── Calificaciones (feedback) ──────────────────────────────────────────────
 export function pedirCalificacion(nombre: string | null): string {

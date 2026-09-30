@@ -1,0 +1,37 @@
+nombre: Reservas — cambiar antes de confirmar, consultar y cancelar
+descripcion: >
+  Fase 5. Todo en un mensaje salta a la ocasión; "sí, pero a las 7" al resumen
+  es un cambio (vuelve a consultar y resumir, no crea); consultar lista la
+  reserva; cancelar pide confirmación y la cancela el código.
+bot: decision
+telefono: '573000000912'
+pasos:
+  - envia: quiero reservar para 2 el domingo a las 8 de la noche
+    debe:
+      contiene: ['ocasión especial']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: no, normal
+    debe:
+      contiene: ['8:00 PM', '2 personas', '¿Te la reservo?']
+      no_contiene: ['🎉', '$']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: sí pero mejor a las 7
+    debe:
+      contiene: ['7:00 PM', '¿Te la reservo?']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: listo, sí
+    debe:
+      contiene: ['Reserva confirmada', '7:00 PM']
+      turno: { acciones: [crear_reserva] }
+  - envia: ¿tengo reservas?
+    debe:
+      contiene: ['7:00 PM']
+      turno: { handler: reservas }
+  - envia: cancélala por favor
+    debe:
+      contiene: ['¿Seguro que cancelo']
+      turno: { handler: reservas, sin_acciones: [cancelar_reserva] }
+  - envia: sí
+    debe:
+      contiene: ['cancelé tu reserva']
+      turno: { acciones: [cancelar_reserva] }

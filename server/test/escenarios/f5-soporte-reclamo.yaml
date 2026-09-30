@@ -1,0 +1,15 @@
+nombre: Un reclamo grave pasa a una persona
+descripcion: >
+  Fase 5. Pedido equivocado = reclamo grave: el cliente termina con una persona
+  (lo ejecute la política por frustración o Soporte al señalarlo), recibe el
+  texto fijo, y nunca se crea ni promete nada.
+critico: true
+bot: decision
+telefono: '573000000909'
+pasos:
+  - envia: me llegó la pizza equivocada, pedí hawaiana y me mandaron una de pollo, y además fría
+    debe:
+      contiene: ['Te conecto con nuestro equipo']
+      no_contiene: ['descuento', 'reembolso', '$']
+      respuestas: 1
+      turno: { sin_acciones: [crear_pedido] }

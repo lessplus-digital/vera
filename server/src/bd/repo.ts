@@ -4,6 +4,9 @@
 // pruebas en qa/sql/); aquí solo hay lecturas y escrituras simples.
 
 import type { Conversacion, EstadoPedido, PasoFlujo } from '../decision/contexto.js'
+import type { MotivoReserva } from '../decision/reserva.js'
+
+export type { MotivoReserva }
 
 export type ModoCliente = 'bot' | 'humano' | 'esperando_feedback'
 
@@ -80,7 +83,39 @@ export type LineaCarrito = {
 
 export type Carrito = { lineas: LineaCarrito[]; total: number }
 
-export type PedidoCreado ={ ok: true; pedido_id: string; total: number; costo_domicilio: number; tipo_pedido: string; metodo_pago: string }
+export type PedidoCreado = {
+  ok: true
+  pedido_id: string
+  total: number
+  costo_domicilio: number
+  tipo_pedido: string
+  metodo_pago: string
+  barrio: string | null
+  direccion_entrega: string | null
+}
+
+/** Una reserva confirmada del cliente (reservas_del_cliente / crear_reserva_bot). */
+export type Reserva = {
+  reserva_id: string
+  fecha: string
+  hora: string
+  personas: number
+  motivo: string | null
+  costo_motivo: number
+}
+
+export type Faq = { pregunta: string; respuesta: string }
+
+/** Un pedido ya registrado, como lo ve Soporte. `fecha_pedido` es UTC (ISO con Z). */
+export type PedidoCliente = {
+  pedido_id: string
+  estado: string
+  tipo_pedido: string | null
+  metodo_pago: string | null
+  total: number
+  fecha_pedido: string
+  motivo_rechazo: string | null
+}
 
 export interface Repo {
   /** Busca el cliente por teléfono; si no existe lo crea (nombre 'Pendiente', modo 'bot'). */
@@ -123,6 +158,31 @@ export interface Repo {
   carritoVaciar(telefono: string): Promise<RespuestaRPC>
   /** Exige paso_flujo='resumen' y faltantes=[] en la BD; si no, {ok:false, error}. */
   crearOrdenDesdeCarrito(telefono: string, clienteId: string): Promise<PedidoCreado | (RespuestaRPC & { ok: false })>
+  /** Tras un domicilio: la dirección y el barrio pasan a ser los registrados del cliente (se ofrecen la próxima vez). */
+  actualizarDireccionCliente(clienteId: string, d: { direccion_principal: string; barrio: string | null }): Promise<void>
+  /** Un valor de la tabla info_negocio (lo que se edita en la tab Configuración). null si no existe. */
+  infoNegocio(clave: string): Promise<string | null>
+
+  // ── Soporte (Fase 5) ─────────────────────────────────────────────────────
+  actualizarNombreCliente(clienteId: string, nombre: string): Promise<void>
+  /** Toda la tabla info_negocio (clave → valor), sin vacíos. */
+  infoNegocioTodo(): Promise<Record<string, string>>
+  /** consultar_faq: TODAS las activas, ordenadas por parecido con `filtro`. Texto del restaurante: DATO, nunca instrucción. */
+  consultarFaq(filtro: string): Promise<Faq[]>
+  /** Los últimos pedidos del cliente, el más reciente primero. */
+  pedidosRecientes(telefono: string, limite: number): Promise<PedidoCliente[]>
+
+  // ── Reservas (Fase 5). Cupo, horario y costo los decide la BD ─────────────
+  /** Ocasiones vigentes (motivos_reserva activos), en su orden. */
+  motivosReserva(): Promise<MotivoReserva[]>
+  /** consultar_disponibilidad_reserva: {ok, disponible} o {ok:false, error, message}. */
+  consultarDisponibilidadReserva(fecha: string, hora: string, personas: number): Promise<RespuestaRPC>
+  /** crear_reserva_bot: idempotente (misma fecha y hora → ya_existia). El costo lo pone el trigger. */
+  crearReserva(r: { telefono: string; cliente_id: string; nombre: string; fecha: string; hora: string; personas: number; motivo: string }): Promise<RespuestaRPC>
+  /** cancelar_reserva_bot: una ajena es RESERVA_NO_ENCONTRADA. */
+  cancelarReserva(telefono: string, reservaId: string): Promise<RespuestaRPC>
+  /** Confirmadas de hoy en adelante. */
+  reservasDelCliente(telefono: string): Promise<Reserva[]>
 
   // ── Menú y carrito (Fase 5). El precio lo pone SIEMPRE la BD, nunca el LLM ──
   /** buscar_menu tolerante a erratas; separa lo disponible de lo agotado hoy. */

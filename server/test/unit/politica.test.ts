@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
-import type { ContextoDecision, EstadoPedido, UltimaPregunta } from '../../src/decision/contexto.js'
-import { decidir } from '../../src/decision/politica.js'
+import type { BorradorReserva, ContextoDecision, EstadoPedido, UltimaPregunta } from '../../src/decision/contexto.js'
+import { decidir, mencionado, nombreValido } from '../../src/decision/politica.js'
 
 // Tabla de casos de ruteo. Cada fila: qué leyó el clasificador + estado real de
 // la BD → handler, acciones y regla esperados. Los casos con BUG-NNN salen del
@@ -15,15 +15,20 @@ const carrito = (e: Partial<EstadoPedido> = {}): EstadoPedido => ({
   tipo_pedido: null,
   barrio: null,
   cobertura_ok: null,
+  direccion_entrega: null,
+  metodo_pago: null,
+  costo_domicilio: null,
   ...e,
 })
+/** La reserva que el cliente vio resumida: completa y con cupo verificado. */
+const reservaLista: BorradorReserva = { personas: 4, fecha: '2026-10-03', hora: '19:00', motivo: 'cumpleanos', verificado: '2026-10-03|19:00|4' }
 const enResumen = carrito({ paso_flujo: 'resumen', faltantes: [], tipo_pedido: 'domicilio', barrio: 'Niquía', cobertura_ok: true })
 
 function ctx(
   texto: string,
-  o: { estado?: EstadoPedido | null; ultima?: UltimaPregunta; handler?: ContextoDecision['conversacion']['handler'] } = {},
+  o: { estado?: EstadoPedido | null; ultima?: UltimaPregunta; handler?: ContextoDecision['conversacion']['handler']; reserva?: BorradorReserva | null } = {},
 ): ContextoDecision {
-  return { texto, estado: o.estado ?? null, conversacion: { handler: o.handler ?? null, ultima_pregunta: o.ultima ?? null } }
+  return { texto, estado: o.estado ?? null, conversacion: { handler: o.handler ?? null, ultima_pregunta: o.ultima ?? null, reserva: o.reserva ?? null } }
 }
 
 const cobertura = (barrio: string, guardar = true) => ({ tipo: 'verificar_cobertura', barrio, guardar })
@@ -232,6 +237,27 @@ const casos: Caso[] = [
     regla: 'sugerencia_barrio:si',
   },
   {
+    nombre: '"niqia" suelto leído como cobertura, tras "¿en qué barrio?" → es la respuesta: se guarda (f5 corrida 5)',
+    c: { intencion: 'cobertura', barrio: 'niqia' },
+    ctx: ctx('niqia', { estado: carrito({ tipo_pedido: 'domicilio' }), ultima: { tipo: 'dato_pedido', dato: 'barrio' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('niqia')],
+  },
+  {
+    nombre: '"por transferencia" tras "¿en qué barrio?" → es el pago, no un barrio (f5 corrida 5)',
+    c: { intencion: 'datos_pedido', metodo_pago: 'Transferencia' },
+    ctx: ctx('por transferencia', { estado: carrito({ tipo_pedido: 'domicilio' }), ultima: { tipo: 'dato_pedido', dato: 'barrio' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { metodo_pago: 'Transferencia' } }],
+  },
+  {
+    nombre: '"¿llegan a Prado?" tras "¿en qué barrio?" → sigue siendo pregunta: NO se guarda',
+    c: { intencion: 'cobertura', barrio: 'Prado' },
+    ctx: ctx('¿llegan a Prado?', { estado: carrito({ tipo_pedido: 'domicilio' }), ultima: { tipo: 'dato_pedido', dato: 'barrio' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('Prado', false)],
+  },
+  {
     nombre: '"¿llegan a Prado?" sin carrito → Soporte; se verifica pero NO se guarda (es pregunta)',
     c: { intencion: 'cobertura', barrio: 'Prado' },
     ctx: ctx('¿llegan a Prado?'),
@@ -333,9 +359,54 @@ const casos: Caso[] = [
   {
     nombre: '"sí" a "¿confirmo la reserva?" → la crea el código',
     c: { intencion: 'respuesta_corta', confirma: 'si' },
-    ctx: ctx('sí', { ultima: { tipo: 'confirmar_reserva' } }),
+    ctx: ctx('sí', { ultima: { tipo: 'confirmar_reserva' }, reserva: reservaLista }),
     handler: 'reservas',
     acciones: [{ tipo: 'crear_reserva' }],
+  },
+  {
+    nombre: '"sí" al resumen de reserva sin borrador completo (se perdió) → NO crea; Reservas vuelve a armarla',
+    c: { intencion: 'respuesta_corta', confirma: 'si' },
+    ctx: ctx('sí', { ultima: { tipo: 'confirmar_reserva' }, reserva: { personas: 4, fecha: '2026-10-03', hora: '19:00' } }),
+    handler: 'reservas',
+    acciones: [],
+    regla: 'reserva:si_sin_borrador',
+  },
+  {
+    nombre: '"sí, pero a las 8" al resumen de reserva → NO crea: es un cambio',
+    c: { intencion: 'respuesta_corta', confirma: 'si', hora: '20:00' },
+    ctx: ctx('sí, pero a las 8', { ultima: { tipo: 'confirmar_reserva' }, reserva: reservaLista, handler: 'reservas' }),
+    handler: 'reservas',
+    acciones: [],
+    regla: 'dato_reserva',
+  },
+  {
+    nombre: '"sí" que repite la misma hora ("sí, a las 7") → crea: no es un cambio',
+    c: { intencion: 'respuesta_corta', confirma: 'si', hora: '07:00' },
+    ctx: ctx('sí, a las 7', { ultima: { tipo: 'confirmar_reserva' }, reserva: reservaLista }),
+    handler: 'reservas',
+    acciones: [{ tipo: 'crear_reserva' }],
+  },
+  {
+    nombre: 'respuesta suelta a "¿para cuántas personas?" → Reservas, aunque haya carrito',
+    c: { intencion: 'datos_pedido', personas: 4 },
+    ctx: ctx('somos 4', { ultima: { tipo: 'dato_reserva', dato: 'personas' }, estado: carrito(), handler: 'reservas' }),
+    handler: 'reservas',
+    acciones: [],
+    regla: 'dato_reserva',
+  },
+  {
+    nombre: 'a mitad de reserva, pedir el menú es pedir el menú (el borrador queda)',
+    c: { intencion: 'ver_menu' },
+    ctx: ctx('mándame la carta', { ultima: { tipo: 'dato_reserva', dato: 'hora' }, handler: 'reservas' }),
+    handler: 'menu',
+    acciones: [],
+  },
+  {
+    nombre: '"no" a "¿alguna ocasión especial?" → Reservas (es la respuesta: sin ocasión)',
+    c: { intencion: 'respuesta_corta', confirma: 'no' },
+    ctx: ctx('no, normal', { ultima: { tipo: 'dato_reserva', dato: 'motivo' }, handler: 'reservas' }),
+    handler: 'reservas',
+    acciones: [],
   },
   {
     nombre: '"sí" a "¿cancelo la reserva RES-9?" → la cancela el código',
@@ -359,6 +430,110 @@ const casos: Caso[] = [
     handler: 'menu',
     acciones: [],
   },
+
+  // ── Agente Pedidos (Fase 5): preguntas con dato registrado ───────────────
+  {
+    nombre: '"sí" a "¿sigues por el barrio Prado?" → cobertura de Prado y se guarda',
+    c: { intencion: 'respuesta_corta', confirma: 'si' },
+    ctx: ctx('sí', { estado: carrito({ tipo_pedido: 'domicilio', faltantes: ['barrio'] }), ultima: { tipo: 'sugerir_barrio', barrio: 'Prado' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('Prado')],
+  },
+  {
+    nombre: '"no, estoy en Niquía" a "¿sigues por Prado?" → cobertura del barrio NUEVO',
+    c: { intencion: 'datos_pedido', confirma: 'no', barrio: 'Niquía' },
+    ctx: ctx('no, estoy en Niquía', { estado: carrito({ tipo_pedido: 'domicilio', faltantes: ['barrio'] }), ultima: { tipo: 'sugerir_barrio', barrio: 'Prado' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('Niquía')],
+  },
+  {
+    nombre: '"Niquía" suelto tras "¿sigues por Prado?" → es el barrio (aunque el clasificador diga otro)',
+    c: { intencion: 'otro' },
+    ctx: ctx('Niquía', { estado: carrito({ tipo_pedido: 'domicilio', faltantes: ['barrio'] }), ultima: { tipo: 'sugerir_barrio', barrio: 'Prado' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('Niquía')],
+  },
+  {
+    nombre: '"sí" a "¿te lo enviamos a Cra 50 # 40-20?" → se guarda la registrada',
+    c: { intencion: 'respuesta_corta', confirma: 'si' },
+    ctx: ctx('sí', { estado: carrito({ faltantes: ['direccion_entrega'] }), ultima: { tipo: 'usar_direccion', direccion: 'Cra 50 # 40-20' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { direccion_entrega: 'Cra 50 # 40-20' } }],
+    regla: 'usar_direccion:si',
+  },
+  {
+    nombre: '"no" a la dirección registrada → Pedidos pide la nueva, sin guardar nada',
+    c: { intencion: 'respuesta_corta', confirma: 'no' },
+    ctx: ctx('no', { estado: carrito({ faltantes: ['direccion_entrega'] }), ultima: { tipo: 'usar_direccion', direccion: 'Cra 50 # 40-20' } }),
+    handler: 'pedidos',
+    acciones: [],
+    regla: 'usar_direccion:no',
+  },
+  {
+    nombre: '"no, a la calle 10 # 5-20" a la registrada → se guarda la nueva',
+    c: { intencion: 'datos_pedido', confirma: 'no', direccion: 'calle 10 # 5-20' },
+    ctx: ctx('no, a la calle 10 # 5-20', { estado: carrito({ faltantes: ['direccion_entrega'] }), ultima: { tipo: 'usar_direccion', direccion: 'Cra 50 # 40-20' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { direccion_entrega: 'calle 10 # 5-20' } }],
+  },
+  {
+    nombre: 'dirección suelta tras "¿te lo enviamos a…?" → es la dirección',
+    c: { intencion: 'otro' },
+    ctx: ctx('calle 10 # 5-20', { estado: carrito({ faltantes: ['direccion_entrega'] }), ultima: { tipo: 'usar_direccion', direccion: 'Cra 50 # 40-20' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { direccion_entrega: 'calle 10 # 5-20' } }],
+  },
+  {
+    nombre: 'dirección vaga ("cerca al parque") → NO se guarda y Pedidos la pide con calle y número',
+    c: { intencion: 'datos_pedido', direccion: 'cerca al parque' },
+    ctx: ctx('cerca al parque', { estado: carrito({ faltantes: ['direccion_entrega'] }), ultima: { tipo: 'dato_pedido', dato: 'direccion_entrega' } }),
+    handler: 'pedidos',
+    acciones: [],
+  },
+  {
+    nombre: '"sí" a "no llegamos, ¿lo recoges?" → pasa a recoger',
+    c: { intencion: 'respuesta_corta', confirma: 'si' },
+    ctx: ctx('dale', { estado: carrito({ tipo_pedido: 'domicilio', faltantes: ['barrio'] }), ultima: { tipo: 'ofrecer_recoger' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { tipo_pedido: 'recoger' } }],
+    regla: 'ofrecer_recoger:si',
+  },
+  {
+    nombre: '"no, mejor a Prado" a "¿lo recoges?" → cobertura de Prado',
+    c: { intencion: 'datos_pedido', confirma: 'no', barrio: 'Prado' },
+    ctx: ctx('no, mejor a Prado', { estado: carrito({ tipo_pedido: 'domicilio', faltantes: ['barrio'] }), ultima: { tipo: 'ofrecer_recoger' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('Prado')],
+  },
+  {
+    nombre: '"sí, confírmalo" con el clasificador repitiendo el pago y el barrio guardados → SÍ crea (gpt-5.1)',
+    c: { intencion: 'respuesta_corta', confirma: 'si', metodo_pago: 'Transferencia', barrio: 'niquia' },
+    ctx: ctx('sí, confírmalo', { estado: { ...enResumen, metodo_pago: 'Transferencia' }, ultima: { tipo: 'confirmar_pedido' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'crear_pedido' }],
+    regla: 'resumen:si',
+  },
+  {
+    nombre: '"sí, pero en efectivo" con transferencia guardada → es un cambio, NO crea',
+    c: { intencion: 'respuesta_corta', confirma: 'si', metodo_pago: 'Efectivo' },
+    ctx: ctx('sí, pero en efectivo', { estado: { ...enResumen, metodo_pago: 'Transferencia' }, ultima: { tipo: 'confirmar_pedido' } }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { metodo_pago: 'Efectivo' } }],
+  },
+  {
+    nombre: '"ah no, mejor a Copacabana" al resumen → cobertura del barrio nuevo, no un "no" a secas (gpt-5.1)',
+    c: { intencion: 'datos_pedido', confirma: 'no', barrio: 'Copacabana' },
+    ctx: ctx('ah no, mejor mándalo a Copacabana', { estado: enResumen, ultima: { tipo: 'confirmar_pedido' } }),
+    handler: 'pedidos',
+    acciones: [cobertura('Copacabana')],
+  },
+  {
+    nombre: 'barrio guardado sin cobertura confirmada → el código la consulta en este turno',
+    c: { intencion: 'otro' },
+    ctx: ctx('ok', { estado: carrito({ tipo_pedido: 'domicilio', barrio: 'Niquía', faltantes: ['cobertura', 'direccion_entrega'] }), handler: 'pedidos' }),
+    handler: 'pedidos',
+    acciones: [cobertura('Niquía')],
+  },
 ]
 
 describe('política de decisión', () => {
@@ -380,11 +555,19 @@ describe('política de decisión', () => {
     { tipo: 'algo_mas' },
     { tipo: 'dato_pedido', dato: 'barrio' },
     { tipo: 'sugerir_barrio', barrio: 'Prado' },
+    { tipo: 'usar_direccion', direccion: 'Cra 50 # 40-20' },
+    { tipo: 'ofrecer_recoger' },
     { tipo: 'confirmar_reserva' },
+    { tipo: 'ofrecer_humano' },
+    { tipo: 'nombre' },
+    { tipo: 'dato_reserva', dato: 'hora' },
   ]
   const estados = [null, carrito(), enResumen, carrito({ paso_flujo: 'resumen', faltantes: ['metodo_pago'] })]
+  const reservas = [null, reservaLista, { personas: 4, fecha: '2026-10-03', hora: '19:00', motivo: 'cumpleanos' }]
   const combinaciones = intenciones.flatMap((intencion) =>
-    confirmas.flatMap((confirma) => ultimas.flatMap((ultima) => estados.map((estado) => ({ intencion, confirma, ultima, estado })))),
+    confirmas.flatMap((confirma) =>
+      ultimas.flatMap((ultima) => estados.flatMap((estado) => reservas.map((reserva) => ({ intencion, confirma, ultima, estado, reserva })))),
+    ),
   )
 
   it('INVARIANTE: crear_pedido solo con última pregunta = resumen, confirma = sí y BD en resumen', () => {
@@ -403,11 +586,96 @@ describe('política de decisión', () => {
     }
   })
 
-  it('INVARIANTE: crear_reserva solo con "sí" a "¿confirmo la reserva?"', () => {
+  it('INVARIANTE: crear_reserva solo con "sí" a "¿confirmo la reserva?" y el borrador completo con cupo verificado', () => {
     for (const k of combinaciones) {
       const d = decidir(clasificacionVacia({ intencion: k.intencion, confirma: k.confirma }), ctx('x', k))
       const crea = d.acciones.some((a) => a.tipo === 'crear_reserva')
-      expect(crea, JSON.stringify(k)).toBe(k.ultima?.tipo === 'confirmar_reserva' && k.confirma === 'si')
+      expect(crea, JSON.stringify(k)).toBe(k.ultima?.tipo === 'confirmar_reserva' && k.confirma === 'si' && k.reserva === reservaLista)
     }
+  })
+})
+
+// ── Soporte: nombre del cliente y "¿te conecto con alguien?" ────────────────
+describe('nombre del cliente', () => {
+  const sinNombre = (texto: string, ultima?: UltimaPregunta): ContextoDecision => ({ ...ctx(texto, { ultima }), sin_nombre: true })
+  const guardado = (d: ReturnType<typeof decidir>) => d.acciones.find((a) => a.tipo === 'guardar_nombre')
+
+  it.each([
+    ['Juan', true],
+    ['María José Rodríguez', true],
+    ["D'Angelo", true],
+    ['🍕', false],
+    ['Dios es amor', false],
+    ['Bendiciones', false],
+    ['asdfgh', false],
+    ['sdfg', false],
+    ['test', false],
+    ['123', false],
+    ['sí, dale', false],
+    ['hola', false],
+    ['me gustaría una pizza hawaiana grande por favor', false],
+  ])('nombreValido(%s) = %s', (n, ok) => {
+    expect(nombreValido(n)).toBe(ok)
+  })
+
+  it('lo que leyó el clasificador se guarda si no tenía nombre, sea cual sea el handler', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'ver_menu', nombre_cliente: 'Juan' }), sinNombre('soy Juan, mándame la carta'))
+    expect(d.handler).toBe('menu')
+    expect(guardado(d)).toEqual({ tipo: 'guardar_nombre', nombre: 'Juan' })
+  })
+
+  it('un nombre ya registrado no se cambia desde el chat', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'otro', nombre_cliente: 'Pedro' }), ctx('ahora soy Pedro'))
+    expect(guardado(d)).toBeUndefined()
+  })
+
+  it('tras "¿con quién tengo el gusto?", la respuesta suelta es el nombre aunque el clasificador no lo lea', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'otro' }), sinNombre('me llamo Camila.', { tipo: 'nombre' }))
+    expect(guardado(d)).toEqual({ tipo: 'guardar_nombre', nombre: 'Camila' })
+  })
+
+  it('tras "¿con quién tengo el gusto?", un "sí, dale" o un emoji no son un nombre', () => {
+    expect(guardado(decidir(clasificacionVacia({ intencion: 'respuesta_corta', confirma: 'si' }), sinNombre('sí, dale', { tipo: 'nombre' })))).toBeUndefined()
+    expect(guardado(decidir(clasificacionVacia({ intencion: 'otro' }), sinNombre('🙏🙏', { tipo: 'nombre' })))).toBeUndefined()
+  })
+
+  it('tras "¿con quién tengo el gusto?", pedir una pizza es pedir una pizza (no un nombre)', () => {
+    const d = decidir(
+      clasificacionVacia({ intencion: 'agregar_producto', productos: [producto('hawaiana')] }),
+      sinNombre('una hawaiana', { tipo: 'nombre' }),
+    )
+    expect(d.handler).toBe('menu')
+    expect(guardado(d)).toBeUndefined()
+  })
+})
+
+describe('"¿te conecto con alguien del equipo?"', () => {
+  it('"sí" → handoff en código', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'respuesta_corta', confirma: 'si' }), ctx('sí porfa', { ultima: { tipo: 'ofrecer_humano' } }))
+    expect(d).toMatchObject({ handler: 'humano', acciones: [{ tipo: 'pasar_a_humano', motivo: 'lo_pidio' }], regla: 'ofrecer_humano:si' })
+  })
+  it('"no" → sigue el bot', () => {
+    const d = decidir(
+      clasificacionVacia({ intencion: 'respuesta_corta', confirma: 'no' }),
+      ctx('no, así está bien', { ultima: { tipo: 'ofrecer_humano' }, handler: 'soporte' }),
+    )
+    expect(d.handler).toBe('soporte')
+    expect(d.acciones).toEqual([])
+  })
+})
+
+describe('barrio del historial', () => {
+  it('un barrio que NO está en el mensaje no se consulta (el clasificador lo trajo del historial)', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'info_negocio', barrio: 'Niquía' }), ctx('¿puedo celebrar un cumpleaños allá?'))
+    expect(d.acciones).toEqual([])
+  })
+  it.each([
+    ['Niquía', 'niqia', true],
+    ['niqia', '¿llegan a niqia?', true],
+    ['Prado', 'estoy en el prado centro', true],
+    ['La Cumbre', 'en la cumbre', true],
+    ['Niquía', '¿puedo celebrar allá?', false],
+  ])('mencionado(%s, %s) = %s', (b, t, ok) => {
+    expect(mencionado(b, t)).toBe(ok)
   })
 })

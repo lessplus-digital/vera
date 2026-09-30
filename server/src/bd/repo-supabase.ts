@@ -14,12 +14,25 @@ import {
   type RespuestaRPC,
   type MensajeHistorial,
   type PedidoFeedback,
+  type Faq,
+  type PedidoCliente,
+  type MotivoReserva,
+  type Reserva,
   type Repo,
 } from './repo.js'
-import type { Conversacion, EstadoPedido, UltimaPregunta } from '../decision/contexto.js'
+import type { BorradorReserva, Conversacion, EstadoPedido, UltimaPregunta } from '../decision/contexto.js'
 
 const BUCKET = 'comprobantes'
 const COLUMNAS_CLIENTE = 'cliente_id, telefono, nombre, modo, direccion_principal, barrio'
+
+/**
+ * fecha_pedido es un timestamp SIN zona que guarda UTC: REST lo devuelve sin 'Z'
+ * y Date lo leería como hora local (la misma trampa que parseDb en el dashboard).
+ */
+export function fechaUtc(v: string): string {
+  const t = v.trim().replace(' ', 'T')
+  return /(?:[zZ]|[+-]\d\d:?\d\d)$/.test(t) ? t : `${t}Z`
+}
 
 /** Lanza con contexto: los errores de PostgREST no son excepciones por sí solos. */
 function exigir<T>(r: { data: T; error: { message: string; code?: string } | null }, que: string): T {
@@ -149,17 +162,22 @@ export class RepoSupabase implements Repo {
     const e = exigir(
       await this.sb
         .from('estado_pedido')
-        .select('n_items, paso_flujo, faltantes, tipo_pedido, barrio, cobertura_ok')
+        .select('n_items, paso_flujo, faltantes, tipo_pedido, barrio, cobertura_ok, direccion_entrega, metodo_pago, costo_domicilio')
         .eq('telefono', telefono)
         .maybeSingle(),
       'leer estado_pedido',
     )
-    return e ? { ...e, faltantes: Array.isArray(e.faltantes) ? e.faltantes : [] } as EstadoPedido : null
+    if (!e) return null
+    return {
+      ...e,
+      faltantes: Array.isArray(e.faltantes) ? e.faltantes : [],
+      costo_domicilio: e.costo_domicilio == null ? null : Number(e.costo_domicilio),
+    } as EstadoPedido
   }
 
   async leerConversacion(telefono: string): Promise<Conversacion> {
     const c = exigir(
-      await this.sb.from('conversaciones').select('handler, pendiente').eq('telefono', telefono).maybeSingle(),
+      await this.sb.from('conversaciones').select('handler, pendiente, reserva, actualizado_el').eq('telefono', telefono).maybeSingle(),
       'leer conversación',
     )
     return leerFilaConversacion(c)
@@ -173,6 +191,7 @@ export class RepoSupabase implements Repo {
         // `ultima_pregunta` (texto) es para leer a ojo en el dashboard; la pregunta completa va en `pendiente`.
         ultima_pregunta: c.ultima_pregunta?.tipo ?? null,
         pendiente: c.ultima_pregunta,
+        reserva: c.reserva ?? null,
         actualizado_el: new Date().toISOString(),
       }),
       'guardar conversación',
@@ -217,7 +236,111 @@ export class RepoSupabase implements Repo {
       'crear_orden_desde_carrito',
     ) as RespuestaRPC
     if (!r.ok) return r as RespuestaRPC & { ok: false }
-    return { ...r, ok: true, pedido_id: String(r.pedido_id), total: Number(r.total), costo_domicilio: Number(r.costo_domicilio ?? 0) } as PedidoCreado
+    return {
+      ...r,
+      ok: true,
+      pedido_id: String(r.pedido_id),
+      total: Number(r.total),
+      costo_domicilio: Number(r.costo_domicilio ?? 0),
+      barrio: (r.barrio as string | null) ?? null,
+      direccion_entrega: (r.direccion_entrega as string | null) ?? null,
+    } as PedidoCreado
+  }
+
+  async actualizarDireccionCliente(clienteId: string, d: { direccion_principal: string; barrio: string | null }) {
+    const cambios = { direccion_principal: d.direccion_principal, ...(d.barrio ? { barrio: d.barrio } : {}) }
+    exigir(await this.sb.from('clientes').update(cambios).eq('cliente_id', clienteId), 'actualizar dirección del cliente')
+  }
+
+  async infoNegocio(clave: string): Promise<string | null> {
+    const f = exigir(await this.sb.from('info_negocio').select('valor').eq('clave', clave).maybeSingle(), 'leer info_negocio')
+    return (f?.valor as string | null | undefined)?.trim() || null
+  }
+
+  // ── Soporte (Fase 5) ─────────────────────────────────────────────────────
+  async actualizarNombreCliente(clienteId: string, nombre: string) {
+    exigir(await this.sb.from('clientes').update({ nombre }).eq('cliente_id', clienteId), 'actualizar nombre del cliente')
+  }
+
+  async infoNegocioTodo(): Promise<Record<string, string>> {
+    const filas = exigir(await this.sb.from('info_negocio').select('clave, valor').order('clave'), 'leer info_negocio') ?? []
+    return Object.fromEntries(
+      filas.map((f) => [String(f.clave), String(f.valor ?? '').trim()]).filter(([, v]) => v),
+    )
+  }
+
+  async consultarFaq(filtro: string): Promise<Faq[]> {
+    const filas = exigir(await this.sb.rpc('consultar_faq', { p_filtro: filtro }), 'consultar_faq') as Record<string, unknown>[] | null
+    return (filas ?? []).map((f) => ({ pregunta: String(f.pregunta ?? ''), respuesta: String(f.respuesta ?? '') }))
+  }
+
+  async pedidosRecientes(telefono: string, limite: number): Promise<PedidoCliente[]> {
+    const filas = exigir(
+      await this.sb
+        .from('pedidos')
+        .select('pedido_id, estado, tipo_pedido, metodo_pago, total, fecha_pedido, motivo_rechazo')
+        .eq('telefono', telefono)
+        .order('fecha_pedido', { ascending: false })
+        .limit(limite),
+      'leer pedidos del cliente',
+    ) ?? []
+    return filas.map((p) => ({
+      pedido_id: String(p.pedido_id),
+      estado: String(p.estado),
+      tipo_pedido: (p.tipo_pedido as string | null) ?? null,
+      metodo_pago: (p.metodo_pago as string | null) ?? null,
+      total: Number(p.total ?? 0),
+      fecha_pedido: fechaUtc(String(p.fecha_pedido)),
+      motivo_rechazo: (p.motivo_rechazo as string | null) ?? null,
+    }))
+  }
+
+  // ── Reservas (Fase 5) ────────────────────────────────────────────────────
+  async motivosReserva(): Promise<MotivoReserva[]> {
+    const filas = exigir(
+      await this.sb.from('motivos_reserva').select('clave, nombre, descripcion, costo').eq('activo', true).order('orden'),
+      'leer motivos_reserva',
+    ) ?? []
+    return filas.map((m) => ({ clave: String(m.clave), nombre: String(m.nombre), descripcion: (m.descripcion as string | null) ?? null, costo: Number(m.costo ?? 0) }))
+  }
+
+  async consultarDisponibilidadReserva(fecha: string, hora: string, personas: number): Promise<RespuestaRPC> {
+    return exigir(
+      await this.sb.rpc('consultar_disponibilidad_reserva', { p_fecha: fecha, p_hora: hora, p_personas: personas }),
+      'consultar_disponibilidad_reserva',
+    ) as RespuestaRPC
+  }
+
+  async crearReserva(r: { telefono: string; cliente_id: string; nombre: string; fecha: string; hora: string; personas: number; motivo: string }) {
+    const x = exigir(
+      await this.sb.rpc('crear_reserva_bot', {
+        p_telefono: r.telefono,
+        p_cliente_id: r.cliente_id,
+        p_nombre: r.nombre,
+        p_fecha: r.fecha,
+        p_hora: r.hora,
+        p_personas: r.personas,
+        p_motivo: r.motivo,
+      }),
+      'crear_reserva_bot',
+    ) as RespuestaRPC
+    return x.ok ? { ...x, costo_motivo: Number(x.costo_motivo ?? 0) } : x
+  }
+
+  async cancelarReserva(telefono: string, reservaId: string): Promise<RespuestaRPC> {
+    return exigir(await this.sb.rpc('cancelar_reserva_bot', { p_telefono: telefono, p_reserva_id: reservaId }), 'cancelar_reserva_bot') as RespuestaRPC
+  }
+
+  async reservasDelCliente(telefono: string): Promise<Reserva[]> {
+    const filas = (exigir(await this.sb.rpc('reservas_del_cliente', { p_telefono: telefono }), 'reservas_del_cliente') ?? []) as Record<string, unknown>[]
+    return filas.map((r) => ({
+      reserva_id: String(r.reserva_id),
+      fecha: String(r.fecha),
+      hora: String(r.hora),
+      personas: Number(r.personas),
+      motivo: (r.motivo as string | null) ?? null,
+      costo_motivo: Number(r.costo_motivo ?? 0),
+    }))
   }
 
   // ── Menú y carrito (Fase 5) ──────────────────────────────────────────────
@@ -335,15 +458,41 @@ export function aLinea(i: Record<string, unknown>, linea: number, masa: Map<stri
   }
 }
 
-const PREGUNTAS = new Set(['confirmar_pedido', 'dato_pedido', 'sugerir_barrio', 'agregar_producto', 'algo_mas', 'confirmar_reserva', 'cancelar_reserva'])
+// Exhaustivo por tipo: una pregunta nueva que falte aquí no compila (antes era una
+// lista a mano y 'nombre' / 'ofrecer_humano' se perdían al leer: el "sí" no hacía nada).
+const TIPOS_PREGUNTA: Record<UltimaPregunta['tipo'], true> = {
+  confirmar_pedido: true,
+  dato_pedido: true,
+  sugerir_barrio: true,
+  usar_direccion: true,
+  ofrecer_recoger: true,
+  agregar_producto: true,
+  algo_mas: true,
+  ofrecer_humano: true,
+  nombre: true,
+  dato_reserva: true,
+  confirmar_reserva: true,
+  elegir_reserva: true,
+  cancelar_reserva: true,
+}
+const PREGUNTAS = new Set(Object.keys(TIPOS_PREGUNTA))
 const HANDLERS = new Set(['menu', 'pedidos', 'soporte', 'reservas'])
 
 /** La fila puede venir de una versión anterior del bot: lo que no se reconoce se ignora. */
-export function leerFilaConversacion(c: { handler?: unknown; pendiente?: unknown } | null): Conversacion {
+/** Un borrador de reserva sin tocar en este tiempo se descarta: "sí" días después no debe crear nada. */
+export const VIGENCIA_BORRADOR_MS = 6 * 60 * 60 * 1000
+
+export function leerFilaConversacion(
+  c: { handler?: unknown; pendiente?: unknown; reserva?: unknown; actualizado_el?: unknown } | null,
+  ahora = Date.now(),
+): Conversacion {
   const p = c?.pendiente as { tipo?: unknown } | null | undefined
+  const r = c?.reserva
+  const fresca = typeof c?.actualizado_el === 'string' && ahora - Date.parse(c.actualizado_el) < VIGENCIA_BORRADOR_MS
   return {
     handler: HANDLERS.has(String(c?.handler)) ? (c!.handler as Conversacion['handler']) : null,
     ultima_pregunta: p && typeof p === 'object' && PREGUNTAS.has(String(p.tipo)) ? (p as UltimaPregunta) : null,
+    reserva: r && typeof r === 'object' && !Array.isArray(r) && fresca ? (r as BorradorReserva) : null,
   }
 }
 

@@ -1,0 +1,31 @@
+nombre: Pedidos — todo en un mensaje, sin cobertura y cambios después del resumen
+descripcion: >
+  Fase 5. (1) El cliente da barrio, dirección y pago de una vez: no se le
+  pregunta nada de eso. (2) Un cambio después del resumen lo invalida: el "sí"
+  siguiente NO crea el pedido viejo, se muestra el resumen nuevo. (3) Un barrio
+  sin cobertura no recibe tarifa ni tiempo; se ofrece recoger.
+bot: decision
+telefono: '573000000907'
+pasos:
+  - envia: una hawaiana tradicional mediana
+    debe:
+      contiene: ['Subtotal: $37.500']
+  - envia: 'listo, es a domicilio a Prado, calle 50 # 40-20, pago en efectivo'
+    debe:
+      contiene: ['Prado', 'Domicilio: $5.000', 'Total a pagar: $42.500', '💳 Efectivo', '¿Te lo confirmo así?']
+      no_contiene: ['¿En qué barrio', '¿A qué dirección', '¿Pagas en efectivo']
+      turno: { handler: pedidos, sin_acciones: [crear_pedido] }
+  - envia: mejor pago por transferencia
+    debe:
+      contiene: ['💳 Transferencia', '¿Te lo confirmo así?']
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: ah no, mejor mándalo a Copacabana
+    debe:
+      contiene: ['no te llegamos', 'recoger']
+      no_contiene: ['$5.000', 'minutos', '¿Te lo confirmo así?']
+      turno: { acciones: [verificar_cobertura], sin_acciones: [crear_pedido] }
+  - envia: bueno, lo recojo
+    debe:
+      contiene: ['Recoger en el local', 'Total: $37.500', '¿Te lo confirmo así?']
+      no_contiene: ['Domicilio:']
+      turno: { sin_acciones: [crear_pedido] }

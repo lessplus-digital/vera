@@ -51,7 +51,7 @@ describe('crear el pedido', () => {
     const { pedido_id } = sim.repo.ordenes[0]!
     expect(respuestas).toEqual([T.pedidoCreado({ pedido_id, total: 45500, tipo_pedido: 'domicilio', metodo_pago: 'Efectivo' })])
     expect(respuestas[0]).toContain('$45.500')
-    expect(await sim.repo.leerConversacion(TEL)).toEqual({ handler: 'soporte', ultima_pregunta: null })
+    expect(await sim.repo.leerConversacion(TEL)).toEqual({ handler: 'soporte', ultima_pregunta: null, reserva: null })
   })
 
   it('"sí" sin pregunta de resumen registrada: NO crea', async () => {
@@ -156,6 +156,7 @@ describe('robustez', () => {
     expect(await sim.repo.leerConversacion(TEL)).toEqual({
       handler: 'menu',
       ultima_pregunta: { tipo: 'agregar_producto', producto: 'hawaiana mediana' },
+      reserva: null,
     })
   })
 })

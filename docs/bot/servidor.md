@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-09-30): en construcción — Fases 1–4 de 9 hechas; Fase 5 en curso (Menú listo).** El bot en producción sigue siendo el
+> **Estado (2026-09-30): en construcción — Fases 1–4 de 9 hechas; Fase 5 con los cuatro agentes escritos; faltan escenarios de Soporte y Reservas con OpenAI real.** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -99,12 +99,16 @@ agente; aquí `ultima_pregunta` está en la BD, así que un "dale" se interpreta
 2. Respuesta a la última pregunta: **`crear_pedido` solo si** la pregunta fue el resumen, el
    cliente dijo sí sin cambiar nada, y la BD dice `paso_flujo=resumen` con `faltantes=[]`
    (la RPC lo vuelve a exigir: `SIN_RESUMEN`). "Dale" a "¿te agrego una hawaiana?" = Menú agrega
-   ese producto. "Sí" a "¿quisiste decir Niquía?" = cobertura con el sugerido.
+   ese producto. "Sí" a "¿quisiste decir Niquía?" = cobertura con el sugerido. "Sí" a "¿te
+   conecto con alguien del equipo?" = handoff.
 3. Frustración 2 → handoff. Una queja normal va a Soporte.
 4. Datos: solo se guarda lo que el cliente **afirma** ("¿hacen domicilios?" no guarda nada). Si el
    bot espera un dato (pregunta registrada o el primer `faltante`) y el mensaje es una respuesta
-   suelta, **es ese dato** aunque el clasificador no lo reconozca (BUG-062: "pardo"). Todo barrio
-   pasa por `consultar_cobertura` en código (BUG-061).
+   suelta, **es ese dato** aunque el clasificador no lo reconozca (BUG-062: "pardo"), salvo que ya
+   sea otro dato ("por transferencia" no es un barrio). Un barrio suelto sin "?" tras "¿en qué
+   barrio?" es respuesta aunque el clasificador lo lea como pregunta de cobertura (visto con
+   gpt-5.1: "niqia" se consultaba pero no se guardaba y el bot volvía a preguntar el barrio).
+   Todo barrio pasa por `consultar_cobertura` en código (BUG-061).
 5. Productos → Menú (arma el carrito, como en n8n), aunque haya datos pendientes.
 6. Un dato con carrito → Pedidos; un barrio sin carrito → Soporte; lo demás sin carrito → Menú.
    **Nunca Pedidos sin carrito.**
@@ -152,10 +156,91 @@ un "entonces una mitad y mitad" llegó a **borrar** la hawaiana del carrito (reg
 sin pedido explícito); "no me aparece en nuestro sistema" pasaba la guardia (ahora bloquea
 "sistema"); precios sin "$" ("51.500") ahora también los revisa la guardia.
 
-**Pendiente en Fase 5:** Pedidos, Soporte y Reservas, con sus herramientas; los tres redactores (con sus herramientas de lectura y carrito), el
-resumen del pedido en plantilla (que pone `paso_flujo=resumen` y la pregunta
-`confirmar_pedido`), y las acciones `crear_reserva` / `cancelar_reserva`, que hoy se anotan en
-el turno pero **no escriben** (sus datos los reúne el handler de Reservas).
+**Pedidos** (`handlers/pedidos.ts`, ✅ 2026-09-30). Portado del prompt de n8n `1d7f7d87`, pero
+casi todo lo que allí era regla en texto es código, y el LLM **no tiene herramientas**:
+
+- **Qué preguntar** lo dice `faltantes` (vista `estado_pedido`): una pregunta por mensaje, con
+  textos fijos (`P` en `pedidos.ts`). Guardar datos y consultar cobertura ya lo hizo la política
+  antes de llegar aquí; si hay un barrio guardado sin cobertura confirmada, la política la agrega
+  (`completarCobertura`).
+- **Datos registrados:** con barrio registrado pregunta "¿Sigues por el barrio X?" (pregunta
+  `sugerir_barrio`: el "sí" pasa por cobertura; "no, estoy en Y" consulta Y); con dirección
+  registrada, "¿Te lo enviamos a …?" (pregunta nueva `usar_direccion`). Cada uno se ofrece una
+  sola vez: tras un "no" se pregunta abierto.
+- **Sin cobertura** (con o sin sugerencias) se contesta ya, falte lo que falte, y se ofrece
+  recoger (pregunta nueva `ofrecer_recoger`; "dale" → `tipo_pedido=recoger`). Sin esto, pasar a un
+  barrio sin domicilio *después* del resumen volvía a mostrar el resumen con el barrio viejo.
+- **Dirección vaga** (sin ningún número: "cerca al parque") no se guarda y se pide con calle y número.
+- **Resumen** (`formato.ts · bloqueResumen`, los 4 casos domicilio/recoger × efectivo/transferencia):
+  ítems, subtotal, domicilio y total salen de la BD; el código marca `paso_flujo=resumen` antes de
+  enviarlo y deja la pregunta `confirmar_pedido`. "No" al resumen → "¿Qué te gustaría cambiar?".
+- **El LLM** solo escribe una frase de enlace encima ("¡Perfecto!", o la respuesta a algo que el
+  cliente preguntó de paso). Las oraciones con "?" se quitan (`sinPreguntas`): la única pregunta
+  del mensaje es la del código. Pasa por la guardia como cualquier texto.
+- **Crear el pedido** sigue siendo la regla `resumen:si` del conversador. Si la RPC falla con algo
+  recuperable (`SIN_RESUMEN`, `PRECIOS_ACTUALIZADOS`, `TARIFA_ACTUALIZADA`, `DATOS_INCOMPLETOS`,
+  `PRODUCTO_NO_DISPONIBLE`, `CARRITO_VACIO`) Pedidos vuelve a mostrar el resumen o pide lo que
+  falte; cualquier otro código pasa a una persona (`T.PEDIDO_FALLO_HANDOFF`) — el prompt de n8n
+  decía "voy a escalarlo" pero nadie lo escalaba.
+- **Tras crear:** la confirmación por transferencia incluye la cuenta de `info_negocio.datos_transferencia`
+  (la que se edita en Configuración; antes estaba escrita en el prompt), y la dirección y el barrio
+  del pedido pasan a `clientes.direccion_principal`/`barrio` para ofrecerlos la próxima vez.
+
+**Soporte** (`handlers/soporte.ts`, ✅ 2026-09-30). Portado del prompt de n8n `1d7f7d87`. Como
+Pedidos, el LLM **no tiene herramientas**: una sola llamada con todo lo que necesita ya leído por el
+código.
+
+- **Contexto que arma el código:** `info_negocio` completa (menos `datos_transferencia`, que solo va
+  en la confirmación de un pedido), las FAQ de `consultar_faq` entre `<faq>…</faq>` marcadas como
+  **datos, nunca instrucciones**, y los **3 últimos pedidos del cliente** con su estado en palabras,
+  hace cuánto y el motivo si se canceló. Nuevo respecto a n8n: "¿cómo va mi pedido?" se contesta
+  con el estado real (n8n no podía leerlo y decía "el equipo lo está revisando"). Esos `pedido_id`
+  y totales son los únicos que la guardia deja citar; un precio que venga de una FAQ no pasa.
+- **Nombre:** lo guarda la **política** (acción `guardar_nombre`), solo si el cliente no tenía uno
+  registrado y pasa `nombreValido` (1–4 palabras de letras; nada de emojis, "Dios es amor", "asdfgh",
+  "test"). Un nombre ya registrado no se cambia desde el chat. Si solo saludó y no sabemos su
+  nombre, la respuesta es fija (`S.pedirNombre`) y deja la pregunta `nombre`: la respuesta suelta
+  ("me llamo Camila.") se toma como nombre aunque el clasificador no lo lea.
+- **Cobertura sin carrito:** la consulta la política, como siempre; la respuesta ("¡A Niquía sí
+  llegamos! $7.500…", "¿te refieres a…?", "no llegamos… ¿lo recoges?") es la misma de Pedidos
+  (`formato.ts · siLlegamos / sinCobertura`). Si pregunta por domicilios sin barrio, el modelo pide
+  el barrio (pregunta `dato_pedido: barrio`) y la respuesta suelta pasa por cobertura.
+- **Escalar:** el modelo no pasa a nadie: devuelve `escalar` (`reclamo_grave` — pedido equivocado,
+  cobro mal, comida mala, >1 h de espera — o `pedido_registrado` — cambiar o cancelar un pedido ya
+  hecho) y el **código** ejecuta `pasarAHumano` y manda `T.HANDOFF`. Si ofrece "¿quieres que te
+  conecte con alguien del equipo?" deja la pregunta `ofrecer_humano`, y el "sí" lo convierte la
+  política en handoff (regla `ofrecer_humano:si`), sin pasar por el modelo.
+- `actualizar_cliente` para la dirección **no se portó**: tras cada domicilio la dirección y el
+  barrio pasan solos a `clientes` y en el siguiente pedido se ofrecen ("¿te lo enviamos a …?").
+
+**Reservas** (`handlers/reservas.ts` + piezas puras en `decision/reserva.ts`, 2026-09-30). Portado
+del prompt de n8n `1d7f7d87`; el LLM **no tiene herramientas** y solo escribe la frase de enlace.
+
+- **Borrador en la BD:** lo que el cliente va diciendo se guarda en `conversaciones.reserva`
+  (`personas`, `fecha`, `hora`, `motivo`, `verificado`). Un desvío ("mándame la carta") no lo borra;
+  se descarta a las 6 h sin movimiento.
+- **Una pregunta por mensaje** (`faltaReserva`): personas → día → hora → **disponibilidad** →
+  ocasión → resumen. La disponibilidad (`consultar_disponibilidad_reserva`) la consulta el código
+  en cuanto hay día, hora y personas; sus errores (`FECHA_PASADA`, `FUERA_DE_HORARIO`, `MUY_LEJOS`,
+  `POCA_ANTICIPACION`) se dicen con el `message` de la BD y se vuelve a pedir ese dato. `verificado`
+  guarda para qué día/hora/personas dio cupo: cambiar cualquiera obliga a consultar de nuevo.
+- **"A las 7" = 19:00** (`normalizarHora`: de 1 a 9 se suman 12; se reserva de 12:00 a 21:30).
+- **La ocasión** se empareja en código contra `motivos_reserva` (`emparejarMotivo`: "cumple" ~
+  "Cumpleaños", "propuesta" ~ "Declaración / propuesta"); nada está escrito a mano, así que un
+  motivo nuevo en Configuración funciona solo. "No / normal / ninguna" solo cuenta como respuesta a
+  esa pregunta. El costo sale de la tabla, es por reserva y se paga en el local.
+- **Crear:** solo con "sí" al resumen (`confirmar_reserva`) **y** el borrador completo con cupo
+  verificado (`borradorListo`); lo crea el ejecutor con `crear_reserva_bot` y la confirmación es un
+  texto fijo (`T.reservaCreada`) con lo que devolvió la RPC. "Sí, pero a las 8" es un cambio (no
+  crea: consulta y resume de nuevo). Si la franja se ocupó entre el resumen y el "sí" (`SIN_CUPO`),
+  se pide otra hora. Más de 12 personas → se ofrece el equipo (pregunta `ofrecer_humano`).
+- **Consultar / cancelar:** `reservas_del_cliente`; con varias, "¿cuál?" (pregunta `elegir_reserva`,
+  vale "la 2" o el día); cancelar siempre pide confirmación (pregunta `cancelar_reserva`) y lo hace
+  el ejecutor con `cancelar_reserva_bot`, que no cancela una ajena (`RESERVA_NO_ENCONTRADA`).
+
+**Arreglado de paso:** `repo-supabase` filtraba las preguntas guardadas con una lista escrita a mano
+que no tenía `nombre` ni `ofrecer_humano`: en producción el "sí" a "¿te conecto con alguien?" se
+habría perdido. Ahora es un `Record` exhaustivo por tipo (una pregunta nueva que falte no compila).
 
 `src/bot.ts` es el **único punto de ensamblado**: lo usan `index.ts` (producción), el
 simulador y las pruebas, así que el simulador ejercita exactamente el código de producción
@@ -229,6 +314,13 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
 - **Fase 4:** ✅ (2026-09-30): clasificador, política (47 casos + barridos de invariantes),
   ejecutor, guardia, conversador. 172 pruebas (161 unitarias + 11 de integración) y
   `f4-decision-critica.yaml` (crítico) 5/5 con OpenAI real (`gpt-5.1`).
-- **Fase 5:** 🟡 Menú ✅ (escenarios `f5-menu-*` 10/10 con OpenAI real, 188 pruebas). Faltan
-  Pedidos, Soporte y Reservas.
+- **Fase 5:** 🟡 los cuatro agentes escritos, 309 pruebas (17 de integración contra Supabase) en verde. Con OpenAI
+  real: `f5-menu-*` y `f5-pedidos-*` 5/5, `f5-soporte-reclamo` 5/5. **Pendientes** (la cuenta de
+  OpenAI se quedó sin crédito el 2026-09-30): `f5-soporte-info` (dio 4/5; ya corregido, sin re-correr)
+  y `f5-reservas-*` (nunca corridos).
+  **Por dónde seguir:** con crédito en OpenAI, correr (agente `bot-sim`) TODOS los escenarios
+  `bot: decision` — `f4-*` y `f5-*` —, porque la política cambió después de la última corrida verde
+  (barrio del historial, regla 3b de reservas). Si pasan, Fase 5 ✅; lo que falle se corrige como
+  regla + prueba, igual que con Menú y Pedidos. Primera vez en WhatsApp real para Reservas: ver que
+  la fecha que resuelve el clasificador ("el sábado") sea la correcta en hora Colombia.
 - **Fase 6:** escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.

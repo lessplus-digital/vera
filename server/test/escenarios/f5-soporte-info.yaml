@@ -1,0 +1,43 @@
+nombre: Soporte atiende con datos de la BD
+descripcion: >
+  Fase 5, agentes reales. El nombre se pregunta con texto fijo y lo guarda el
+  código; horarios y FAQ salen de info_negocio / faq (en el simulador, la copia
+  de repo-memoria); la cobertura la consulta el código y la tarifa la escribe
+  el código. Lo que no está en la BD se ofrece a una persona, y el "sí" lo pasa
+  la política.
+bot: decision
+telefono: '573000000908'
+pasos:
+  - envia: hola
+    debe:
+      contiene: ['¿Con quién tengo el gusto?']
+      respuestas: 1
+      turno: { handler: soporte, sin_acciones: [pasar_a_humano] }
+  - envia: Camila
+    debe:
+      no_contiene: ['¿Con quién tengo el gusto?']
+      turno: { acciones: [guardar_nombre] }
+  - envia: ¿a qué hora abren el sábado?
+    debe:
+      coincide: '12'
+      no_contiene: ['sistema']
+      turno: { handler: soporte }
+  - envia: ¿tienen parqueadero?
+    debe:
+      coincide: 'frente|gratis'
+      turno: { handler: soporte }
+  - envia: ¿llegan a niqia?
+    debe:
+      contiene: ['Niquía', '$7.500']
+      turno: { handler: soporte, acciones: [verificar_cobertura], sin_acciones: [guardar_datos] }
+  # Algo que no está en info_negocio ni en las FAQ del simulador. (Un cumpleaños
+  # sería de Reservas: tiene montaje con costo.) La cobertura del paso anterior no se repite.
+  - envia: ¿tienen wifi para los clientes?
+    debe:
+      coincide: 'equipo'
+      no_contiene: ['$', 'Niquía']
+      turno: { handler: soporte, sin_acciones: [pasar_a_humano] }
+  - envia: sí, por favor
+    debe:
+      contiene: ['Te conecto con nuestro equipo']
+      turno: { handler: humano, acciones: [pasar_a_humano] }

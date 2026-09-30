@@ -16,7 +16,8 @@ pasos:
       turno: { sin_acciones: [crear_pedido] }
   - envia: ¿llegan a niqia?
     debe:
-      no_contiene: ['$', 'minutos']
+      # Con el agente de Soporte la tarifa SÍ se dice: la trae consultar_cobertura (Niquía), no la memoria.
+      contiene: ['Niquía']
       turno: { handler: soporte, acciones: [verificar_cobertura], sin_acciones: [guardar_datos] }
   - envia: pardo
     debe:

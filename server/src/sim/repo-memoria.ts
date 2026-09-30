@@ -6,7 +6,7 @@ import type {
   PedidoFeedback,
   Repo,
 } from '../bd/repo.js'
-import type { Carrito, Cobertura, DatosFlujo, LineaCarrito, PedidoCreado, ResultadoMenu, RespuestaRPC } from '../bd/repo.js'
+import type { Carrito, Cobertura, DatosFlujo, Faq, LineaCarrito, MotivoReserva, PedidoCliente, PedidoCreado, Reserva, ResultadoMenu, RespuestaRPC } from '../bd/repo.js'
 import { buscarMenuSim, cotizarMitadSim, masaSim, MENU_SIM, precioSim } from './menu-memoria.js'
 import type { Conversacion, EstadoPedido, Faltante, PasoFlujo } from '../decision/contexto.js'
 
@@ -68,6 +68,11 @@ type PedidoMem = {
   estado_pago: string
   comprobante_url: string | null
   orden: number
+  tipo_pedido?: string
+  total?: number
+  /** ISO UTC; por defecto, el momento en que se agregó. */
+  fecha_pedido?: string
+  motivo_rechazo?: string | null
 }
 
 type ColaFeedback = { pedido_id: string; estado: 'esperando_nota' | 'esperando_comentario' }
@@ -132,6 +137,7 @@ export class RepoMemoria implements Repo {
       estado_pago: 'pendiente',
       comprobante_url: null,
       orden,
+      fecha_pedido: new Date().toISOString(),
       ...p,
     })
     return pedido_id
@@ -241,6 +247,9 @@ export class RepoMemoria implements Repo {
       tipo_pedido: c.tipo_pedido,
       barrio: c.barrio,
       cobertura_ok: c.cobertura_ok,
+      direccion_entrega: c.direccion_entrega,
+      metodo_pago: c.metodo_pago,
+      costo_domicilio: c.costo_domicilio,
     }
   }
 
@@ -299,8 +308,151 @@ export class RepoMemoria implements Repo {
     const costo = c.tipo_pedido === 'domicilio' ? (c.costo_domicilio ?? 0) : 0
     const total = subtotalDe(c) + costo
     this.ordenes.push({ pedido_id, telefono, total, carrito: structuredClone(c) })
+    this.agregarPedido({ pedido_id, telefono, metodo_pago: c.metodo_pago!, tipo_pedido: c.tipo_pedido!, total })
     this.carritos.delete(telefono)
-    return { ok: true, pedido_id, total, costo_domicilio: costo, tipo_pedido: c.tipo_pedido!, metodo_pago: c.metodo_pago! }
+    const dom = c.tipo_pedido === 'domicilio'
+    return {
+      ok: true,
+      pedido_id,
+      total,
+      costo_domicilio: costo,
+      tipo_pedido: c.tipo_pedido!,
+      metodo_pago: c.metodo_pago!,
+      barrio: dom ? c.barrio : null,
+      direccion_entrega: dom ? c.direccion_entrega : null,
+    }
+  }
+
+  async actualizarDireccionCliente(clienteId: string, d: { direccion_principal: string; barrio: string | null }) {
+    for (const c of this.clientes.values()) {
+      if (c.cliente_id !== clienteId) continue
+      c.direccion_principal = d.direccion_principal
+      if (d.barrio) c.barrio = d.barrio
+    }
+  }
+
+  /** Lo que el dashboard edita en Configuración; los escenarios pueden cambiarlo. */
+  // Copia de las claves reales (2026-09-30).
+  readonly info = new Map<string, string>([
+    ['datos_transferencia', 'Bancolombia ahorros 62500073329'],
+    ['direccion', 'Parque de Bello Calle 54 # 52 -07'],
+    ['horario_semana', 'Lunes a Viernes 11:00am - 10:00pm'],
+    ['horario_finsemana', 'Sábados y Domingos 12:00pm - 11:00pm'],
+    ['horario_feriados', 'Cerrado'],
+    ['link_menu', 'https://vera.plateo.cloud/menu_vera.pdf'],
+    ['metodos_pago', 'Efectivo y transferencia bancaria'],
+    ['nombre_negocio', 'La Vera Pizzería'],
+    ['politica_cancelacion', 'Pedidos confirmados no se cancelan después de 5 minutos'],
+    ['telefono_principal', '(604) 4799978'],
+    ['tiempo_entrega_delivery', '30 a 45 minutos'],
+  ])
+  async infoNegocio(clave: string) {
+    return this.info.get(clave) ?? null
+  }
+
+  // ── Soporte (Fase 5) ─────────────────────────────────────────────────────
+  async actualizarNombreCliente(clienteId: string, nombre: string) {
+    for (const c of this.clientes.values()) if (c.cliente_id === clienteId) c.nombre = nombre
+  }
+
+  async infoNegocioTodo() {
+    return Object.fromEntries(this.info)
+  }
+
+  /** Las FAQ activas que editaría el restaurante. Sin ranking: el LLM elige cuál aplica. */
+  readonly faqs: Faq[] = [{ pregunta: '¿Tienen parqueadero?', respuesta: 'Sí, frente al local, gratis para clientes.' }]
+  async consultarFaq(_filtro: string) {
+    return this.faqs.map((f) => ({ ...f }))
+  }
+
+  // ── Reservas (Fase 5) ────────────────────────────────────────────────────
+  // Mismas reglas que consultar_disponibilidad_reserva / crear_reserva_bot
+  // (qa/sql/12-pedido-reservas-bot.sql), en hora Colombia.
+  readonly motivos: MotivoReserva[] = [
+    { clave: 'sin_ocasion', nombre: 'Sin ocasión especial', descripcion: 'Reserva normal, sin montaje adicional', costo: 0 },
+    { clave: 'cumpleanos', nombre: 'Cumpleaños', descripcion: 'Decoración de cumpleaños y postre con vela', costo: 80000 },
+    { clave: 'grado', nombre: 'Grado', descripcion: 'Decoración de grado y foto de recuerdo', costo: 90000 },
+    { clave: 'aniversario', nombre: 'Aniversario', descripcion: 'Mesa decorada y brindis de cortesía', costo: 120000 },
+    { clave: 'declaracion', nombre: 'Declaración / propuesta', descripcion: 'Montaje especial, música y decoración romántica', costo: 150000 },
+    { clave: 'empresarial', nombre: 'Evento empresarial', descripcion: 'Mesa reservada, montaje y atención dedicada', costo: 200000 },
+  ]
+  readonly reservas: (Reserva & { telefono: string; estado: 'confirmada' | 'cancelada' })[] = []
+  /** Reloj de las reglas de anticipación; los escenarios usan el real. */
+  ahora = () => new Date()
+
+  async motivosReserva() {
+    return this.motivos.map((m) => ({ ...m }))
+  }
+
+  async consultarDisponibilidadReserva(fecha: string, hora: string, personas: number): Promise<RespuestaRPC> {
+    if (personas < 1 || personas > 12) {
+      return { ok: false, error: 'PERSONAS_FUERA_DE_RANGO', message: 'Por WhatsApp se reserva para 1 a 12 personas; grupos más grandes los atiende el equipo.' }
+    }
+    // "Ahora" en Colombia (UTC-5, sin horario de verano) como fecha y hora locales en UTC.
+    const ahora = new Date(this.ahora().getTime() - 5 * 3600_000)
+    const cuando = new Date(`${fecha}T${hora}:00Z`)
+    const hoy = ahora.toISOString().slice(0, 10)
+    const finDeSemana = [0, 6].includes(new Date(`${fecha}T12:00:00Z`).getUTCDay())
+    const limite = finDeSemana ? '21:30' : '20:30'
+    if (cuando < ahora) return { ok: false, error: 'FECHA_PASADA', message: 'Esa fecha y hora ya pasaron.' }
+    if ((Date.parse(`${fecha}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86400_000 > 14) {
+      return { ok: false, error: 'MUY_LEJOS', message: 'Se reserva con máximo 14 días de anticipación.' }
+    }
+    if (hora < '12:00' || hora > limite) {
+      return { ok: false, error: 'FUERA_DE_HORARIO', message: `Ese día se reserva de 12:00 a ${limite}.`, hora_limite: limite }
+    }
+    if (fecha === hoy && cuando.getTime() < ahora.getTime() + 5 * 3600_000) {
+      return { ok: false, error: 'POCA_ANTICIPACION', message: 'Las reservas para hoy necesitan mínimo 5 horas de anticipación.' }
+    }
+    const min = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5))
+    const ocupadas = this.reservas.filter((r) => r.estado === 'confirmada' && r.fecha === fecha && Math.abs(min(r.hora) - min(hora)) < 90).length
+    return { ok: true, disponible: ocupadas < 8, mesas_libres: Math.max(8 - ocupadas, 0), fecha, hora }
+  }
+
+  async crearReserva(r: { telefono: string; cliente_id: string; nombre: string; fecha: string; hora: string; personas: number; motivo: string }): Promise<RespuestaRPC> {
+    const m = this.motivos.find((x) => x.clave === r.motivo)
+    if (!m) return { ok: false, error: 'MOTIVO_INVALIDO', motivos_validos: this.motivos.map((x) => x.clave) }
+    const ya = this.reservas.find((x) => x.telefono === r.telefono && x.fecha === r.fecha && x.hora === r.hora && x.estado === 'confirmada')
+    if (ya) return { ok: true, ya_existia: true, ...ya }
+    const d = await this.consultarDisponibilidadReserva(r.fecha, r.hora, r.personas)
+    if (!d.ok) return d
+    if (!d.disponible) return { ok: false, error: 'SIN_CUPO', message: 'No hay mesas para esa hora.' }
+    const nueva = { reserva_id: `RES-M${++this.n}`, telefono: r.telefono, fecha: r.fecha, hora: r.hora, personas: r.personas, motivo: m.clave, costo_motivo: m.costo, estado: 'confirmada' as const }
+    this.reservas.push(nueva)
+    const { telefono: _t, estado: _e, ...salida } = nueva
+    return { ok: true, ya_existia: false, ...salida }
+  }
+
+  async cancelarReserva(telefono: string, reservaId: string): Promise<RespuestaRPC> {
+    const r = this.reservas.find((x) => x.reserva_id === reservaId)
+    if (!r || r.telefono !== telefono) return { ok: false, error: 'RESERVA_NO_ENCONTRADA' }
+    if (r.estado !== 'confirmada') return { ok: false, error: 'RESERVA_YA_CANCELADA' }
+    r.estado = 'cancelada'
+    return { ok: true, reserva_id: r.reserva_id, fecha: r.fecha, hora: r.hora }
+  }
+
+  async reservasDelCliente(telefono: string): Promise<Reserva[]> {
+    const hoy = new Date(this.ahora().getTime() - 5 * 3600_000).toISOString().slice(0, 10)
+    return this.reservas
+      .filter((r) => r.telefono === telefono && r.estado === 'confirmada' && r.fecha >= hoy)
+      .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora))
+      .map(({ telefono: _t, estado: _e, ...r }) => r)
+  }
+
+  async pedidosRecientes(telefono: string, limite: number): Promise<PedidoCliente[]> {
+    return this.pedidos
+      .filter((p) => p.telefono === telefono)
+      .sort((a, b) => b.orden - a.orden)
+      .slice(0, limite)
+      .map((p) => ({
+        pedido_id: p.pedido_id,
+        estado: p.estado,
+        tipo_pedido: p.tipo_pedido ?? null,
+        metodo_pago: p.metodo_pago,
+        total: p.total ?? 0,
+        fecha_pedido: p.fecha_pedido!,
+        motivo_rechazo: p.motivo_rechazo ?? null,
+      }))
   }
 
   // ── Menú y carrito (Fase 5) ──────────────────────────────────────────────

@@ -1,0 +1,41 @@
+nombre: Pedidos cierra un domicilio de punta a punta
+descripcion: >
+  Fase 5, agentes reales (Menú + Pedidos) con el clasificador de verdad. Una
+  pregunta por mensaje según faltantes, la errata del barrio se corrige sola, el
+  resumen trae las cuentas exactas y el pedido lo crea el código SOLO con el "sí"
+  al resumen. La cuenta de la transferencia sale de info_negocio.
+critico: true
+bot: decision
+telefono: '573000000906'
+pasos:
+  - envia: hola, quiero una hawaiana tradicional mediana
+    debe:
+      contiene: ['Subtotal: $37.500']
+      turno: { handler: menu, sin_acciones: [crear_pedido] }
+  - envia: no, eso es todo
+    debe:
+      contiene: ['¿Es para domicilio o lo recoges en el local?']
+      no_contiene: ['¿Te lo confirmo así?']
+      turno: { handler: pedidos, sin_acciones: [crear_pedido] }
+  - envia: a domicilio
+    debe:
+      contiene: ['¿En qué barrio estás?']
+      turno: { handler: pedidos, sin_acciones: [crear_pedido] }
+  - envia: niqia
+    debe:
+      contiene: ['Niquía', '$7.500', '¿A qué dirección te lo enviamos?']
+      turno: { handler: pedidos, acciones: [verificar_cobertura], sin_acciones: [crear_pedido] }
+  - envia: 'calle 10 # 5-20'
+    debe:
+      contiene: ['¿Pagas en efectivo o por transferencia?']
+      turno: { handler: pedidos, acciones: [guardar_datos], sin_acciones: [crear_pedido] }
+  - envia: por transferencia
+    debe:
+      contiene: ['Subtotal: $37.500', 'Domicilio: $7.500', 'Total a pagar: $45.000', 'calle 10 # 5-20, Niquía', '💳 Transferencia', '¿Te lo confirmo así?']
+      no_contiene: ['registrado', 'PED-']
+      turno: { handler: pedidos, sin_acciones: [crear_pedido] }
+  - envia: sí, confírmalo
+    debe:
+      contiene: ['¡Pedido registrado!', '$45.000', 'Bancolombia ahorros 62500073329', 'comprobante']
+      respuestas: 1
+      turno: { regla: 'resumen:si', acciones: [crear_pedido] }
