@@ -29,8 +29,8 @@ así que "dale" tras una sugerencia del Menú y tras el resumen ya no se confund
 sigue armando Menú. La confirmación del pedido es plantilla con id y total de la BD.
 
 **Impacto:** `server/src/decision/`, `server/src/guardia/`, `server/src/llm/` (dependencia `openai`),
-`Repo` con estado del pedido, conversación, cobertura, datos, vaciar y crear orden. 172 pruebas.
-Pendiente: probar con `OPENAI_API_KEY` real. Detalle en `docs/bot/servidor.md` §La decisión.
+`Repo` con estado del pedido, conversación, cobertura, datos, vaciar y crear orden. 172 pruebas y
+el escenario crítico `f4-decision-critica` 5/5 con OpenAI real. Detalle en `docs/bot/servidor.md` §La decisión.
 
 ---
 ### 2026-09-29 — Se decide reemplazar n8n por un servidor Node propio · Fases 0 y 1 hechas

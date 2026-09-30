@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-09-30): en construcción — Fases 1–3 hechas, Fase 4 en código (falta probarla con OpenAI real).** El bot en producción sigue siendo el
+> **Estado (2026-09-30): en construcción — Fases 1–4 de 9 hechas.** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -205,7 +205,7 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
   desarrollo (memoria + log). Pruebas de integración en `test/integracion/` (se saltan sin claves).
 - **Fase 3:** ✅ núcleo determinista (2026-09-29): modos, soporte, calificaciones, comprobantes,
   avisos de estado, historial. 86 pruebas (79 unitarias + 7 de integración contra Supabase real).
-- **Fase 4:** 🟡 en código (2026-09-30): clasificador, política (47 casos + barridos de
-  invariantes), ejecutor, guardia, conversador. 172 pruebas (161 unitarias + 11 de integración).
-  Falta: correr `f4-decision-critica.yaml` con OpenAI real (necesita `OPENAI_API_KEY`).
+- **Fase 4:** ✅ (2026-09-30): clasificador, política (47 casos + barridos de invariantes),
+  ejecutor, guardia, conversador. 172 pruebas (161 unitarias + 11 de integración) y
+  `f4-decision-critica.yaml` (crítico) 5/5 con OpenAI real (`gpt-5.1`).
 - **Fases 5–6:** agentes, escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.
