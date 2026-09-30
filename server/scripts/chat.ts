@@ -9,9 +9,12 @@
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import { EntornoSim } from '../src/sim/entorno.js'
+import { llmDelEntorno } from '../src/llm/openai.js'
 
 const telefono = process.argv[2] ?? '573000000999'
-const sim = new EntornoSim({ bufferMs: 300 })
+const llm = llmDelEntorno()
+const sim = new EntornoSim({ bufferMs: 300, ...(llm ? { llm } : {}) })
+console.log(llm ? 'Bot con decisión (clasificador + política + guardia) sobre BD en memoria.' : 'Sin OPENAI_API_KEY: bot en modo eco.')
 const rl = createInterface({ input: stdin, output: stdout })
 
 console.log(`Chat con el bot como ${telefono}. /imagen · /audio · /boton <texto> · /salir\n`)

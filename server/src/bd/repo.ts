@@ -3,6 +3,8 @@
 // Regla: la lógica de negocio que puede vivir en Postgres vive allí (RPC con
 // pruebas en qa/sql/); aquí solo hay lecturas y escrituras simples.
 
+import type { Conversacion, EstadoPedido, PasoFlujo } from '../decision/contexto.js'
+
 export type ModoCliente = 'bot' | 'humano' | 'esperando_feedback'
 
 export type Cliente = {
@@ -20,6 +22,32 @@ export type AccionFeedback = 'positiva' | 'pedir_comentario' | 'agradecer' | 'no
 export type PedidoFeedback = { pedido_id: string; cliente_id: string; telefono: string; nombre: string | null }
 
 export type MensajeHistorial = { tipo: 'human' | 'ai'; texto: string }
+
+/** consultar_cobertura en modo barrio. Sin cobertura, costo y tiempo vienen en null A PROPÓSITO (BUG-033). */
+export type Cobertura = {
+  cubierto: boolean
+  barrio: string
+  zona: string | null
+  costo_domicilio: number | null
+  tiempo_estimado: string | null
+  sugerencias: string[]
+}
+
+/** Lo que se puede guardar del flujo del pedido (guardar_datos_pedido, semántica COALESCE por campo). */
+export type DatosFlujo = {
+  tipo_pedido?: 'domicilio' | 'recoger'
+  barrio?: string
+  direccion_entrega?: string
+  metodo_pago?: 'Efectivo' | 'Transferencia'
+  costo_domicilio?: number
+  cobertura_ok?: boolean
+  paso_flujo?: PasoFlujo
+}
+
+/** Respuesta de las RPC del bot: `{ok, error?, message?, …}` con códigos estables. */
+export type RespuestaRPC = { ok: boolean; error?: string; message?: string; [k: string]: unknown }
+
+export type PedidoCreado = { ok: true; pedido_id: string; total: number; costo_domicilio: number; tipo_pedido: string; metodo_pago: string }
 
 export interface Repo {
   /** Busca el cliente por teléfono; si no existe lo crea (nombre 'Pendiente', modo 'bot'). */
@@ -49,6 +77,19 @@ export interface Repo {
   /** Historial en n8n_chat_histories (mismo formato que lee registrar_contexto_handoff). */
   agregarHistorial(telefono: string, m: MensajeHistorial): Promise<void>
   leerHistorial(telefono: string, limite: number): Promise<MensajeHistorial[]>
+
+  // ── Decisión (Fase 4) ────────────────────────────────────────────────────
+  /** Vista estado_pedido. null = no hay fila de carrito. */
+  estadoPedido(telefono: string): Promise<EstadoPedido | null>
+  /** Tabla conversaciones: quién lleva el hilo y qué preguntó el bot por última vez. */
+  leerConversacion(telefono: string): Promise<Conversacion>
+  guardarConversacion(telefono: string, c: Conversacion): Promise<void>
+
+  consultarCobertura(barrio: string): Promise<Cobertura>
+  guardarDatosPedido(telefono: string, d: DatosFlujo): Promise<RespuestaRPC>
+  carritoVaciar(telefono: string): Promise<RespuestaRPC>
+  /** Exige paso_flujo='resumen' y faltantes=[] en la BD; si no, {ok:false, error}. */
+  crearOrdenDesdeCarrito(telefono: string, clienteId: string): Promise<PedidoCreado | (RespuestaRPC & { ok: false })>
 }
 
 /** Fecha de hoy en Colombia (YYYY-MM-DD), para columnas `date` como fecha_registro. */

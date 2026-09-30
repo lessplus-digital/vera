@@ -14,6 +14,25 @@
 ```
 
 ---
+### 2026-09-30 — Bot Node, Fase 4: la decisión pasa del LLM al código
+
+**Contexto:** en n8n el orquestador (un LLM) elegía el agente y los agentes decidían solos cuándo
+crear el pedido o dar una tarifa. Se leyó el orquestador **publicado** (versión `1d7f7d87`) y se
+confirmó BUG-063: los parches de BUG-061/062 están en `parameters.parameters` en 7 nodos y nunca
+corrieron.
+
+**Decisión:** el LLM solo **clasifica** (JSON estricto); una función pura (`politica.ts`) decide el
+handler y las acciones críticas, que ejecuta el código antes de redactar; una guardia revisa el
+texto contra lo que devolvieron las herramientas. Se portan las reglas del orquestador y los
+parches que no corrían, más una mejora: el bot guarda **qué preguntó** (`conversaciones.pendiente`),
+así que "dale" tras una sugerencia del Menú y tras el resumen ya no se confunden. El carrito lo
+sigue armando Menú. La confirmación del pedido es plantilla con id y total de la BD.
+
+**Impacto:** `server/src/decision/`, `server/src/guardia/`, `server/src/llm/` (dependencia `openai`),
+`Repo` con estado del pedido, conversación, cobertura, datos, vaciar y crear orden. 172 pruebas.
+Pendiente: probar con `OPENAI_API_KEY` real. Detalle en `docs/bot/servidor.md` §La decisión.
+
+---
 ### 2026-09-29 — Se decide reemplazar n8n por un servidor Node propio · Fases 0 y 1 hechas
 
 **Contexto:** Vera no ha salido a producción porque el bot de n8n no es fiable. El orquestador es

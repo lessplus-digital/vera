@@ -1,3 +1,5 @@
+import { pesos } from './guardia/guardia.js'
+
 // Textos fijos que el bot envía (no los redacta el LLM). Copiados de los nodos de
 // n8n publicados el 2026-09-29, salvo donde se indica una mejora.
 
@@ -16,6 +18,22 @@ export const COMPROBANTE_SIN_PEDIDO =
 // Nuevo: en n8n una descarga fallida mataba la ejecución sin contestar.
 export const COMPROBANTE_ERROR =
   'No pude recibir la imagen 😕 ¿Me la envías de nuevo, por favor?'
+
+// ── Decisión (Fase 4) ──────────────────────────────────────────────────────
+// Sale cuando la guardia rechazó dos redacciones seguidas: no afirma nada.
+export const TEXTO_SEGURO =
+  'Déjame revisar bien eso para no darte un dato equivocado 🙏 ¿Me confirmas qué necesitas?'
+
+/** Confirmación del pedido: la arma el código con los datos que devolvió la BD, nunca el LLM. */
+export function pedidoCreado(p: { pedido_id: string; total: number; tipo_pedido: string; metodo_pago: string }): string {
+  const total = pesos(p.total)
+  const pago =
+    p.metodo_pago === 'Transferencia'
+      ? '\n\nCuando hagas la transferencia, envíame por aquí la foto del comprobante 📸'
+      : ''
+  const entrega = p.tipo_pedido === 'domicilio' ? 'te lo enviamos apenas esté listo 🛵' : 'te avisamos cuando esté listo para recoger 🏃'
+  return `✅ ¡Pedido registrado! Tu número es *${p.pedido_id}* y el total es *${total}*.\n\nEl equipo lo revisa y ${entrega}${pago}`
+}
 
 // ── Paso a humano ──────────────────────────────────────────────────────────
 export const HANDOFF = 'Te conecto con nuestro equipo. Un momento por favor 🙋'

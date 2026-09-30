@@ -1,0 +1,26 @@
+nombre: Invariantes de decisión con el clasificador real
+descripcion: >
+  Fase 4, con el LLM de verdad y el redactor provisional. Verifica QUÉ decidió el
+  código (turno:), no el texto: nunca un pedido sin resumen, handoff cuando lo
+  piden, y un barrio siempre pasa por cobertura (BUG-061/062). Necesita OPENAI_API_KEY.
+critico: true
+bot: decision
+telefono: '573000000903'
+pasos:
+  - envia: hola, ¿cómo están?
+    debe:
+      respuestas: 1
+      turno: { handler: soporte, sin_acciones: [crear_pedido, pasar_a_humano] }
+  - envia: sí, dale
+    debe:
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: ¿llegan a niqia?
+    debe:
+      no_contiene: ['$', 'minutos']
+      turno: { handler: soporte, acciones: [verificar_cobertura], sin_acciones: [guardar_datos] }
+  - envia: pardo
+    debe:
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: quiero hablar con una persona por favor
+    debe:
+      turno: { handler: humano, acciones: [pasar_a_humano] }

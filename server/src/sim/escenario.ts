@@ -19,6 +19,18 @@ const esquemaDebe = z
     coincide: z.string().optional(),
     /** Número exacto de mensajes que manda el bot en este paso. */
     respuestas: z.number().int().min(0).optional(),
+    /** Lo que decidió la política en el ÚLTIMO turno del paso (bot: decision). */
+    turno: z
+      .object({
+        handler: z.string().optional(),
+        regla: z.string().optional(),
+        /** Tipos de acción que DEBEN estar (p. ej. [crear_pedido]). */
+        acciones: z.array(z.string()).optional(),
+        /** Tipos de acción que NO pueden estar. Úsalo para los invariantes críticos. */
+        sin_acciones: z.array(z.string()).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 
@@ -45,6 +57,8 @@ export const esquemaEscenario = z
     critico: z.boolean().default(false),
     telefono: z.string().default('573000000901'),
     nombre_cliente: z.string().default('Cliente Sim'),
+    /** eco = núcleo determinista (Fases 1–3) · decision = clasificador + política + guardia (necesita OPENAI_API_KEY). */
+    bot: z.enum(['eco', 'decision']).default('eco'),
     pasos: z.array(esquemaPaso).min(1),
   })
   .strict()
@@ -63,7 +77,7 @@ export function cargarEscenario(ruta: string): Escenario {
 export type ResultadoPaso = { indice: number; enviado: string; respuestas: string[]; fallos: string[] }
 export type ResultadoCorrida = { ok: boolean; pasos: ResultadoPaso[] }
 
-export function verificar(debe: Paso['debe'], respuestas: string[]): string[] {
+export function verificar(debe: Paso['debe'], respuestas: string[], decision?: unknown): string[] {
   const fallos: string[] = []
   const todo = respuestas.map((r) => r.toLowerCase())
   for (const t of debe.contiene) {
@@ -78,6 +92,14 @@ export function verificar(debe: Paso['debe'], respuestas: string[]): string[] {
   if (debe.respuestas !== undefined && respuestas.length !== debe.respuestas) {
     fallos.push(`esperaba ${debe.respuestas} respuesta(s), llegaron ${respuestas.length}`)
   }
+  if (debe.turno) {
+    const d = (decision ?? {}) as { handler?: string; regla?: string; acciones?: { tipo: string }[] }
+    const tipos = (d.acciones ?? []).map((a) => a.tipo)
+    if (debe.turno.handler && d.handler !== debe.turno.handler) fallos.push(`handler ${d.handler}, esperaba ${debe.turno.handler}`)
+    if (debe.turno.regla && d.regla !== debe.turno.regla) fallos.push(`regla ${d.regla}, esperaba ${debe.turno.regla}`)
+    for (const a of debe.turno.acciones ?? []) if (!tipos.includes(a)) fallos.push(`faltó la acción ${a}`)
+    for (const a of debe.turno.sin_acciones ?? []) if (tipos.includes(a)) fallos.push(`NO debía ejecutar ${a}`)
+  }
   return fallos
 }
 
@@ -90,7 +112,10 @@ function describir(p: Paso): string {
 
 /** Corre un escenario una vez, en un entorno limpio. */
 export async function correrEscenario(e: Escenario, opciones: OpcionesEntorno = {}): Promise<ResultadoCorrida> {
-  const sim = new EntornoSim(opciones)
+  if (e.bot === 'decision' && !opciones.llm && !opciones.conversador) {
+    throw new Error(`${e.nombre}: usa bot: decision y no hay LLM (falta OPENAI_API_KEY en server/.env)`)
+  }
+  const sim = new EntornoSim(e.bot === 'eco' ? { ...opciones, llm: undefined } : opciones)
   const pasos: ResultadoPaso[] = []
 
   for (const [indice, p] of e.pasos.entries()) {
@@ -104,7 +129,8 @@ export async function correrEscenario(e: Escenario, opciones: OpcionesEntorno = 
 
     await sim.esperar()
     const respuestas = sim.wa.textosPara(e.telefono).slice(antes)
-    pasos.push({ indice: indice + 1, enviado: describir(p), respuestas, fallos: verificar(p.debe, respuestas) })
+    const decision = sim.registro.turnos.at(-1)?.decision
+    pasos.push({ indice: indice + 1, enviado: describir(p), respuestas, fallos: verificar(p.debe, respuestas, decision) })
   }
 
   return { ok: pasos.every((p) => p.fallos.length === 0), pasos }

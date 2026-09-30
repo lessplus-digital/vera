@@ -30,6 +30,8 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
     await sb.from('bot_turnos').delete().eq('telefono', TEL)
     await sb.from('n8n_chat_histories').delete().eq('session_id', TEL)
     await sb.from('mensajes_soporte').delete().eq('telefono', TEL)
+    await sb.from('carritos').delete().eq('telefono', TEL)
+    await sb.from('conversaciones').delete().eq('telefono', TEL)
     await sb.from('clientes').delete().eq('telefono', TEL) // cascada: sus pedidos
     await sb.storage.from('comprobantes').remove([`soporte/${TEL}/prueba.png`])
   })
@@ -82,5 +84,37 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
     const { data, error } = await sb.rpc('precio_producto', { p_producto_id: 'PROD-006', p_tamano: 'grande' })
     expect(error).toBeNull()
     expect(data).toMatchObject({ ok: true, producto_id: 'PROD-006', tamano: 'grande' })
+  })
+
+  // ── Fase 4: lo que lee y escribe la decisión ─────────────────────────────
+  it('RepoSupabase: conversación — guarda y lee la última pregunta completa', async () => {
+    const repo = new RepoSupabase(sb)
+    expect(await repo.leerConversacion(TEL)).toEqual({ handler: null, ultima_pregunta: null })
+    const c = { handler: 'pedidos' as const, ultima_pregunta: { tipo: 'sugerir_barrio' as const, barrio: 'Niquía' } }
+    await repo.guardarConversacion(TEL, c)
+    expect(await repo.leerConversacion(TEL)).toEqual(c)
+  })
+
+  it('RepoSupabase: consultar_cobertura — errata con sugerencia, y barrio cubierto con tarifa', async () => {
+    const repo = new RepoSupabase(sb)
+    const mal = await repo.consultarCobertura('niqia')
+    expect(mal).toMatchObject({ cubierto: false, costo_domicilio: null, tiempo_estimado: null, sugerencias: ['Niquía'] })
+    const bien = await repo.consultarCobertura('Niquía')
+    expect(bien.cubierto).toBe(true)
+    expect(bien.costo_domicilio).toBeGreaterThan(0)
+  })
+
+  it('RepoSupabase: guardar_datos_pedido + estado_pedido — faltantes en orden', async () => {
+    const repo = new RepoSupabase(sb)
+    expect(await repo.estadoPedido(TEL)).toBeNull()
+    await repo.guardarDatosPedido(TEL, { tipo_pedido: 'domicilio', metodo_pago: 'Efectivo' })
+    expect(await repo.estadoPedido(TEL)).toMatchObject({ n_items: 0, paso_flujo: 'armando', faltantes: ['carrito'], tipo_pedido: 'domicilio' })
+  })
+
+  it('RepoSupabase: crear_orden_desde_carrito — sin productos no crea nada', async () => {
+    const repo = new RepoSupabase(sb)
+    const c = await repo.clientePorTelefono(TEL)
+    expect(await repo.crearOrdenDesdeCarrito(TEL, c.cliente_id)).toMatchObject({ ok: false, error: 'CARRITO_VACIO' })
+    expect(await repo.carritoVaciar(TEL)).toMatchObject({ ok: true })
   })
 })

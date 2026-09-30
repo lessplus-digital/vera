@@ -30,6 +30,11 @@ const esquema = z
     // Job que pide calificaciones cada 15 min. APAGADO por defecto: mientras n8n
     // siga activo tiene su propio job, y un servidor de pruebas no debe escribirle
     // a clientes por su cuenta. Se enciende en el corte (Fase 8).
+    // OpenAI (Fase 4): sin clave el bot arranca con el conversador eco, útil para
+    // probar el esqueleto. Con clave: clasificador → política → guardia.
+    OPENAI_API_KEY: z.string().default(''),
+    OPENAI_MODEL: z.string().default('gpt-5.1'),
+
     FEEDBACK_ACTIVO: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   })
   .superRefine((c, ctx) => {

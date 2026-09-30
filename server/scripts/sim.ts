@@ -10,6 +10,7 @@ import { readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cargarEscenario, correrEscenario, veredicto, type Veredicto } from '../src/sim/escenario.js'
+import { llmDelEntorno } from '../src/llm/openai.js'
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'test', 'escenarios')
 
@@ -34,11 +35,16 @@ if (archivos.length === 0) {
   process.exit(2)
 }
 
+const llm = llmDelEntorno()
 const veredictos: (Veredicto & { archivo: string })[] = []
 for (const archivo of archivos) {
   const escenario = cargarEscenario(join(dir, archivo))
+  if (escenario.bot === 'decision' && !llm) {
+    console.error(`⏭  ${archivo}: saltado (usa el LLM y falta OPENAI_API_KEY en server/.env)`)
+    continue
+  }
   const corridas = []
-  for (let i = 0; i < veces; i++) corridas.push(await correrEscenario(escenario))
+  for (let i = 0; i < veces; i++) corridas.push(await correrEscenario(escenario, llm ? { llm } : {}))
   veredictos.push({ archivo, ...veredicto(escenario, corridas) })
 }
 
