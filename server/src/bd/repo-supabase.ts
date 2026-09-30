@@ -4,7 +4,11 @@ import {
   hoyColombia,
   type AccionFeedback,
   type Cliente,
+  type Carrito,
   type Cobertura,
+  type LineaCarrito,
+  type ProductoMenu,
+  type ResultadoMenu,
   type DatosFlujo,
   type PedidoCreado,
   type RespuestaRPC,
@@ -214,6 +218,120 @@ export class RepoSupabase implements Repo {
     ) as RespuestaRPC
     if (!r.ok) return r as RespuestaRPC & { ok: false }
     return { ...r, ok: true, pedido_id: String(r.pedido_id), total: Number(r.total), costo_domicilio: Number(r.costo_domicilio ?? 0) } as PedidoCreado
+  }
+
+  // ── Menú y carrito (Fase 5) ──────────────────────────────────────────────
+  async buscarMenu(termino: string): Promise<ResultadoMenu> {
+    // solo_disponibles=false: los agotados también vuelven, para decir "hoy se agotó"
+    // en vez de "no lo manejamos".
+    const filas = exigir(
+      await this.sb.rpc('buscar_menu', { termino, umbral: 0.2, limite: 15, solo_disponibles: false }),
+      'buscar_menu',
+    ) as Record<string, unknown>[]
+    const r: ResultadoMenu = { disponibles: [], agotados: [] }
+    for (const f of filas ?? []) (f.disponible ? r.disponibles : r.agotados).push(aProducto(f))
+    return r
+  }
+
+  async carrito(telefono: string): Promise<Carrito> {
+    const fila = exigir(
+      await this.sb.from('carritos').select('items, total').eq('telefono', telefono).maybeSingle(),
+      'leer carrito',
+    ) as { items: unknown; total: unknown } | null
+    const items = Array.isArray(fila?.items) ? (fila.items as Record<string, unknown>[]) : []
+    if (!items.length) return { lineas: [], total: 0 }
+    const ids = [...new Set(items.map((i) => String(i.producto_id)))]
+    const menu = exigir(await this.sb.from('menu').select('producto_id, variante').in('producto_id', ids), 'leer masas') as {
+      producto_id: string
+      variante: string | null
+    }[]
+    const masa = new Map(menu.map((m) => [m.producto_id, m.variante]))
+    return { lineas: items.map((i, n) => aLinea(i, n + 1, masa)), total: Number(fila?.total ?? 0) }
+  }
+
+  async carritoAgregarItem(telefono: string, i: { producto_id: string; tamano?: string | null; cantidad: number; notas?: string | null }) {
+    return exigir(
+      await this.sb.rpc('carrito_agregar_item', {
+        p_telefono: telefono,
+        p_producto_id: i.producto_id,
+        p_tamano: i.tamano ?? null,
+        p_cantidad: i.cantidad,
+        p_notas: i.notas ?? null,
+      }),
+      'carrito_agregar_item',
+    ) as RespuestaRPC
+  }
+
+  async carritoAgregarMitad(
+    telefono: string,
+    m: { producto_a: string; producto_b: string; tamano: string; cantidad: number; notas?: string | null },
+  ) {
+    return exigir(
+      await this.sb.rpc('carrito_agregar_mitad', {
+        p_telefono: telefono,
+        p_producto_a: m.producto_a,
+        p_producto_b: m.producto_b,
+        p_tamano: m.tamano,
+        p_cantidad: m.cantidad,
+        p_notas: m.notas ?? null,
+      }),
+      'carrito_agregar_mitad',
+    ) as RespuestaRPC
+  }
+
+  async carritoQuitarItem(telefono: string, linea: number, cantidad?: number | null) {
+    return exigir(
+      await this.sb.rpc('carrito_quitar_item', { p_telefono: telefono, p_linea: linea, p_cantidad: cantidad ?? null }),
+      'carrito_quitar_item',
+    ) as RespuestaRPC
+  }
+
+  async cotizarMitad(productoA: string, productoB: string, tamano: string) {
+    return exigir(
+      await this.sb.rpc('cotizar_mitad_y_mitad', { p_producto_a: productoA, p_producto_b: productoB, p_tamano: tamano }),
+      'cotizar_mitad_y_mitad',
+    ) as RespuestaRPC
+  }
+}
+
+function aProducto(f: Record<string, unknown>): ProductoMenu {
+  let tamanos: Record<string, number> | null = null
+  const t = f['tamaño']
+  if (t) {
+    try {
+      const obj = (typeof t === 'string' ? JSON.parse(t) : t) as Record<string, unknown>
+      tamanos = Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, Number(v)]))
+    } catch {
+      tamanos = null
+    }
+  }
+  return {
+    producto_id: String(f.producto_id),
+    nombre: String(f.nombre),
+    categoria: String(f.categoria ?? ''),
+    variante: (f.variante as string | null) || null,
+    descripcion: (f.descripcion as string | null) ?? null,
+    precio: Number(f.precio),
+    tamanos,
+    similitud: Math.round(Number(f.similitud ?? 0) * 100) / 100,
+  }
+}
+
+export function aLinea(i: Record<string, unknown>, linea: number, masa: Map<string, string | null>): LineaCarrito {
+  const mitades = Array.isArray(i.mitades)
+    ? (i.mitades as Record<string, unknown>[]).map((m) => ({ nombre: String(m.nombre), variante: (m.variante as string | null) ?? null }))
+    : null
+  return {
+    linea,
+    producto_id: String(i.producto_id),
+    nombre: String(i.nombre),
+    variante: (i.variante as string | null) ?? null,
+    masa: mitades ? (mitades[0]?.variante ?? null) : (masa.get(String(i.producto_id)) ?? null),
+    cantidad: Number(i.cantidad),
+    precio_unitario: Number(i.precio_unitario),
+    subtotal: Number(i.subtotal),
+    notas: (i.notas as string | null) ?? null,
+    mitades,
   }
 }
 

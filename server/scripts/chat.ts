@@ -13,7 +13,7 @@ import { llmDelEntorno } from '../src/llm/openai.js'
 
 const telefono = process.argv[2] ?? '573000000999'
 const llm = llmDelEntorno()
-const sim = new EntornoSim({ bufferMs: 300, ...(llm ? { llm } : {}) })
+const sim = new EntornoSim({ bufferMs: 300, ...(llm ? { llm, redactores: 'agentes' as const } : {}) })
 console.log(llm ? 'Bot con decisión (clasificador + política + guardia) sobre BD en memoria.' : 'Sin OPENAI_API_KEY: bot en modo eco.')
 const rl = createInterface({ input: stdin, output: stdout })
 

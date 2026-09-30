@@ -117,4 +117,31 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
     expect(await repo.crearOrdenDesdeCarrito(TEL, c.cliente_id)).toMatchObject({ ok: false, error: 'CARRITO_VACIO' })
     expect(await repo.carritoVaciar(TEL)).toMatchObject({ ok: true })
   })
+
+  // ── Fase 5: menú y carrito ───────────────────────────────────────────────
+  it('RepoSupabase: buscarMenu separa disponibles y agotados, con precios por tamaño', async () => {
+    const repo = new RepoSupabase(sb)
+    const r = await repo.buscarMenu('hawaiana')
+    const trad = r.disponibles.find((p) => p.producto_id === 'PROD-010')
+    expect(trad).toMatchObject({ nombre: 'Hawaiana', variante: 'Tradicional' })
+    expect(trad?.tamanos?.mediana).toBeGreaterThan(0)
+    expect(r.agotados.every((p) => typeof p.producto_id === 'string')).toBe(true)
+  })
+
+  it('RepoSupabase: carrito — agregar, mitad y quitar, con la masa leída del menú', async () => {
+    const repo = new RepoSupabase(sb)
+    expect(await repo.carritoAgregarItem(TEL, { producto_id: 'PROD-015', tamano: 'mediana', cantidad: 2 })).toMatchObject({ ok: true })
+    expect(await repo.carritoAgregarMitad(TEL, { producto_a: 'PROD-010', producto_b: 'PROD-031', tamano: 'grande', cantidad: 1 })).toMatchObject({ ok: true })
+    expect(await repo.carritoAgregarItem(TEL, { producto_id: 'PROD-010', cantidad: 1 })).toMatchObject({ ok: false, error: 'TAMANO_REQUERIDO' })
+    const c = await repo.carrito(TEL)
+    expect(c.lineas.map((l) => [l.linea, l.masa, l.variante, l.cantidad])).toEqual([
+      [1, 'Estofada', 'Mediana', 2],
+      [2, 'Tradicional', 'Grande', 1],
+    ])
+    expect(c.total).toBe(c.lineas.reduce((s, l) => s + l.subtotal, 0))
+    expect(await repo.carritoQuitarItem(TEL, 1, 1)).toMatchObject({ ok: true })
+    expect((await repo.carrito(TEL)).lineas[0]?.cantidad).toBe(1)
+    expect(await repo.cotizarMitad('PROD-010', 'PROD-015', 'grande')).toMatchObject({ ok: false, error: 'MASA_DISTINTA' })
+    await repo.carritoVaciar(TEL)
+  })
 })

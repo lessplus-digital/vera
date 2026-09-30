@@ -30,10 +30,11 @@ export const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-CO').re
 
 // El bot nunca habla de sus tripas (regla global de docs/bot/ai-agents.md).
 const INTERNOS =
-  /\b(n8n|supabase|base de datos|herramientas?|tools?|json|rpc|api|el sistema|mi sistema|prompt|backend|servidor)\b/i
+  /\b(n8n|supabase|base de datos|herramientas?|tools?|json|rpc|api|sistema|prompt|backend|servidor)\b/i
 
-// "$7.500", "$ 7500", "7.500 pesos", "7 mil", "$7,500"
-const MONTO = /\$\s?\d[\d.,]*|\b\d[\d.,]*\s?(?:pesos|cop)\b|\b\d+(?:[.,]\d+)?\s?mil\b/gi
+// "$7.500", "$ 7500", "7.500 pesos", "7 mil", "$7,500", y "51.500" sin signo: un número
+// con punto de miles en esta conversación es plata (visto con gpt-5.1 el 2026-09-30).
+const MONTO = /\$\s?\d[\d.,]*|\b\d[\d.,]*\s?(?:pesos|cop)\b|\b\d+(?:[.,]\d+)?\s?mil\b|\b\d{1,3}(?:\.\d{3})+\b/gi
 
 export function leerMonto(token: string): number | null {
   const t = token.toLowerCase()

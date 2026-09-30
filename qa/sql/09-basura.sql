@@ -422,7 +422,9 @@ rollback;
 --              RLS sigue filtrando), pero el contador miente.
 --       Verde: inyección, 10k, emoji, '.*', '\', estado/tipo fuera de dominio y
 --              rango invertido → 0, sin reventar. `p_cliente_ids` con inyección
---              dentro del array → 0.
+--              dentro del array → el total SIN filtrar (117 el 2026-09-30): por diseño
+--              `p_cliente_ids` solo AMPLÍA una búsqueda (OR con p_search), así que sin
+--              p_search no filtra. Lo que se verifica es que no ejecute nada (T11).
 -- ---------------------------------------------------------------------------
 
 -- 10a · EL CONTROL POSITIVO. Sin esto, los ceros de 10b no prueban nada (ver

@@ -14,6 +14,24 @@
 ```
 
 ---
+### 2026-09-30 — Bot Node, Fase 5: agente de Menú · cambiar el pedido tras el resumen lo saca del resumen
+
+**Contexto:** portando el agente de Menú se comprobó en la BD que un carrito en `resumen` seguía
+en `resumen` aunque el cliente agregara, quitara o cambiara un dato; `crear_orden_desde_carrito`
+habría creado un pedido con un contenido que el cliente no vio resumido. El código del bot ya lo
+impedía (la última pregunta deja de ser el resumen), pero faltaba la barrera en la BD.
+
+**Decisión:** (1) el trigger `carritos_normalizar_estado` baja a `datos` un carrito en `resumen`
+cuando cambian ítems o datos de entrega/pago (migración `20260930120000`, batería 11 · T8; la 12
+re-montada). (2) Agente de Menú: el LLM elige producto, tamaño y cantidad; el precio lo pone la
+RPC y el bloque del carrito lo arma el código. Las primeras corridas reales destaparon cuatro
+fallos (ver `docs/bot/servidor.md` §Los agentes); todos quedaron como regla + prueba.
+
+**Impacto:** `server/src/handlers/`, `server/src/herramientas/`, `LLM.conHerramientas`,
+`Repo` (menú y carrito), simulador con menú propio, `supabase/migrations/`, `qa/sql/11`, `12`, `09`
+(comentario), `docs/database.md`, `qa/RESULTADOS.md`. 188 pruebas; escenarios f4/f5 10/10.
+
+---
 ### 2026-09-30 — Bot Node, Fase 4: la decisión pasa del LLM al código
 
 **Contexto:** en n8n el orquestador (un LLM) elegía el agente y los agentes decidían solos cuándo

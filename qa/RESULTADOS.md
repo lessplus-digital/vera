@@ -43,6 +43,8 @@ o el caso queda en rojo permanente e indistinguible de una regresión.
 
 ## Estado
 
+**2026-09-30:** 04, 09, 11 y 12 re-corridas tras la migración `carrito_sale_de_resumen` — verdes (la 12 tras re-montar T2.5/T3.1).
+
 **Última regresión completa: 2026-09-22** — las 10 baterías contra la BD viva tras el despliegue del
 feedback del 16-09. **Sin regresiones del sistema.**
 
@@ -58,8 +60,8 @@ feedback del 16-09. **Sin regresiones del sistema.**
 | `08-roles-rls.sql` | **16/16** · el domiciliario ve 34 pedidos, **todos suyos** | — |
 | `09-basura.sql` | **BUG-045/046/047/048 confirmados cerrados** | T9 = BUG-049 → cerrado en BD, falta n8n |
 | `10-resenas.sql` | **T10–T15 verdes** (las RPC nuevas del feedback aguantan) · T1 reparado | T8 es réplica documental |
-| `11-carrito-bot.sql` · **nueva 2026-09-29** | **37/37** — carrito del servidor Node: el precio lo pone la BD | — |
-| `12-pedido-reservas-bot.sql` · **nueva 2026-09-29** | **44/44** — crear pedido en una transacción + reservas del bot | — |
+| `11-carrito-bot.sql` · **nueva 2026-09-29** | **44/44** (2026-09-30) — carrito del servidor Node: el precio lo pone la BD · +T8: cambiar el pedido con el resumen a la vista lo saca del resumen | — |
+| `12-pedido-reservas-bot.sql` · **nueva 2026-09-29** | **44/44** (2026-09-30) — crear pedido en una transacción + reservas del bot · T2.5/T3.1 re-montados: corrompen tarifa/precio y vuelven a poner `resumen` | — |
 
 > **2026-09-29 · migraciones aditivas del bot Node** (`bot_node_tablas_y_carrito`,
 > `bot_node_pedido_y_reservas`): 11 y 12 verdes y **regresión de 04 (13/13), 05 (14/14) y 06 (22/22)

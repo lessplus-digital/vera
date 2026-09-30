@@ -2,8 +2,9 @@
 -- QA · 11 · Carrito del bot Node (el precio lo pone la BD, nunca el LLM)
 -- Cubre: precio_producto(), normalizar_tamano(), carrito_agregar_item(),
 --        carrito_agregar_mitad(), carrito_quitar_item(), carrito_vaciar(),
---        tablas wa_eventos / bot_turnos / conversaciones (existencia + RLS)
--- Migración: supabase/migrations/20260929200000_bot_node_tablas_y_carrito.sql
+--        tablas wa_eventos / bot_turnos / conversaciones (existencia + RLS),
+--        trigger carritos_normalizar_estado: salir del resumen al cambiar (T8)
+-- Migraciones: 20260929200000_bot_node_tablas_y_carrito.sql, 20260930120000_carrito_sale_de_resumen.sql
 -- Todo dentro de BEGIN…ROLLBACK. Teléfonos 5730000008xx, nunca uno real.
 -- Devuelve SOLO las filas que fallan (vacío = verde).
 --
@@ -176,6 +177,43 @@ where n.nspname = 'public' and c.relname in ('wa_eventos', 'bot_turnos', 'conver
 insert into qa_out(paso, esperado, valor)
 select 'T7.2 anon no ejecuta el helper interno', 'false',
        has_function_privilege('anon', 'public._carrito_guardar_items(text, jsonb)', 'execute')::text;
+
+-- ---------------------------------------------------------------------------
+-- T8 · Cambiar el pedido con el resumen a la vista lo saca del resumen
+--      (migración 20260930120000_carrito_sale_de_resumen.sql)
+-- ---------------------------------------------------------------------------
+-- Carrito completo para recoger (faltantes = []) y en resumen.
+select carrito_agregar_item('573000000821', 'PROD-095', null, 1);
+select guardar_datos_pedido('573000000821', p_tipo_pedido => 'recoger', p_metodo_pago => 'Efectivo');
+select guardar_datos_pedido('573000000821', p_paso_flujo => 'resumen');
+insert into qa_out(paso, esperado, valor)
+select 'T8.1 poner resumen desde datos', 'resumen', paso_flujo from carritos where telefono = '573000000821';
+
+select guardar_datos_pedido('573000000821', p_paso_flujo => 'resumen');
+insert into qa_out(paso, esperado, valor)
+select 'T8.2 re-mostrar el resumen sin cambios lo deja', 'resumen', paso_flujo from carritos where telefono = '573000000821';
+
+select carrito_agregar_item('573000000821', 'PROD-095', null, 1);
+insert into qa_out(paso, esperado, valor)
+select 'T8.3 agregar tras el resumen → datos', 'datos', paso_flujo from carritos where telefono = '573000000821';
+insert into qa_out(paso, esperado, valor)
+select 'T8.4 crear la orden sin resumen nuevo', 'SIN_RESUMEN',
+       crear_orden_desde_carrito('573000000821', 'CLI-QA-NO-EXISTE')->>'error';
+
+select guardar_datos_pedido('573000000821', p_paso_flujo => 'resumen');
+select carrito_quitar_item('573000000821', 1, 1);
+insert into qa_out(paso, esperado, valor)
+select 'T8.5 quitar tras el resumen → datos', 'datos', paso_flujo from carritos where telefono = '573000000821';
+
+select guardar_datos_pedido('573000000821', p_paso_flujo => 'resumen');
+select guardar_datos_pedido('573000000821', p_metodo_pago => 'Transferencia');
+insert into qa_out(paso, esperado, valor)
+select 'T8.6 cambiar el pago tras el resumen → datos', 'datos', paso_flujo from carritos where telefono = '573000000821';
+
+select guardar_datos_pedido('573000000821', p_paso_flujo => 'resumen');
+select guardar_datos_pedido('573000000821', p_metodo_pago => 'Transferencia');
+insert into qa_out(paso, esperado, valor)
+select 'T8.7 repetir el mismo dato no lo saca', 'resumen', paso_flujo from carritos where telefono = '573000000821';
 
 -- ---------------------------------------------------------------------------
 -- Veredicto: SOLO lo que falla

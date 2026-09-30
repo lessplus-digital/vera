@@ -143,6 +143,27 @@ const casos: Caso[] = [
     regla: 'algo_mas:no',
   },
   {
+    nombre: '"y una coca cola" a "¿algo más?" aunque el clasificador diga "no" → Menú agrega (visto con gpt-5.1)',
+    c: { intencion: 'agregar_producto', confirma: 'no', productos: [producto('coca cola')] },
+    ctx: ctx('y una coca cola', { estado: carrito(), ultima: { tipo: 'algo_mas' } }),
+    handler: 'menu',
+    acciones: [],
+  },
+  {
+    nombre: '"entonces una mitad y mitad" a "¿algo más?" con confirma "no" y sin productos leídos → Menú',
+    c: { intencion: 'agregar_producto', confirma: 'no' },
+    ctx: ctx('entonces una mitad hawaiana mitad pepperoni', { estado: carrito(), ultima: { tipo: 'algo_mas' } }),
+    handler: 'menu',
+    acciones: [],
+  },
+  {
+    nombre: '"¿y la pizza m&m?" a "¿algo más?" leído como "no" → Menú, no cierra (visto con gpt-5.1)',
+    c: { intencion: 'pregunta_producto', confirma: 'no' },
+    ctx: ctx('¿y la pizza m&m?', { estado: carrito(), ultima: { tipo: 'algo_mas' } }),
+    handler: 'menu',
+    acciones: [],
+  },
+  {
     nombre: '"dale" sin pregunta registrada y sin carrito → sigue el hilo (Menú)',
     c: { intencion: 'respuesta_corta', confirma: 'si' },
     ctx: ctx('dale', { handler: 'menu' }),

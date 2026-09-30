@@ -9,6 +9,7 @@ import { RepoMemoria } from './repo-memoria.js'
 import type { LLM } from '../llm/llm.js'
 import { crearConversadorDecision, type Redactor } from '../decision/conversador.js'
 import type { Handler } from '../decision/contexto.js'
+import { agentes } from '../handlers/index.js'
 import { payloadBoton, payloadEstado, payloadImagen, payloadTexto, payloadTipo } from './meta.js'
 
 // Un bot completo en memoria: mismo código que producción (crearBot), con
@@ -25,7 +26,8 @@ export type OpcionesEntorno = {
   conversador?: Conversador
   /** Con un LLM, el bot usa el pipeline de decisión (Fase 4) sobre la BD en memoria. */
   llm?: LLM
-  redactores?: Partial<Record<Handler, Redactor>>
+  /** Redactores por handler; 'agentes' = los agentes reales de la Fase 5 (necesita un LLM real). */
+  redactores?: Partial<Record<Handler, Redactor>> | 'agentes'
   procesador?: (wa: FakeWhatsApp) => ProcesadorTurno
 }
 
@@ -40,7 +42,11 @@ export class EntornoSim {
   constructor(o: OpcionesEntorno = {}) {
     const log = o.log ?? loggerMudo
     const conversador =
-      o.conversador ?? (o.llm ? crearConversadorDecision({ repo: this.repo, llm: o.llm, redactores: o.redactores ?? {} }) : undefined)
+      o.conversador ?? (o.llm ? crearConversadorDecision({
+              repo: this.repo,
+              llm: o.llm,
+              redactores: o.redactores === 'agentes' ? agentes({ repo: this.repo, llm: o.llm }) : (o.redactores ?? {}),
+            }) : undefined)
     this.bot = crearBot({
       verifyToken: 'verify-sim',
       appSecret: SECRETO_SIM,

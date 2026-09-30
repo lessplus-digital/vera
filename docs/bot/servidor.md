@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-09-30): en construcción — Fases 1–4 de 9 hechas.** El bot en producción sigue siendo el
+> **Estado (2026-09-30): en construcción — Fases 1–4 de 9 hechas; Fase 5 en curso (Menú listo).** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -131,7 +131,28 @@ mencionar internos (sistema, base de datos, herramientas, n8n…).
 por defecto `gpt-5.1`) y `FakeLLM` para pruebas. Si el clasificador falla, el turno sigue con
 una clasificación vacía ("otro" → sigue el hilo) y el error queda en `bot_turnos.clasificacion`.
 
-**Pendiente en Fase 5:** los cuatro redactores (con sus herramientas de lectura y carrito), el
+### Los agentes (Fase 5) — `src/handlers/`, `src/herramientas/`
+
+Cada handler es un `Redactor`: recibe lo que decidió la política y lo que hicieron las acciones, y
+devuelve el texto y **la pregunta que dejó abierta** (se guarda en `conversaciones`). Usa
+`LLM.conHerramientas` (varias rondas de herramientas y cierre en JSON estricto). Si la guardia
+rechaza el texto, se reescribe **sin volver a correr herramientas** (`handlers/comun.ts ·
+reescritura`): si no, un reintento agregaría el producto dos veces.
+
+**Menú** (`handlers/menu.ts`, ✅ 2026-09-30). Portado del prompt de n8n `1d7f7d87` (la versión
+corregida de BUG-063). Herramientas (`herramientas/menu.ts`): `consultar_menu` (buscar_menu con
+disponibles y agotados; los agotados van sin precio), `agregar_al_carrito`, `agregar_mitad_y_mitad`,
+`cotizar_mitad_y_mitad`, `quitar_del_carrito`. **Ningún argumento lleva precio**: lo pone la RPC.
+El bloque 🛒 (líneas numeradas, masa + tamaño, subtotal) lo arma el código (`handlers/formato.ts`)
+y cierra con "¿Quieres agregar algo más?" (pregunta `algo_mas`). La masa se lee de `menu`
+porque la línea del carrito solo guarda el tamaño y hay hawaiana tradicional y estofada.
+Lecciones de las primeras corridas con gpt-5.1, ya convertidas en reglas y pruebas: "y una coca
+cola" a "¿algo más?" venía como `confirma:no` (la política ahora deja que gane el producto);
+un "entonces una mitad y mitad" llegó a **borrar** la hawaiana del carrito (regla: nunca quitar
+sin pedido explícito); "no me aparece en nuestro sistema" pasaba la guardia (ahora bloquea
+"sistema"); precios sin "$" ("51.500") ahora también los revisa la guardia.
+
+**Pendiente en Fase 5:** Pedidos, Soporte y Reservas, con sus herramientas; los tres redactores (con sus herramientas de lectura y carrito), el
 resumen del pedido en plantilla (que pone `paso_flujo=resumen` y la pregunta
 `confirmar_pedido`), y las acciones `crear_reserva` / `cancelar_reserva`, que hoy se anotan en
 el turno pero **no escriben** (sus datos los reúne el handler de Reservas).
@@ -208,4 +229,6 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
 - **Fase 4:** ✅ (2026-09-30): clasificador, política (47 casos + barridos de invariantes),
   ejecutor, guardia, conversador. 172 pruebas (161 unitarias + 11 de integración) y
   `f4-decision-critica.yaml` (crítico) 5/5 con OpenAI real (`gpt-5.1`).
-- **Fases 5–6:** agentes, escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.
+- **Fase 5:** 🟡 Menú ✅ (escenarios `f5-menu-*` 10/10 con OpenAI real, 188 pruebas). Faltan
+  Pedidos, Soporte y Reservas.
+- **Fase 6:** escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.

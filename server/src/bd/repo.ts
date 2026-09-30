@@ -47,7 +47,40 @@ export type DatosFlujo = {
 /** Respuesta de las RPC del bot: `{ok, error?, message?, …}` con códigos estables. */
 export type RespuestaRPC = { ok: boolean; error?: string; message?: string; [k: string]: unknown }
 
-export type PedidoCreado = { ok: true; pedido_id: string; total: number; costo_domicilio: number; tipo_pedido: string; metodo_pago: string }
+/** Un producto de `buscar_menu`. `variante` es la masa (Tradicional / Estofada) o null. */
+export type ProductoMenu = {
+  producto_id: string
+  nombre: string
+  categoria: string
+  variante: string | null
+  descripcion: string | null
+  precio: number
+  /** Precio por tamaño (pizzas); null si el producto tiene un solo precio. */
+  tamanos: Record<string, number> | null
+  similitud: number
+}
+
+export type ResultadoMenu = { disponibles: ProductoMenu[]; agotados: ProductoMenu[] }
+
+/** Una línea del carrito, numerada desde 1 (es lo que recibe carrito_quitar_item). */
+export type LineaCarrito = {
+  linea: number
+  producto_id: string
+  nombre: string
+  /** Tamaño ("Mediana") o null. */
+  variante: string | null
+  /** Masa leída del menú ("Tradicional" / "Estofada"): el nombre solo no distingue la hawaiana tradicional de la estofada. */
+  masa: string | null
+  cantidad: number
+  precio_unitario: number
+  subtotal: number
+  notas: string | null
+  mitades: { nombre: string; variante: string | null }[] | null
+}
+
+export type Carrito = { lineas: LineaCarrito[]; total: number }
+
+export type PedidoCreado ={ ok: true; pedido_id: string; total: number; costo_domicilio: number; tipo_pedido: string; metodo_pago: string }
 
 export interface Repo {
   /** Busca el cliente por teléfono; si no existe lo crea (nombre 'Pendiente', modo 'bot'). */
@@ -90,6 +123,19 @@ export interface Repo {
   carritoVaciar(telefono: string): Promise<RespuestaRPC>
   /** Exige paso_flujo='resumen' y faltantes=[] en la BD; si no, {ok:false, error}. */
   crearOrdenDesdeCarrito(telefono: string, clienteId: string): Promise<PedidoCreado | (RespuestaRPC & { ok: false })>
+
+  // ── Menú y carrito (Fase 5). El precio lo pone SIEMPRE la BD, nunca el LLM ──
+  /** buscar_menu tolerante a erratas; separa lo disponible de lo agotado hoy. */
+  buscarMenu(termino: string): Promise<ResultadoMenu>
+  /** Carrito con líneas numeradas; vacío si no hay fila. */
+  carrito(telefono: string): Promise<Carrito>
+  carritoAgregarItem(telefono: string, i: { producto_id: string; tamano?: string | null; cantidad: number; notas?: string | null }): Promise<RespuestaRPC>
+  carritoAgregarMitad(
+    telefono: string,
+    m: { producto_a: string; producto_b: string; tamano: string; cantidad: number; notas?: string | null },
+  ): Promise<RespuestaRPC>
+  carritoQuitarItem(telefono: string, linea: number, cantidad?: number | null): Promise<RespuestaRPC>
+  cotizarMitad(productoA: string, productoB: string, tamano: string): Promise<RespuestaRPC>
 }
 
 /** Fecha de hoy en Colombia (YYYY-MM-DD), para columnas `date` como fecha_registro. */

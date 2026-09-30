@@ -1,5 +1,6 @@
 import type { Cliente, MensajeHistorial, Repo } from '../bd/repo.js'
-import type { LLM } from '../llm/llm.js'
+import type { LLM, LlamadaLLM } from '../llm/llm.js'
+import type { Turno } from '../log/turnos.js'
 import type { Conversador } from '../turno/procesador.js'
 import { conGuardia, type Violacion } from '../guardia/guardia.js'
 import * as T from '../textos.js'
@@ -26,6 +27,12 @@ export type EntradaRedactor = {
   estado: EstadoPedido | null
   /** Lo que la guardia rechazó del intento anterior (vacío en el primero). */
   violaciones: Violacion[]
+  /**
+   * El intento anterior, si la guardia lo rechazó. Al reescribir NO se vuelven a
+   * correr herramientas (agregarían el producto dos veces): se redacta con estos resultados.
+   */
+  previo: Redaccion | null
+  turno: Turno
 }
 
 export type Redaccion = {
@@ -34,6 +41,8 @@ export type Redaccion = {
   pregunta?: UltimaPregunta | null
   /** Montos que el redactor leyó de sus propias herramientas (precios del menú…). */
   montos?: number[]
+  /** Herramientas que corrió el LLM (para reescribir sin repetirlas). */
+  llamadas?: LlamadaLLM[]
 }
 
 export type Redactor = (e: EntradaRedactor) => Promise<Redaccion>
@@ -110,6 +119,8 @@ export function crearConversadorDecision(d: DepsConversador): Conversador {
             efectos,
             estado: estadoDespues,
             violaciones,
+            previo: ultima,
+            turno,
           })
           efectos.hechos.montos.push(...(ultima.montos ?? []))
           return ultima.texto

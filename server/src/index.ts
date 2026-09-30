@@ -10,6 +10,7 @@ import { RegistroBD } from './log/turnos.js'
 import { programarFeedback } from './cron/feedback.js'
 import { LLMOpenAI } from './llm/openai.js'
 import { crearConversadorDecision } from './decision/conversador.js'
+import { agentes } from './handlers/index.js'
 
 const config = cargarConfig()
 const log = crearLogger(config.LOG_LEVEL)
@@ -27,7 +28,10 @@ const sb = crearSupabase(config.SUPABASE_URL, config.SUPABASE_SECRET_KEY)
 const repo = new RepoSupabase(sb)
 
 const conversador = config.OPENAI_API_KEY
-  ? crearConversadorDecision({ repo, llm: new LLMOpenAI(config.OPENAI_API_KEY, config.OPENAI_MODEL) })
+  ? (() => {
+      const llm = new LLMOpenAI(config.OPENAI_API_KEY, config.OPENAI_MODEL)
+      return crearConversadorDecision({ repo, llm, redactores: agentes({ repo, llm }) })
+    })()
   : undefined
 if (!conversador) log.warn('sin OPENAI_API_KEY: el bot contesta en modo eco')
 

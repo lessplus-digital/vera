@@ -46,6 +46,11 @@ describe('montos', () => {
     expect(reglas('La hawaiana mediana está en $30.000', h)).toEqual(['monto_desconocido'])
   })
 
+  it('un número con punto de miles sin "$" también es plata', () => {
+    expect(reglas('La estofada mediana está en 51.500', { montos: [51500] })).toEqual([])
+    expect(reglas('La estofada mediana está en 49.000', { montos: [51500] })).toEqual(['monto_desconocido'])
+  })
+
   it('números que no son dinero no cuentan', () => {
     expect(reglas('Somos 4 personas, a las 7 y media', { montos: [] })).toEqual([])
   })
@@ -73,7 +78,7 @@ describe('pedido', () => {
 })
 
 describe('internos', () => {
-  it.each(['Lo revisé en el sistema', 'Según la base de datos', 'Voy a usar mi herramienta', 'Error de n8n'])(
+  it.each(['Lo revisé en el sistema', 'No me aparece en nuestro sistema', 'Según la base de datos', 'Voy a usar mi herramienta', 'Error de n8n'])(
     'bloquea "%s"',
     (t) => expect(reglas(t, { montos: [] })).toContain('internos'),
   )

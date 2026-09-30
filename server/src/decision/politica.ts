@@ -213,7 +213,11 @@ function responderPregunta(u: UltimaPregunta, c: Clasificacion, estado: EstadoPe
       if (!si) return null
       return { handler: 'menu', acciones: [], regla: 'sugerencia_producto:si', nota: `agregar: ${u.producto}` }
     case 'algo_mas':
-      if (si) return null // "sí, una gaseosa": lo resuelve la intención
+      // "sí, una gaseosa" o "y una coca cola": lo resuelve la intención. Nombrar un
+      // producto a "¿algo más?" es pedir más aunque el clasificador diga "no"
+      // (visto con gpt-5.1 el 2026-09-30).
+      // Lo mismo con cualquier cosa del menú ("¿y la pizza m&m?"): va a Menú, no a cerrar.
+      if (si || cambiaElPedido(c) || HANDLER_DE[c.intencion] === 'menu') return null
       return hayCarrito(estado)
         ? { handler: 'pedidos', acciones: [], regla: 'algo_mas:no', nota: 'seguir con lo que falte del pedido' }
         : null

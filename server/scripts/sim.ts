@@ -44,7 +44,7 @@ for (const archivo of archivos) {
     continue
   }
   const corridas = []
-  for (let i = 0; i < veces; i++) corridas.push(await correrEscenario(escenario, llm ? { llm } : {}))
+  for (let i = 0; i < veces; i++) corridas.push(await correrEscenario(escenario, llm ? { llm, redactores: 'agentes' as const } : {}))
   veredictos.push({ archivo, ...veredicto(escenario, corridas) })
 }
 

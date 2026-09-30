@@ -6,13 +6,25 @@ import type {
   PedidoFeedback,
   Repo,
 } from '../bd/repo.js'
-import type { Cobertura, DatosFlujo, PedidoCreado, RespuestaRPC } from '../bd/repo.js'
+import type { Carrito, Cobertura, DatosFlujo, LineaCarrito, PedidoCreado, ResultadoMenu, RespuestaRPC } from '../bd/repo.js'
+import { buscarMenuSim, cotizarMitadSim, masaSim, MENU_SIM, precioSim } from './menu-memoria.js'
 import type { Conversacion, EstadoPedido, Faltante, PasoFlujo } from '../decision/contexto.js'
 
-/** Carrito en memoria: lo justo para calcular `faltantes` como la vista estado_pedido. */
-export type CarritoMem = {
-  n_items: number
+/** Una línea del carrito tal como la guardan las RPC carrito_agregar_*. */
+export type ItemMem = {
+  producto_id: string
+  nombre: string
+  variante: string | null
+  cantidad: number
+  precio_unitario: number
   subtotal: number
+  notas?: string | null
+  mitades?: { producto_id: string; nombre: string; variante: string | null; precio: number }[]
+}
+
+/** Carrito en memoria: items + el estado del flujo, como la fila de `carritos`. */
+export type CarritoMem = {
+  items: ItemMem[]
   tipo_pedido: 'domicilio' | 'recoger' | null
   barrio: string | null
   direccion_entrega: string | null
@@ -31,8 +43,10 @@ export const BARRIOS_SIM: Record<string, { nombre: string; zona: string; costo: 
 const ERRATAS_SIM: Record<string, string> = { niqia: 'Niquía', pardo: 'Prado', prdo: 'Prado' }
 
 // Misma regla que la vista estado_pedido (docs/database.md).
+export const subtotalDe = (c: CarritoMem) => c.items.reduce((s, i) => s + i.subtotal, 0)
+
 export function faltantesDe(c: CarritoMem): Faltante[] {
-  if (c.n_items === 0) return ['carrito']
+  if (c.items.length === 0) return ['carrito']
   const f: Faltante[] = []
   const dom = c.tipo_pedido === 'domicilio'
   if (!c.tipo_pedido) f.push('tipo_pedido')
@@ -75,7 +89,21 @@ export class RepoMemoria implements Repo {
   private n = 0
 
   // ── Ayudas de carrito para escenarios ────────────────────────────────────
-  ponerCarrito(telefono: string, c: Partial<CarritoMem> & { n_items: number; subtotal: number }) {
+  /**
+   * Monta un carrito para una prueba. Con `n_items` + `subtotal` (atajo) crea
+   * líneas genéricas que suman ese subtotal; con `items`, las usa tal cual.
+   */
+  ponerCarrito(
+    telefono: string,
+    c: Partial<Omit<CarritoMem, 'items'>> & ({ items: ItemMem[] } | { n_items: number; subtotal: number }),
+  ) {
+    const { n_items = 0, subtotal = 0, ...resto } = c as Partial<CarritoMem> & { n_items?: number; subtotal?: number }
+    const generica = (k: number): ItemMem => {
+      const base = Math.floor(subtotal / n_items)
+      const monto = k === 0 ? subtotal - base * (n_items - 1) : base // la primera se lleva el resto
+      return { producto_id: 'PROD-090', nombre: `Producto ${k + 1}`, variante: null, cantidad: 1, precio_unitario: monto, subtotal: monto }
+    }
+    const items = 'items' in c ? c.items : Array.from({ length: n_items }, (_, k) => generica(k))
     this.carritos.set(telefono, {
       tipo_pedido: null,
       barrio: null,
@@ -83,8 +111,9 @@ export class RepoMemoria implements Repo {
       metodo_pago: null,
       costo_domicilio: null,
       cobertura_ok: null,
-      paso_flujo: c.n_items > 0 ? 'datos' : 'armando',
-      ...c,
+      paso_flujo: items.length > 0 ? 'datos' : 'armando',
+      ...resto,
+      items,
     })
   }
 
@@ -206,7 +235,7 @@ export class RepoMemoria implements Repo {
     const c = this.carritos.get(telefono)
     if (!c) return null
     return {
-      n_items: c.n_items,
+      n_items: c.items.length,
       paso_flujo: c.paso_flujo,
       faltantes: faltantesDe(c),
       tipo_pedido: c.tipo_pedido,
@@ -236,11 +265,17 @@ export class RepoMemoria implements Repo {
     let c = this.carritos.get(telefono)
     if (!Object.values(d).some((v) => v !== undefined)) return { ok: true, guardo: false }
     if (!c) {
-      this.ponerCarrito(telefono, { n_items: 0, subtotal: 0 })
+      this.ponerCarrito(telefono, { items: [] })
       c = this.carritos.get(telefono)!
     }
     const cambiaBarrio = d.barrio !== undefined && d.barrio !== c.barrio
+    const antes = structuredClone(c)
     Object.assign(c, Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)))
+    // Migración 20260930120000: cambiar un dato con el resumen a la vista lo saca del resumen.
+    const campos = ['tipo_pedido', 'barrio', 'direccion_entrega', 'metodo_pago', 'costo_domicilio'] as const
+    if (antes.paso_flujo === 'resumen' && c.paso_flujo === 'resumen' && campos.some((k) => c[k] !== antes[k])) {
+      c.paso_flujo = 'datos'
+    }
     if (cambiaBarrio && d.cobertura_ok === undefined) {
       c.cobertura_ok = null
       c.costo_domicilio = null
@@ -251,20 +286,106 @@ export class RepoMemoria implements Repo {
 
   async carritoVaciar(telefono: string): Promise<RespuestaRPC> {
     const c = this.carritos.get(telefono)
-    if (c) Object.assign(c, { n_items: 0, subtotal: 0, paso_flujo: 'armando' })
+    if (c) Object.assign(c, { items: [], paso_flujo: 'armando' })
     return { ok: true }
   }
 
   async crearOrdenDesdeCarrito(telefono: string, _clienteId: string): Promise<PedidoCreado | (RespuestaRPC & { ok: false })> {
     const c = this.carritos.get(telefono)
-    if (!c || c.n_items === 0) return { ok: false, error: 'CARRITO_VACIO' }
+    if (!c || c.items.length === 0) return { ok: false, error: 'CARRITO_VACIO' }
     if (faltantesDe(c).length) return { ok: false, error: 'DATOS_INCOMPLETOS' }
     if (c.paso_flujo !== 'resumen') return { ok: false, error: 'SIN_RESUMEN' }
     const pedido_id = `PED-M${++this.n}`
     const costo = c.tipo_pedido === 'domicilio' ? (c.costo_domicilio ?? 0) : 0
-    const total = c.subtotal + costo
-    this.ordenes.push({ pedido_id, telefono, total, carrito: { ...c } })
+    const total = subtotalDe(c) + costo
+    this.ordenes.push({ pedido_id, telefono, total, carrito: structuredClone(c) })
     this.carritos.delete(telefono)
     return { ok: true, pedido_id, total, costo_domicilio: costo, tipo_pedido: c.tipo_pedido!, metodo_pago: c.metodo_pago! }
   }
+
+  // ── Menú y carrito (Fase 5) ──────────────────────────────────────────────
+  async buscarMenu(termino: string): Promise<ResultadoMenu> {
+    return buscarMenuSim(termino)
+  }
+
+  async carrito(telefono: string): Promise<Carrito> {
+    const c = this.carritos.get(telefono)
+    const lineas: LineaCarrito[] = (c?.items ?? []).map((i, n) => ({
+      linea: n + 1,
+      producto_id: i.producto_id,
+      nombre: i.nombre,
+      variante: i.variante,
+      masa: i.mitades ? (i.mitades[0]?.variante ?? null) : masaSim(i.producto_id),
+      cantidad: i.cantidad,
+      precio_unitario: i.precio_unitario,
+      subtotal: i.subtotal,
+      notas: i.notas ?? null,
+      mitades: i.mitades?.map((m) => ({ nombre: m.nombre, variante: m.variante })) ?? null,
+    }))
+    return { lineas, total: c ? subtotalDe(c) : 0 }
+  }
+
+  private carritoDe(telefono: string): CarritoMem {
+    if (!this.carritos.has(telefono)) this.ponerCarrito(telefono, { items: [] })
+    return this.carritos.get(telefono)!
+  }
+
+  /** Agregar o quitar productos saca al cliente del resumen: vuelve a datos. */
+  private tocado(c: CarritoMem) {
+    c.paso_flujo = c.items.length ? 'datos' : 'armando'
+    return { ok: true, estado: { n_items: c.items.length, total: subtotalDe(c), faltantes: faltantesDe(c) } }
+  }
+
+  async carritoAgregarItem(telefono: string, i: { producto_id: string; tamano?: string | null; cantidad: number; notas?: string | null }) {
+    if (!Number.isInteger(i.cantidad) || i.cantidad < 1 || i.cantidad > 50) return { ok: false, error: 'CANTIDAD_INVALIDA' }
+    const p = precioSim(i.producto_id, i.tamano)
+    if (!p.ok) return p
+    const c = this.carritoDe(telefono)
+    const nombre = MENU_NOMBRE(i.producto_id)
+    const igual = c.items.find((x) => !x.mitades && x.producto_id === i.producto_id && x.variante === p.variante && (x.notas ?? null) === (i.notas ?? null))
+    if (igual) {
+      igual.cantidad += i.cantidad
+      igual.subtotal = igual.cantidad * igual.precio_unitario
+    } else {
+      c.items.push({ producto_id: i.producto_id, nombre, variante: p.variante ?? null, cantidad: i.cantidad, precio_unitario: p.precio!, subtotal: p.precio! * i.cantidad, notas: i.notas ?? null })
+    }
+    return { ...this.tocado(c), agregado: { nombre, variante: p.variante ?? null, cantidad: i.cantidad, precio_unitario: p.precio } }
+  }
+
+  async carritoAgregarMitad(telefono: string, m: { producto_a: string; producto_b: string; tamano: string; cantidad: number; notas?: string | null }) {
+    const r = cotizarMitadSim(m.producto_a, m.producto_b, m.tamano)
+    if (!r.ok) return r
+    const c = this.carritoDe(telefono)
+    const precio = r.precio_unitario as number
+    c.items.push({
+      producto_id: String(r.producto_id),
+      nombre: String(r.nombre_producto),
+      variante: String(r.variante),
+      cantidad: m.cantidad,
+      precio_unitario: precio,
+      subtotal: precio * m.cantidad,
+      notas: m.notas ?? null,
+      mitades: r.mitades as ItemMem['mitades'],
+    })
+    return { ...this.tocado(c), agregado: { nombre: r.nombre_producto, variante: r.variante, cantidad: m.cantidad, precio_unitario: precio } }
+  }
+
+  async carritoQuitarItem(telefono: string, linea: number, cantidad?: number | null) {
+    const c = this.carritos.get(telefono)
+    if (!c?.items.length) return { ok: false, error: 'CARRITO_VACIO' }
+    const item = c.items[linea - 1]
+    if (!item) return { ok: false, error: 'LINEA_INVALIDA' }
+    if (cantidad == null || cantidad >= item.cantidad) c.items.splice(linea - 1, 1)
+    else {
+      item.cantidad -= cantidad
+      item.subtotal = item.cantidad * item.precio_unitario
+    }
+    return this.tocado(c)
+  }
+
+  async cotizarMitad(productoA: string, productoB: string, tamano: string) {
+    return cotizarMitadSim(productoA, productoB, tamano)
+  }
 }
+
+const MENU_NOMBRE = (id: string) => MENU_SIM.find((p) => p.producto_id === id)?.nombre ?? id

@@ -1,0 +1,33 @@
+nombre: Menú arma el carrito con precios de la BD
+descripcion: >
+  Fase 5, agente de Menú real sobre el menú del simulador (src/sim/menu-memoria.ts).
+  Pide, agrega, quita, un agotado y una mitad y mitad. Los precios del bloque 🛒
+  los arma el código; aquí se comprueba que salen bien y que Menú no pide datos
+  de entrega.
+bot: decision
+telefono: '573000000905'
+pasos:
+  - envia: hola, ¿qué pizzas tienen?
+    debe:
+      no_contiene: ['barrio', 'dirección', 'domicilio o', 'efectivo', '🛒']
+      turno: { handler: menu }
+  - envia: dame una hawaiana tradicional mediana
+    debe:
+      contiene: ['1x Hawaiana Tradicional (Mediana) — $37.500', 'Subtotal: $37.500', '¿Quieres agregar algo más?']
+      no_contiene: ['barrio', 'dirección']
+  - envia: y una coca cola
+    debe:
+      contiene: ['Coca Cola 400ml', 'Subtotal: $42.500']
+  - envia: mejor quítale la coca
+    debe:
+      # El texto puede decir "quité la Coca Cola"; lo que cuenta es que el carrito
+      # quedó con una sola línea y el subtotal volvió.
+      contiene: ['Subtotal: $37.500']
+      coincide: 'Tu pedido:\*\n1\. 1x Hawaiana Tradicional \(Mediana\)[^\n]*\n\n'
+  - envia: ¿y la pizza m&m?
+    debe:
+      coincide: 'agot|acab'
+      no_contiene: ['no la manejamos', 'no lo manejamos', 'no la tenemos en', '$40.000']
+  - envia: entonces una mitad hawaiana mitad premium hawaiana, grande, tradicional
+    debe:
+      contiene: ['Mitad Hawaiana / Mitad Premium Hawaiana (Tradicional, Grande) — $57.000', 'Subtotal: $94.500']

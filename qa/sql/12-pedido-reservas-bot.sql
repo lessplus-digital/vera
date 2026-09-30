@@ -124,6 +124,9 @@ select 'T2.4 barrio no resuelto no se cobra a ciegas', 'BARRIO_NO_RESUELTO',
 
 -- Tarifa que se le dijo al cliente ≠ tarifa real → se corrige y se vuelve a mostrar el resumen
 update carritos set barrio = 'Niquía', costo_domicilio = 1, cobertura_ok = true where telefono = '573000000823';
+-- Desde 20260930120000 tocar tarifa o items saca del resumen: se vuelve a poner para
+-- simular lo real (la tarifa o el menú cambian en SUS tablas, no en el carrito).
+update carritos set paso_flujo = 'resumen' where telefono = '573000000823';
 insert into qa_out(paso, esperado, valor)
 select 'T2.5 tarifa desactualizada', 'TARIFA_ACTUALIZADA',
        crear_orden_desde_carrito('573000000823', pg_temp.cli('573000000823'))->>'error';
@@ -139,6 +142,9 @@ select pg_temp.carrito_recoger('573000000824');
 update carritos set paso_flujo = 'resumen' where telefono = '573000000824';
 -- Precio "viejo" en el carrito (como si el menú hubiera subido después de agregarlo)
 update carritos set items = jsonb_set(items, '{0,precio_unitario}', '1000'::jsonb) where telefono = '573000000824';
+-- Desde 20260930120000 tocar tarifa o items saca del resumen: se vuelve a poner para
+-- simular lo real (la tarifa o el menú cambian en SUS tablas, no en el carrito).
+update carritos set paso_flujo = 'resumen' where telefono = '573000000824';
 insert into qa_out(paso, esperado, valor)
 select 'T3.1 precio distinto al del menú', 'PRECIOS_ACTUALIZADOS',
        crear_orden_desde_carrito('573000000824', pg_temp.cli('573000000824'))->>'error';

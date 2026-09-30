@@ -1,0 +1,17 @@
+nombre: Preguntar no es pedir, y el "sí" a una sugerencia agrega ese producto
+descripcion: >
+  Crítico. Preguntar un precio no toca el carrito; confirmar la sugerencia del
+  bot sí. Nunca se crea un pedido desde Menú.
+critico: true
+bot: decision
+telefono: '573000000906'
+pasos:
+  - envia: ¿cuánto vale la hawaiana estofada mediana?
+    debe:
+      contiene: ['$51.500']
+      no_contiene: ['🛒']
+      turno: { handler: menu, sin_acciones: [crear_pedido] }
+  - envia: listo, dame esa
+    debe:
+      contiene: ['1x Hawaiana Estofada (Mediana) — $51.500']
+      turno: { sin_acciones: [crear_pedido] }
