@@ -14,6 +14,20 @@
 ```
 
 ---
+### 2026-09-30 — Bot Node, Fase 5 cerrada · Soporte cita el dato en que se basa
+
+**Contexto:** con OpenAI real, `f5-soporte-info` falló 1 de 5 veces aun con la regla "no inventes"
+en el prompt: a "¿tienen wifi?" (dato que no existe) gpt-5.1 contestó "sí, pídele la clave al mesero".
+
+**Decisión:** a una pregunta del negocio, Soporte devuelve `cita` (el dato al pie de la letra) y el
+código comprueba que exista en `info_negocio` / FAQ / pedidos; si no, sale un texto fijo que ofrece
+al equipo. Con eso, los 5 escenarios críticos y `f5-soporte-info` pasan 5/5 con el modelo real, y
+la Fase 5 se da por cerrada. Las pruebas se blindan con el modelo de producción, no con uno más
+barato; para no quemar crédito se itera con 1 corrida y las 5 quedan para cerrar.
+
+**Impacto:** `server/src/handlers/soporte.ts` (`citaRespaldada`), `docs/bot/servidor.md`. 312 pruebas.
+
+---
 ### 2026-09-30 — Bot Node, Fase 5: agente de Reservas · borrador de la reserva en `conversaciones`
 
 **Contexto:** en n8n el agente de Reservas llamaba a `crear_reserva` cuando el modelo creía que el

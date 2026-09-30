@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-09-30): en construcción — Fases 1–4 de 9 hechas; Fase 5 con los cuatro agentes escritos; faltan escenarios de Soporte y Reservas con OpenAI real.** El bot en producción sigue siendo el
+> **Estado (2026-09-30): en construcción — Fases 1–5 de 9 hechas (los cuatro agentes); sigue la Fase 6.** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -196,6 +196,11 @@ código.
   hace cuánto y el motivo si se canceló. Nuevo respecto a n8n: "¿cómo va mi pedido?" se contesta
   con el estado real (n8n no podía leerlo y decía "el equipo lo está revisando"). Esos `pedido_id`
   y totales son los únicos que la guardia deja citar; un precio que venga de una FAQ no pasa.
+- **Pregunta del negocio = respuesta con cita:** con intención `info_negocio` el modelo devuelve
+  `cita`, el dato al pie de la letra en que se basa, y el código comprueba que exista en
+  `info_negocio` / FAQ / pedidos (`citaRespaldada`). Si no, su texto se descarta y sale `S.noLaTengo`
+  con la pregunta `ofrecer_humano` (queda `cita_sin_respaldo` en `bot_turnos`). La regla "no
+  inventes" en el prompt no bastó: gpt-5.1 respondió "sí, tenemos wifi" 1 de 5 veces.
 - **Nombre:** lo guarda la **política** (acción `guardar_nombre`), solo si el cliente no tenía uno
   registrado y pasa `nombreValido` (1–4 palabras de letras; nada de emojis, "Dios es amor", "asdfgh",
   "test"). Un nombre ya registrado no se cambia desde el chat. Si solo saludó y no sabemos su
@@ -314,13 +319,12 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
 - **Fase 4:** ✅ (2026-09-30): clasificador, política (47 casos + barridos de invariantes),
   ejecutor, guardia, conversador. 172 pruebas (161 unitarias + 11 de integración) y
   `f4-decision-critica.yaml` (crítico) 5/5 con OpenAI real (`gpt-5.1`).
-- **Fase 5:** 🟡 los cuatro agentes escritos, 309 pruebas (17 de integración contra Supabase) en verde. Con OpenAI
-  real: `f5-menu-*` y `f5-pedidos-*` 5/5, `f5-soporte-reclamo` 5/5. **Pendientes** (la cuenta de
-  OpenAI se quedó sin crédito el 2026-09-30): `f5-soporte-info` (dio 4/5; ya corregido, sin re-correr)
-  y `f5-reservas-*` (nunca corridos).
-  **Por dónde seguir:** con crédito en OpenAI, correr (agente `bot-sim`) TODOS los escenarios
-  `bot: decision` — `f4-*` y `f5-*` —, porque la política cambió después de la última corrida verde
-  (barrio del historial, regla 3b de reservas). Si pasan, Fase 5 ✅; lo que falle se corrige como
-  regla + prueba, igual que con Menú y Pedidos. Primera vez en WhatsApp real para Reservas: ver que
-  la fecha que resuelve el clasificador ("el sábado") sea la correcta en hora Colombia.
+- **Fase 5:** ✅ (2026-09-30): los cuatro agentes, 312 pruebas (17 de integración contra Supabase).
+  Con OpenAI real (`gpt-5.1`), tras el último cambio de política: los 9 escenarios `bot: decision`
+  1/1, y los 5 críticos (`f4-decision-critica`, `f5-menu-preguntar-no-es-pedir`,
+  `f5-pedidos-domicilio`, `f5-reservas-nueva`, `f5-soporte-reclamo`) + `f5-soporte-info` 5/5.
+  `f5-reservas-cambios`, `f5-pedidos-casos-borde` y `f5-menu-armar-carrito` solo 1/1 tras el último
+  cambio (antes 5/5 los dos últimos). **Falta** la primera prueba de Reservas en WhatsApp real: ver
+  que la fecha que resuelve el clasificador ("el sábado") sea la correcta en hora Colombia.
+  Regla de costo: iterar con `--veces 1` sobre los escenarios afectados; ×5 solo para cerrar.
 - **Fase 6:** escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.

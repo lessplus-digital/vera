@@ -3,7 +3,7 @@ import { EntornoSim } from '../../src/sim/entorno.js'
 import { FakeLLM, type MensajeLLM } from '../../src/llm/llm.js'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
 import { noLlegamos, siLlegamos } from '../../src/handlers/formato.js'
-import { S, pedidosParaLLM } from '../../src/handlers/soporte.js'
+import { S, citaRespaldada, pedidosParaLLM } from '../../src/handlers/soporte.js'
 import * as T from '../../src/textos.js'
 import { fechaUtc } from '../../src/bd/repo-supabase.js'
 
@@ -14,7 +14,7 @@ import { fechaUtc } from '../../src/bd/repo-supabase.js'
 
 const TEL = '573000000907'
 
-type Salida = { texto: string; pregunta?: 'ninguna' | 'barrio' | 'ofrecer_humano' | 'otra'; escalar?: 'no' | 'reclamo_grave' | 'pedido_registrado' }
+type Salida = { texto: string; pregunta?: 'ninguna' | 'barrio' | 'ofrecer_humano' | 'otra'; escalar?: 'no' | 'reclamo_grave' | 'pedido_registrado'; cita?: string }
 
 function montar(soporte: (mensajes: MensajeLLM[], n: number) => Salida = () => ({ texto: '¡Con gusto!' })) {
   let cl: Partial<Clasificacion> = {}
@@ -22,7 +22,7 @@ function montar(soporte: (mensajes: MensajeLLM[], n: number) => Salida = () => (
   const llm = new FakeLLM((nombre, mensajes) => {
     if (nombre === 'clasificacion') return clasificacionVacia(cl)
     const s = soporte(mensajes, n++)
-    return { pregunta: 'ninguna', escalar: 'no', ...s }
+    return { pregunta: 'ninguna', escalar: 'no', cita: '', ...s }
   })
   const sim = new EntornoSim({ llm, redactores: 'agentes' })
   const turno = async (texto: string, c: Partial<Clasificacion>) => {
@@ -197,5 +197,38 @@ describe('fechaUtc (fecha_pedido llega de REST sin zona)', () => {
   ])('%s → %s', (entra, sale) => {
     expect(fechaUtc(entra)).toBe(sale)
     expect(new Date(fechaUtc(entra)).getUTCHours()).toBe(19)
+  })
+})
+
+describe('pregunta del negocio: la respuesta tiene que citar un dato que exista', () => {
+  it('"¿tienen wifi?" sin dato que lo respalde → texto fijo que ofrece al equipo (gpt-5.1 se lo inventó 1 de 5)', async () => {
+    const { sim, turno } = montar(() => ({ texto: 'Sí, tenemos wifi, pídele la clave al mesero 🙌', cita: 'wifi gratis para clientes' }))
+    await sim.repo.clientePorTelefono(TEL)
+    cliente(sim).nombre = 'Ana'
+    const t = await turno('¿tienen wifi?', { intencion: 'info_negocio' })
+    expect(t.r).toBe(S.noLaTengo)
+    expect((await conversacion(sim)).ultima_pregunta).toEqual({ tipo: 'ofrecer_humano' })
+    expect(t.registro.herramientas.map((h) => h.nombre)).toContain('cita_sin_respaldo')
+  })
+
+  it('con la cita en info_negocio o en una FAQ, sale el texto del modelo', async () => {
+    const { sim, turno } = montar((_m, n) =>
+      n === 0
+        ? { texto: 'Los sábados abrimos de 12:00 pm a 11:00 pm 🍕', cita: 'Sábados y Domingos 12:00pm - 11:00pm' }
+        : { texto: 'Sí, hay parqueadero frente al local 🚗', cita: 'Sí, frente al local, gratis para clientes.' },
+    )
+    await sim.repo.clientePorTelefono(TEL)
+    cliente(sim).nombre = 'Ana'
+    expect((await turno('¿a qué hora abren el sábado?', { intencion: 'info_negocio' })).r).toBe('Los sábados abrimos de 12:00 pm a 11:00 pm 🍕')
+    expect((await turno('¿tienen parqueadero?', { intencion: 'info_negocio' })).r).toBe('Sí, hay parqueadero frente al local 🚗')
+  })
+
+  it('citaRespaldada: sin tildes ni mayúsculas; varias partes, todas tienen que existir', () => {
+    const f = 'Sábados y Domingos 12:00pm - 11:00pm\nParque de Bello Calle 54 # 52 -07'
+    expect(citaRespaldada('sabados y domingos 12:00pm - 11:00pm', f)).toBe(true)
+    expect(citaRespaldada('Parque de Bello … Sábados y Domingos', f)).toBe(true)
+    expect(citaRespaldada('Parque de Bello … wifi gratis', f)).toBe(false)
+    expect(citaRespaldada('', f)).toBe(false)
+    expect(citaRespaldada('a', f)).toBe(false)
   })
 })

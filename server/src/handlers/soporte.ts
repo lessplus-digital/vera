@@ -27,6 +27,7 @@ import { sinPreguntas } from './pedidos.js'
 export const S = {
   pedirNombre: '¡Hola! 👋 Bienvenido a Vera Pizzería. ¿Con quién tengo el gusto?',
   enQueAyudo: '¿En qué te puedo ayudar? 😊',
+  noLaTengo: 'Esa información no la tengo en este momento 🙏 ¿Quieres que te conecte con alguien del equipo?',
 } as const
 
 const PEDIDOS_A_LEER = 3
@@ -92,13 +93,37 @@ Mencionar el sistema, herramientas, otros agentes, errores técnicos o cómo fun
 ## Tu respuesta (JSON)
 - texto: el mensaje al cliente (vacío si todo lo que hay que decir ya va debajo).
 - pregunta: "barrio" si le preguntaste en qué barrio está; "ofrecer_humano" si le ofreciste conectarlo con alguien del equipo; "otra" si preguntaste otra cosa; "ninguna" si no.
-- escalar: "no", "reclamo_grave" o "pedido_registrado".`
+- escalar: "no", "reclamo_grave" o "pedido_registrado".
+- cita: si tu texto afirma algo del negocio o de sus pedidos, copia AQUÍ, al pie de la letra, el dato de INFORMACIÓN DEL NEGOCIO, PREGUNTAS FRECUENTES o PEDIDOS DEL CLIENTE en que te basas (solo el valor, p. ej. "Sábados y Domingos 12:00pm - 11:00pm"). Vacío si no afirmaste nada de eso. Se verifica: si no aparece en esos datos, tu texto no se envía.`
 
 const Salida = z.object({
   texto: z.string(),
   pregunta: z.enum(['ninguna', 'barrio', 'ofrecer_humano', 'otra']),
   escalar: z.enum(['no', 'reclamo_grave', 'pedido_registrado']),
+  cita: z.string(),
 })
+
+const normal = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\d]+/gu, ' ')
+    .trim()
+
+/**
+ * La cita del modelo aparece en los datos que se le dieron. Es lo que impide
+ * que "rellene" un dato plausible ("sí, tenemos wifi, pídele la clave al
+ * mesero": visto con gpt-5.1 1 de 5 veces aun con la regla en el prompt).
+ */
+export function citaRespaldada(cita: string, fuentes: string): boolean {
+  const partes = cita
+    .split(/\s*(?:\.\.\.|…|\||\n)\s*/)
+    .map(normal)
+    .filter(Boolean)
+  const f = normal(fuentes)
+  return partes.length > 0 && partes.every((p) => p.length >= 3 && f.includes(p))
+}
 
 /** Solo saludó y no sabemos su nombre: la pregunta del nombre es fija (sin LLM). */
 const soloSaludo = (e: EntradaRedactor) => e.clasificacion.intencion === 'saludo' && e.clasificacion.intenciones_extra.length === 0
@@ -169,8 +194,23 @@ export function crearRedactorSoporte(d: { repo: Repo; llm: LLM; ahora?: () => Da
       return { texto: T.HANDOFF, pregunta: null, handoff: true }
     }
 
+    // Pregunta del negocio (horario, wifi, parqueadero…): o la respuesta cita un
+    // dato que existe, o sale el texto fijo que ofrece al equipo.
+    const preguntaDelNegocio = e.clasificacion.intencion === 'info_negocio' || e.clasificacion.intenciones_extra.includes('info_negocio')
+    if (preguntaDelNegocio && !debajo) {
+      const fuentes = [
+        ...Object.entries(info).filter(([k]) => k !== 'datos_transferencia').map(([, v]) => v),
+        ...faqs.flatMap((f) => [f.pregunta, f.respuesta]),
+        pedidosParaLLM(pedidos, d.ahora?.() ?? new Date()),
+      ].join('\n')
+      if (!citaRespaldada(s.cita, fuentes)) {
+        await e.turno.herramienta('cita_sin_respaldo', { cita: s.cita, texto: s.texto }, async () => ({ descartado: true }))
+        return { texto: S.noLaTengo, pregunta: { tipo: 'ofrecer_humano' }, montos, pedidos: pedidos.map((p) => p.pedido_id) }
+      }
+    }
+
     // Con un bloque del código, la única pregunta del mensaje es la suya.
-    const texto = (debajo ? [sinPreguntas(s.texto.trim()), debajo].filter(Boolean).join('\n\n') : s.texto.trim()) || S.enQueAyudo
+    const texto =(debajo ? [sinPreguntas(s.texto.trim()), debajo].filter(Boolean).join('\n\n') : s.texto.trim()) || S.enQueAyudo
     const pregunta: UltimaPregunta | null = debajo
       ? preguntaCodigo
       : s.pregunta === 'barrio'
