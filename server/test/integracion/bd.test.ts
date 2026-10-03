@@ -5,6 +5,7 @@ import { DedupeBD, insertarWaEventoSupabase } from '../../src/cola/dedupe.js'
 import { RegistroBD, Turno } from '../../src/log/turnos.js'
 import { loggerMudo } from '../../src/log.js'
 import { RepoSupabase } from '../../src/bd/repo-supabase.js'
+import { autorizadorSupabase } from '../../src/http/wa.js'
 
 // Pruebas contra la Supabase REAL. Solo corren si server/.env tiene
 // SUPABASE_URL y SUPABASE_SECRET_KEY; si no, se saltan (no fallan).
@@ -209,5 +210,11 @@ describe.skipIf(!url || !clave)('integración con Supabase', () => {
     const r = await repo.crearReserva({ telefono: TEL, cliente_id: c.cliente_id, nombre: 'Prueba', fecha: sabado, hora: '19:00', personas: 2, motivo: 'no_existe' })
     expect(r).toMatchObject({ ok: false, error: 'MOTIVO_INVALIDO' })
     expect(await repo.reservasDelCliente(TEL)).toEqual([])
+  })
+
+  it('/api/wa: Supabase Auth no reconoce un token inventado (ni uno con forma de JWT)', async () => {
+    const a = autorizadorSupabase(sb)
+    expect(await a.quienEs('no-es-un-jwt')).toBeNull()
+    expect(await a.quienEs('eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.firma-falsa')).toBeNull()
   })
 })

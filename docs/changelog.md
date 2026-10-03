@@ -14,6 +14,25 @@
 ```
 
 ---
+### 2026-10-02 — Bot Node, Fase 7: los envíos del dashboard pasan por el servidor (listo, se enciende en el corte)
+
+**Contexto:** el riesgo diferido de `VITE_WA_ACCESS_TOKEN` (el token de Meta viaja en el bundle).
+Ya hay un servidor propio donde el token puede vivir.
+
+**Decisión:** `POST /api/wa` en el servidor del bot. Se autoriza dos veces, como `admin-password`:
+Supabase Auth valida el JWT de la sesión y el rol se lee de `perfiles` (texto libre: admin;
+plantillas: admin y mesero; inactivo: nada), con tope de 30 envíos por minuto y usuario. El
+dashboard lo usa si existe `VITE_WA_PROXY_URL`; sin ella sigue el envío directo, para no romper
+producción antes de que el servidor esté publicado. En el corte se configura la variable, se borra
+`VITE_WA_ACCESS_TOKEN` de Vercel y se rota el token. De paso: `HOOK_TOKEN=` vacío (como viene en
+`.env.example`) impedía arrancar el servidor; ahora significa "apagado".
+
+**Impacto:** `server/src/http/wa.ts`, `bot.ts`, `index.ts`, `config.ts`; `src/lib/whatsapp.js`,
+`.env.example` de los dos lados. 364 pruebas (16 nuevas). Verificado de punta a punta contra
+Supabase real con un usuario temporal. Docs: `CLAUDE.md`, `docs/bot/servidor.md`,
+`docs/dashboard/components.md`.
+
+---
 ### 2026-10-02 — Bot Node, Fase 6 cerrada · los guiones G1–G11 son escenarios automáticos
 
 **Contexto:** los guiones de `qa/guiones-bot.md` solo se podían correr a mano por WhatsApp. Al

@@ -11,6 +11,7 @@ import { programarFeedback } from './cron/feedback.js'
 import { LLMOpenAI } from './llm/openai.js'
 import { crearConversadorDecision } from './decision/conversador.js'
 import { agentes } from './handlers/index.js'
+import { autorizadorSupabase } from './http/wa.js'
 
 const config = cargarConfig()
 const log = crearLogger(config.LOG_LEVEL)
@@ -40,6 +41,7 @@ const { app, buffer } = crearBot({
   appSecret: config.WA_APP_SECRET,
   bufferMs: config.BUFFER_MS,
   hookToken: config.HOOK_TOKEN,
+  apiWa: { autorizador: autorizadorSupabase(sb), origenes: config.DASHBOARD_ORIGENES },
   wa,
   repo,
   log,
@@ -52,7 +54,7 @@ const detenerFeedback = config.FEEDBACK_ACTIVO ? programarFeedback({ repo, wa, l
 
 const servidor = serve({ fetch: app.fetch, port: config.PORT }, (info) =>
   log.info(
-    { puerto: info.port, waModo: config.WA_MODO, llm: conversador ? config.OPENAI_MODEL : 'eco', hooks: !!config.HOOK_TOKEN, feedback: config.FEEDBACK_ACTIVO },
+    { puerto: info.port, waModo: config.WA_MODO, llm: conversador ? config.OPENAI_MODEL : 'eco', hooks: !!config.HOOK_TOKEN, dashboard: config.DASHBOARD_ORIGENES, feedback: config.FEEDBACK_ACTIVO },
     'bot escuchando',
   ),
 )

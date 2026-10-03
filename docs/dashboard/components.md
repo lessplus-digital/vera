@@ -733,6 +733,13 @@ VITE_WA_ACCESS_TOKEN=...          # ⚠️ viaja en el bundle del cliente (riesg
 VITE_WA_API_VERSION=v25.0         # opcional (default v25.0)
 ```
 
+**Proxy de envíos (Fase 7 del bot Node, 2026-10-02):** con `VITE_WA_PROXY_URL` (p. ej.
+`https://bot.plateo.cloud`) los dos envíos van a `POST {url}/api/wa` del servidor con el JWT de la
+sesión, y `VITE_WA_ACCESS_TOKEN` deja de hacer falta (verificado: con el proxy y sin el token, el
+token no aparece en `dist/`). El servidor revalida el rol en `perfiles`: texto libre solo admin
+(chat de Soporte), plantillas admin y mesero; domiciliario o usuario inactivo, nada. Sin la
+variable sigue el envío directo a Meta, hasta el corte (ver `docs/bot/servidor.md` §Fase 7).
+
 `src/lib/supabase.js` lanza al arrancar si faltan las `VITE_SUPABASE_*`. El envío de WhatsApp
 vive en `src/lib/whatsapp.js` (`sendWhatsAppMessage` texto + `sendWhatsAppTemplate` plantillas
 aprobadas para escribir fuera de la ventana de 24h; nombres/idiomas en `WA_TEMPLATES` de

@@ -203,9 +203,13 @@ creating/deleting reservations and manual orders. These sends are **best-effort*
 API call fails, the DB operation still stands and the UI shows a warning toast.
 
 **Gotcha / known deferred risk:** `VITE_WA_ACCESS_TOKEN` is a `VITE_` var, so the
-WhatsApp access token ships in the client bundle. This is a consciously deferred security
-issue (the proper fix is proxying sends through n8n/an edge function). Don't "fix" it
-silently — it's tracked.
+WhatsApp access token ships in the client bundle. **The fix exists since 2026-10-02 (bot
+migration, Phase 7) but is only switched on at the cutover:** with `VITE_WA_PROXY_URL` set,
+`whatsapp.js` sends through the Node server (`POST {url}/api/wa` with the session JWT; the
+server re-checks the role in `perfiles` — free text admin only, templates admin + mesero — and
+holds the Meta token). Without it, the old direct call stays. At the cutover: set
+`VITE_WA_PROXY_URL` in Vercel, **delete** `VITE_WA_ACCESS_TOKEN`, rotate the token in Meta.
+Don't remove the direct path before the server is live, or production sends break.
 
 ## Deeper docs (`docs/`)
 

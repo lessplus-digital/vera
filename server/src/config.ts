@@ -25,7 +25,15 @@ const esquema = z
 
     // Token que manda el trigger notificar-estado-pedido en `x-webhook-token`.
     // Sin él, /hooks/estado-pedido queda deshabilitado (404).
-    HOOK_TOKEN: z.string().min(16).optional(),
+    // Vacío = apagado (así viene en .env.example; antes "HOOK_TOKEN=" impedía arrancar).
+    HOOK_TOKEN: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16).optional()),
+
+    // Orígenes del dashboard que pueden llamar POST /api/wa desde el navegador (CORS),
+    // separados por coma: "https://vera.plateo.cloud,http://localhost:5173".
+    DASHBOARD_ORIGENES: z
+      .string()
+      .default('')
+      .transform((v) => v.split(',').map((x) => x.trim()).filter(Boolean)),
 
     // Job que pide calificaciones cada 15 min. APAGADO por defecto: mientras n8n
     // siga activo tiene su propio job, y un servidor de pruebas no debe escribirle

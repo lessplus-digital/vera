@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-10-02): en construcción — Fases 1–6 de 9 hechas (los guiones G1–G11 son escenarios automáticos en verde); sigue la Fase 7.** El bot en producción sigue siendo el
+> **Estado (2026-10-02): en construcción — Fases 1–7 de 9 hechas (G1–G11 automáticos en verde; el proxy de envíos del dashboard listo, se enciende en el corte); sigue la Fase 8, el corte.** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -373,6 +373,8 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
 `WA_MODO=graph`, `WA_ACCESS_TOKEN` + `WA_PHONE_NUMBER_ID`. `WA_MODO=fake` no envía nada
 (desarrollo). El proceso no arranca si falta algo (validación con zod en `src/config.ts`).
 `OPENAI_API_KEY` es opcional: sin ella el bot arranca en modo eco (lo avisa en el log).
+`HOOK_TOKEN` vacío = avisos de estado apagados (antes un `HOOK_TOKEN=` vacío impedía arrancar).
+`DASHBOARD_ORIGENES`: orígenes del dashboard para `/api/wa` (CORS), separados por coma.
 
 ## Pendiente por fase
 
@@ -412,4 +414,16 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
   código (herramientas, guardia, respuestas fijas) con su prueba. Costo medido por escenario en la
   salida del simulador; `bot_turnos.costo` ahora guarda todo el turno.
   **Sigue pendiente** la prueba de Reservas por WhatsApp real (f5-6).
-- **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.
+- **Fase 7:** ✅ código listo (2026-10-02), **se enciende en el corte**. `POST /api/wa`
+  (`src/http/wa.ts`) recibe los envíos del dashboard con el JWT de la sesión: Supabase Auth valida
+  el token (`auth.getUser`, nunca se lee del JWT a mano) y el rol sale de `perfiles` (activo).
+  Texto libre solo admin; plantillas admin y mesero; tope de 30 envíos por minuto y usuario; el
+  error de Meta vuelve tal cual al operador (502). CORS solo para `DASHBOARD_ORIGENES`. El dashboard
+  (`src/lib/whatsapp.js`) usa el proxy si existe `VITE_WA_PROXY_URL`; si no, el envío directo de
+  siempre. Verificado de punta a punta contra Supabase real con un usuario temporal (borrado al
+  terminar) y WhatsApp en modo falso: domiciliario 403, mesero plantilla 200 / texto 403, admin
+  texto 200, inactivo 401; y con proxy y sin token, el token no aparece en `dist/`. **En el
+  corte:** `DASHBOARD_ORIGENES` en el VPS, `VITE_WA_PROXY_URL` en Vercel, borrar
+  `VITE_WA_ACCESS_TOKEN` de Vercel y **rotar** el token en Meta (Clavo); después se puede quitar
+  el camino directo de `whatsapp.js`.
+- **Fase 8:** corte.

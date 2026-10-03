@@ -4,6 +4,7 @@ import type { WhatsApp } from './whatsapp/cliente.js'
 import type { Repo } from './bd/repo.js'
 import { crearApp } from './http/app.js'
 import { montarHooks } from './http/hooks.js'
+import { montarApiWa, type Autorizador } from './http/wa.js'
 import { DedupeMemoria, type Dedupe } from './cola/dedupe.js'
 import { BufferPorTelefono, type ProcesadorTurno } from './cola/buffer.js'
 import { conversadorEco, crearProcesador, type Conversador } from './turno/procesador.js'
@@ -21,6 +22,8 @@ export type OpcionesBot = {
   repo: Repo
   log: Logger
   hookToken?: string
+  /** Envíos del dashboard (POST /api/wa). Sin autorizador el endpoint responde 404. */
+  apiWa?: { autorizador?: Autorizador; origenes: string[] }
   dedupe?: Dedupe
   registro?: RegistroTurnos
   conversador?: Conversador
@@ -49,5 +52,6 @@ export function crearBot(o: OpcionesBot): Bot {
     log: o.log,
   })
   montarHooks(app, { hookToken: o.hookToken, wa: o.wa, log: o.log })
+  montarApiWa(app, { wa: o.wa, log: o.log, origenes: o.apiWa?.origenes ?? [], ...(o.apiWa?.autorizador ? { autorizador: o.apiWa.autorizador } : {}) })
   return { app, buffer }
 }
