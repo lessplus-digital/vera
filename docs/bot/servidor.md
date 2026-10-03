@@ -373,6 +373,11 @@ que corrió cada turno (🔧) y los tokens gastados por paso y por corrida.
 medirConsumo`, con `AsyncLocalStorage`), así que `bot_turnos.costo` guarda el total y el detalle
 del clasificador, el agente (cada vuelta de herramientas) y la reescritura; antes solo guardaba el
 clasificador.
+También anota `tokens_cache` (lo que OpenAI sirvió de su caché de prefijos). Medido el 2026-10-02
+con gpt-5.1: un turno de Menú con productos son ~9.000 tokens de entrada (clasificador + 3 vueltas
+de Menú), pero **~92% viene del caché**; con salida de ~230 tokens, sale del orden de **US$0,004 por
+turno** y ~US$0,015 un pedido completo. La salida pesa más que la entrada, así que recortar el
+prompt de Menú movería poco; no se hizo.
 
 ## Variables de entorno
 

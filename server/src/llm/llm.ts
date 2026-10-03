@@ -8,7 +8,14 @@ import type { z } from 'zod'
 
 export type MensajeLLM = { rol: 'system' | 'user' | 'assistant'; texto: string }
 
-export type UsoLLM = { modelo: string; tokens_entrada: number; tokens_salida: number; ms: number }
+export type UsoLLM = {
+  modelo: string
+  tokens_entrada: number
+  tokens_salida: number
+  ms: number
+  /** De tokens_entrada, cuántos vinieron del caché de OpenAI (se cobran a una fracción). */
+  tokens_cache?: number
+}
 
 // ── Consumo por turno ──────────────────────────────────────────────────────
 // Cada llamada al modelo anota su uso en el turno en curso, sin pasar el turno
@@ -24,7 +31,7 @@ export function anotarConsumo(nombre: string, uso: UsoLLM) {
   cajaConsumo.getStore()?.push({ nombre, ...uso })
 }
 
-export type ResumenConsumo = { tokens_entrada: number; tokens_salida: number; ms: number; llamadas: ConsumoLLM[] }
+export type ResumenConsumo = { tokens_entrada: number; tokens_salida: number; tokens_cache: number; ms: number; llamadas: ConsumoLLM[] }
 
 /** Corre `fn` dentro de una caja de consumo; `registrar` recibe el resumen aunque `fn` falle. */
 export async function medirConsumo<T>(fn: () => Promise<T>, registrar: (c: ResumenConsumo) => void): Promise<T> {
@@ -32,8 +39,10 @@ export async function medirConsumo<T>(fn: () => Promise<T>, registrar: (c: Resum
   try {
     return await cajaConsumo.run(llamadas, fn)
   } finally {
-    const sumar = (k: 'tokens_entrada' | 'tokens_salida' | 'ms') => llamadas.reduce((s, l) => s + l[k], 0)
-    if (llamadas.length) registrar({ tokens_entrada: sumar('tokens_entrada'), tokens_salida: sumar('tokens_salida'), ms: sumar('ms'), llamadas })
+    const sumar = (k: 'tokens_entrada' | 'tokens_salida' | 'tokens_cache' | 'ms') => llamadas.reduce((s, l) => s + (l[k] ?? 0), 0)
+    if (llamadas.length) {
+      registrar({ tokens_entrada: sumar('tokens_entrada'), tokens_salida: sumar('tokens_salida'), tokens_cache: sumar('tokens_cache'), ms: sumar('ms'), llamadas })
+    }
   }
 }
 

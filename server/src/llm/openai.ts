@@ -39,7 +39,13 @@ export class LLMOpenAI implements LLM {
       text: { format: zodTextFormat(p.esquema, p.nombre) },
       store: false,
     })
-    const uso: UsoLLM = { modelo: r.model, tokens_entrada: r.usage?.input_tokens ?? 0, tokens_salida: r.usage?.output_tokens ?? 0, ms: Date.now() - inicio }
+    const uso: UsoLLM = {
+      modelo: r.model,
+      tokens_entrada: r.usage?.input_tokens ?? 0,
+      tokens_salida: r.usage?.output_tokens ?? 0,
+      tokens_cache: r.usage?.input_tokens_details?.cached_tokens ?? 0,
+      ms: Date.now() - inicio,
+    }
     anotarConsumo(p.nombre, uso)
     if (r.output_parsed == null) throw new Error(`${p.nombre}: el modelo no devolvió JSON (${r.status})`)
     return { datos: p.esquema.parse(r.output_parsed), uso }
@@ -74,6 +80,7 @@ export class LLMOpenAI implements LLM {
         modelo: r.model,
         tokens_entrada: r.usage?.input_tokens ?? 0,
         tokens_salida: r.usage?.output_tokens ?? 0,
+        tokens_cache: r.usage?.input_tokens_details?.cached_tokens ?? 0,
         ms: Date.now() - inicio - uso.ms,
       })
       uso.ms = Date.now() - inicio
