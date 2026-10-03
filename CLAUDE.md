@@ -70,7 +70,8 @@ when the situation matches, not only when typed as `/name`:
 | `verify-against-live` | documenting or reasoning about a workflow, table, RLS policy, trigger or RPC |
 | `fix-bug` | a `BUG-NNN` is named, or a tracked defect is being fixed or closed |
 | `qa-regresion` | a DB function, trigger, RPC, constraint or policy changed — picks the battery that covers it |
-| `debug-n8n` | the bot misbehaves and the cause may be in n8n |
+| `debug-n8n` | the bot misbehaves and the cause may be in n8n (production until the cutover) |
+| `debug-bot` | the **Node** bot (`server/`) misbehaves or a simulator scenario fails — reads `bot_turnos`, reproduces with `npm run sim -- --ver` |
 | `audit` | a security / RLS / secrets sweep is asked for |
 | `new-tool` | a tool of the WhatsApp agent is added or changed |
 
