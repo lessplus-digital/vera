@@ -14,6 +14,29 @@
 ```
 
 ---
+### 2026-10-02 — Bot Node, Fase 6 cerrada · los guiones G1–G11 son escenarios automáticos
+
+**Contexto:** los guiones de `qa/guiones-bot.md` solo se podían correr a mano por WhatsApp. Al
+pasarlos al simulador, el ×5 salía verde, pero **leer las conversaciones** destapó fallos que los
+escenarios no miraban (edge-case §41).
+
+**Decisión:** cada guion es un escenario `f6-*`; con `datos: real` lee el menú, la cobertura, la
+info del local y la FAQ reales (solo lectura). Todo fallo encontrado se cerró en **código**, no en
+prompt: la guardia frena productos famosos que no están en la carta, negar un producto sin buscarlo
+y mandar al cliente "a otra línea"; las herramientas de Menú rechazan un `producto_id` que no salió
+de la búsqueda y una masa distinta a la que nombró el cliente; si el barrio no tiene cobertura,
+Menú lo dice en el mismo mensaje; horario, dirección, medios de pago y la cuenta para transferir
+los contesta el código; con solo un dato o solo cobertura, Pedidos y Soporte no llaman al modelo
+(su frase contradecía al código). G11 destapó que "5" mandado dos veces seguidas contestaba "No
+entendí": el procesador ahora lee los mensajes juntados línea por línea. Además, `bot_turnos.costo`
+guarda todo lo que gasta el turno (antes solo el clasificador).
+
+**Impacto:** `server/src/` (guardia, herramientas y handlers de Menú, Pedidos y Soporte,
+conversador, procesador, `llm.ts`, simulador: `datos-reales.ts`, `bd:`, `pide_calificacion`,
+`--ver` con herramientas y tokens), 10 escenarios nuevos, 351 pruebas. Docs: `docs/bot/servidor.md`,
+`qa/guiones-bot.md`, `qa/RESULTADOS.md`, `docs/edge-cases.md` §41.
+
+---
 ### 2026-09-30 — Bot Node, Fase 5 cerrada · Soporte cita el dato en que se basa
 
 **Contexto:** con OpenAI real, `f5-soporte-info` falló 1 de 5 veces aun con la regla "no inventes"

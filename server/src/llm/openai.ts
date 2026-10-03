@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { zodResponsesFunction, zodTextFormat } from 'openai/helpers/zod'
 import type { ResponseInputItem } from 'openai/resources/responses/responses'
 import {
+  anotarConsumo,
   ejecutarHerramienta,
   type LlamadaLLM,
   type LLM,
@@ -38,11 +39,10 @@ export class LLMOpenAI implements LLM {
       text: { format: zodTextFormat(p.esquema, p.nombre) },
       store: false,
     })
+    const uso: UsoLLM = { modelo: r.model, tokens_entrada: r.usage?.input_tokens ?? 0, tokens_salida: r.usage?.output_tokens ?? 0, ms: Date.now() - inicio }
+    anotarConsumo(p.nombre, uso)
     if (r.output_parsed == null) throw new Error(`${p.nombre}: el modelo no devolvió JSON (${r.status})`)
-    return {
-      datos: p.esquema.parse(r.output_parsed),
-      uso: { modelo: r.model, tokens_entrada: r.usage?.input_tokens ?? 0, tokens_salida: r.usage?.output_tokens ?? 0, ms: Date.now() - inicio },
-    }
+    return { datos: p.esquema.parse(r.output_parsed), uso }
   }
 
   async conHerramientas<T>(p: PeticionConHerramientas<T>) {
@@ -69,6 +69,14 @@ export class LLMOpenAI implements LLM {
       uso.modelo = r.model
       uso.tokens_entrada += r.usage?.input_tokens ?? 0
       uso.tokens_salida += r.usage?.output_tokens ?? 0
+      // Cada vuelta se anota aparte: si el turno falla a medias, lo gastado igual queda.
+      anotarConsumo(`${p.nombre}#${paso + 1}`, {
+        modelo: r.model,
+        tokens_entrada: r.usage?.input_tokens ?? 0,
+        tokens_salida: r.usage?.output_tokens ?? 0,
+        ms: Date.now() - inicio - uso.ms,
+      })
+      uso.ms = Date.now() - inicio
 
       const pedidas = r.output.filter((o) => o.type === 'function_call')
       if (!pedidas.length) {

@@ -5,6 +5,7 @@
 //   npm run sim -- eco           → los que contengan "eco" en el nombre del archivo
 //   npm run sim -- --veces 1     → una corrida (rápido, para iterar)
 //   npm run sim -- --json        → salida JSON (para el subagente bot-sim)
+//   npm run sim -- --ver         → además, la conversación completa de cada corrida
 
 import { readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -16,6 +17,7 @@ const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'test', 'escenar
 
 const args = process.argv.slice(2)
 const json = args.includes('--json')
+const ver = args.includes('--ver')
 const iVeces = args.indexOf('--veces')
 const veces = iVeces >= 0 ? Number(args[iVeces + 1]) : 5
 const filtros = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--veces')
@@ -76,7 +78,20 @@ if (json) {
   for (const v of veredictos) {
     const marca = v.ok ? '✅' : '❌'
     const tipo = v.escenario.critico ? ' [crítico]' : ''
-    console.log(`${marca} ${v.archivo.padEnd(34)} ${v.aprobadas}/${v.corridas.length}${tipo}  ${v.escenario.nombre}`)
+    if (ver) {
+      v.corridas.forEach((c, n) => {
+        console.log(`── ${v.archivo} · corrida ${n + 1}`)
+        for (const p of c.pasos) {
+          console.log(`  > ${p.enviado}${p.tokens ? `   [${p.tokens.toLocaleString('es-CO')} tokens]` : ''}`)
+          for (const h of p.herramientas) console.log(`    🔧 ${h.length > 160 ? h.slice(0, 160) + '…' : h}`)
+          for (const r of p.respuestas) console.log(`    bot: ${r.replace(/\n/g, ' ⏎ ')}`)
+          for (const f of p.fallos) console.log(`    ✗ ${f}`)
+        }
+      })
+    }
+    const tokens = v.corridas.flatMap((c) => c.pasos).reduce((s, p) => s + p.tokens, 0)
+    const porCorrida = tokens ? `  · ${Math.round(tokens / v.corridas.length).toLocaleString('es-CO')} tokens/corrida` : ''
+    console.log(`${marca} ${v.archivo.padEnd(34)} ${v.aprobadas}/${v.corridas.length}${tipo}  ${v.escenario.nombre}${porCorrida}`)
     if (!v.ok) {
       v.corridas.forEach((c, n) => {
         for (const p of c.pasos.filter((p) => p.fallos.length)) {

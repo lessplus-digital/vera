@@ -115,3 +115,68 @@ describe('conGuardia', () => {
     expect(r.violaciones.length).toBeGreaterThan(0)
   })
 })
+
+describe('G1.5: productos que no están en la carta', () => {
+  const cervezas = ['Aguila', 'Corona', 'Club Colombia', 'Pilsen', 'Tres Cordilleras', 'Adición Michelada']
+
+  it('bloquea marcas nombradas de memoria (a "chelita" ofreció Stella y Michelob)', () => {
+    const texto = '¿Te refieres a alguna en especial? Por ejemplo: Club Colombia, Corona, Stella, Michelob…'
+    expect(revisar(texto, { montos: [], productos: cervezas, textoCliente: 'quiero una chelita' }).map((v) => v.detalle)).toEqual([
+      expect.stringContaining('"stella"'),
+      expect.stringContaining('"michelob"'),
+    ])
+  })
+
+  it('"Michelada" del menú no es "Michelob", y sin tildes ni mayúsculas también se detecta', () => {
+    expect(reglas('Tenemos Adición Michelada por $3.000', { montos: [3000], productos: cervezas })).toEqual([])
+    expect(reglas('Te recomiendo una POSTOBÓN', { montos: [], productos: [] })).toEqual(['producto_inventado'])
+  })
+
+  it('si el cliente la nombró, el bot puede contestarle que no la tenemos', () => {
+    const h: Hechos = { montos: [], productos: cervezas, textoCliente: '¿tienen Heineken?' }
+    expect(reglas('No manejamos Heineken 🙏 pero tenemos Corona y Club Colombia', h)).toEqual([])
+  })
+
+  it('si el menú la devolvió (nombre o descripción), pasa: la lista se corrige sola si la agregan a la carta', () => {
+    expect(reglas('Tenemos Heineken', { montos: [], productos: ['Heineken'] })).toEqual([])
+    expect(reglas('La Texana lleva salsa BBQ', { montos: [], productos: ['Texana', 'Carne, tocineta y salsa BBQ.'] })).toEqual([])
+    expect(reglas('Tenemos pizza napolitana', { montos: [], productos: ['Bruschetta Napolitana'] })).toEqual([])
+  })
+
+  it('palabras comunes no cuentan como marcas', () => {
+    expect(reglas('Somos una pizzería colombiana, ¿qué modelo de pedido prefieres?', { montos: [] })).toEqual([])
+  })
+})
+
+describe('G1.6: no se niega un producto sin buscarlo', () => {
+  it('Menú sin consultar_menu no puede decir que no lo tenemos', () => {
+    for (const t of ['No encontré “papata mexicana” en nuestro menú', 'Esa no la tenemos 🙏', 'No está en la carta', 'no manejamos esa']) {
+      expect(reglas(t, { montos: [], consultoMenu: false }), t).toEqual(['niega_sin_consultar'])
+    }
+  })
+
+  it('si buscó, o si no es Menú (consultoMenu sin definir), puede negarlo', () => {
+    expect(reglas('No la tenemos en la carta', { montos: [], consultoMenu: true })).toEqual([])
+    expect(reglas('No tenemos wifi', { montos: [] })).toEqual([])
+  })
+
+  it('frases comunes que no niegan un producto pasan', () => {
+    expect(reglas('No hay problema, ¿algo más?', { montos: [], consultoMenu: false })).toEqual([])
+    expect(reglas('Listo, ¿no tenías otra duda?', { montos: [], consultoMenu: false })).toEqual([])
+  })
+})
+
+describe('G10.2: no se niega un servicio que el bot sí presta', () => {
+  it('bloquea mandar al cliente a otra línea para reservar', () => {
+    for (const t of [
+      'Para la reserva de mesa sí te cuento que por aquí solo manejo pedidos de comida. Para reservar mesa, porfa comunícate directo a la línea de reservas.',
+      'No hacemos reservas por aquí 🙏',
+      'Comunícate al teléfono del local para eso',
+    ]) expect(reglas(t, { montos: [] }), t).toContain('niega_servicio')
+  })
+
+  it('hablar de la reserva con normalidad pasa', () => {
+    expect(reglas('¡Claro! Y apenas me digas, te ayudo con la reserva 😊', { montos: [] })).toEqual([])
+    expect(reglas('Tu reserva quedó para el sábado. No hay problema si llegas 10 minutos tarde.', { montos: [] })).toEqual([])
+  })
+})

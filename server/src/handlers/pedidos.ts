@@ -201,6 +201,17 @@ export function sinPreguntas(t: string): string {
     .trim()
 }
 
+/**
+ * El cliente solo dio un dato ("a domicilio", "niqia", "por transferencia", "sí"):
+ * no hay nada que contestarle aparte de lo que arma el código, así que no se llama
+ * al modelo. Su frase de enlace repetía lo de debajo ("¡Perfecto, justo llegamos a
+ * Niquía!" + "¡A Niquía sí llegamos!") y una vez dijo "cuando lo confirmes con el bot".
+ */
+const SOLO_DATOS = new Set(['datos_pedido', 'respuesta_corta', 'cobertura'])
+const soloDatos = (e: EntradaRedactor) =>
+  [e.clasificacion.intencion, ...e.clasificacion.intenciones_extra].every((i) => SOLO_DATOS.has(i))
+export const ACUSE = 'Listo 👌'
+
 export function crearRedactorPedidos(d: { repo: Repo; llm: LLM }): Redactor {
   // El plan se calcula una vez por turno: la reescritura (guardia) reusa el mismo.
   const planes = new WeakMap<Turno, Plan>()
@@ -212,6 +223,10 @@ export function crearRedactorPedidos(d: { repo: Repo; llm: LLM }): Redactor {
       planes.set(e.turno, plan)
     }
     const debajo = [...plan.avisos, plan.cierre].filter(Boolean).join('\n\n')
+    if (soloDatos(e) && !e.previo) {
+      // Con un aviso (cobertura, cambio) el mensaje ya arranca diciendo algo; sin él, un acuse corto.
+      return { texto: [plan.avisos.length ? '' : ACUSE, debajo].filter(Boolean).join('\n\n'), pregunta: plan.pregunta, montos: plan.montos }
+    }
     const mensajes: MensajeLLM[] = [
       { rol: 'system', texto: PROMPT },
       {

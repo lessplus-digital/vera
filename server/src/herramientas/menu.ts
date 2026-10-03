@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ProductoMenu, Repo, RespuestaRPC } from '../bd/repo.js'
+import type { ProductoMenu, Repo, RespuestaRPC, ResultadoMenu } from '../bd/repo.js'
 import type { Herramienta } from '../llm/llm.js'
 import type { Turno } from '../log/turnos.js'
 
@@ -12,7 +12,31 @@ export type RastroMenu = {
   montos: number[]
   /** true si alguna herramienta cambió el carrito con éxito. */
   cambioCarrito: boolean
+  /** Nombres y descripciones que devolvió el menú: los únicos productos que el texto puede nombrar. */
+  productos: string[]
+  /**
+   * producto_id que el modelo puede usar: los que devolvió consultar_menu en este
+   * turno y los que ya están en el carrito. Cualquier otro es adivinado (visto el
+   * 2026-10-02: PROD-011 inventado para "premium hawaiana") y se rechaza sin tocar la BD.
+   */
+  ids: string[]
+  /** Masa de cada producto_id conocido (Tradicional / Estofada; null si no es pizza). */
+  masas: Record<string, string | null>
 }
+
+const sinTilde = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/** Las masas que el cliente nombró en su mensaje. */
+export function masasNombradas(texto: string): Set<'tradicional' | 'estofada'> {
+  const t = sinTilde(texto)
+  const r = new Set<'tradicional' | 'estofada'>()
+  if (/\btradicional(es)?\b/.test(t)) r.add('tradicional')
+  if (/\bestofad[oa]s?\b|\brellen[oa]s?\b/.test(t)) r.add('estofada')
+  return r
+}
+
+/** Error que ve el modelo cuando usa un producto_id que no salió de consultar_menu. */
+export const SIN_CONSULTAR = 'PRODUCTO_SIN_CONSULTAR'
 
 const Cantidad = z.number().int().min(1).max(50)
 const Notas = z.string().nullable().describe('Instrucción del cliente para ese producto ("sin cebolla"), o null')
@@ -31,7 +55,20 @@ function paraModelo(p: ProductoMenu) {
   }
 }
 
-export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMenu }): Herramienta[] {
+/**
+ * Con una coincidencia casi exacta, lo que quedó por debajo de 0.5 es ruido del
+ * trigrama ("pan de ajo" traía 9 pastas y bruschettas en 0.49): cada producto de
+ * más se reenvía al modelo en cada vuelta y lo invita a ofrecer lo que no se pidió.
+ * Sin una coincidencia clara se devuelve todo, para que el modelo pregunte.
+ */
+export function recortarRuido(r: ResultadoMenu): ResultadoMenu {
+  const mejor = Math.max(0, ...[...r.disponibles, ...r.agotados].map((p) => p.similitud))
+  if (mejor < 0.9) return r
+  const util = (p: ProductoMenu) => p.similitud >= 0.5
+  return { disponibles: r.disponibles.filter(util), agotados: r.agotados.filter(util) }
+}
+
+export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMenu; texto?: string }): Herramienta[] {
   const tel = d.turno.telefono
   const anotar = <T>(nombre: string, args: unknown, fn: () => Promise<T>) => d.turno.herramienta(nombre, args, fn)
   const montosDe = (r: Record<string, unknown>) => {
@@ -40,6 +77,39 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
   const siCambio = (r: RespuestaRPC) => {
     if (r.ok === true) d.rastro.cambioCarrito = true
     return r
+  }
+  /**
+   * El cliente nombró la masa: no se le cambia por otra (2026-10-02: a "mitad hawaiana
+   * tradicional y mitad pepperoni estofada" el modelo agregó las dos en tradicional). Si
+   * en una mitad y mitad nombró las dos masas, es MASA_DISTINTA (no se puede).
+   */
+  const pedidas = masasNombradas(d.texto ?? '')
+  const masaNoPedida = (mitad: boolean, ...ids: string[]): RespuestaRPC | null => {
+    if (mitad && pedidas.size === 2) {
+      return { ok: false, error: 'MASA_DISTINTA', message: 'El cliente pidió una mitad en masa tradicional y otra en estofada: las dos mitades tienen que ser de la misma masa. Pregúntale cuál prefiere.' }
+    }
+    if (pedidas.size !== 1) return null
+    const [pedida] = [...pedidas]
+    const otra = ids.find((id) => {
+      const m = d.rastro.masas[id]
+      return m != null && sinTilde(m) !== pedida
+    })
+    if (!otra) return null
+    return {
+      ok: false,
+      error: 'MASA_NO_PEDIDA',
+      message: `El cliente pidió masa ${pedida} y ${otra} es ${d.rastro.masas[otra]}. Usa el producto de masa ${pedida} que devolvió consultar_menu.`,
+    }
+  }
+  /** null si todos los ids salieron de consultar_menu o del carrito; si no, el error para el modelo. */
+  const sinConsultar = (...ids: string[]): RespuestaRPC | null => {
+    const faltan = ids.filter((id) => !d.rastro.ids.includes(id))
+    if (!faltan.length) return null
+    return {
+      ok: false,
+      error: SIN_CONSULTAR,
+      message: `${faltan.join(' y ')} no salió de consultar_menu en este turno. Busca con consultar_menu el producto que nombró el cliente y usa el producto_id que devuelva; nunca lo adivines.`,
+    }
   }
 
   return [
@@ -50,8 +120,11 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
       esquema: z.object({ termino: z.string().min(1) }),
       ejecutar: ({ termino }: { termino: string }) =>
         anotar('consultar_menu', { termino }, async () => {
-          const r = await d.repo.buscarMenu(termino)
+          const r = recortarRuido(await d.repo.buscarMenu(termino))
           for (const p of r.disponibles) d.rastro.montos.push(p.precio, ...Object.values(p.tamanos ?? {}))
+          for (const p of [...r.disponibles, ...r.agotados]) d.rastro.productos.push(p.nombre, p.descripcion ?? '')
+          d.rastro.ids.push(...r.disponibles.map((p) => p.producto_id))
+          for (const p of r.disponibles) d.rastro.masas[p.producto_id] = p.variante
           return {
             disponibles: r.disponibles.map(paraModelo),
             // Sin precio: un agotado no se cotiza.
@@ -67,6 +140,8 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
       esquema: z.object({ producto_id: z.string(), tamano: Tamano.nullable(), cantidad: Cantidad, notas: Notas }),
       ejecutar: (a: { producto_id: string; tamano: string | null; cantidad: number; notas: string | null }) =>
         anotar('carrito_agregar_item', a, async () => {
+          const rechazo = sinConsultar(a.producto_id) ?? masaNoPedida(false, a.producto_id)
+          if (rechazo) return rechazo
           const r = siCambio(await d.repo.carritoAgregarItem(tel, a))
           montosDe((r.agregado as Record<string, unknown>) ?? {})
           return { ok: r.ok, error: r.error, message: r.message, agregado: r.agregado, tamanos: r.tamanos }
@@ -79,6 +154,8 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
       esquema: z.object({ producto_a: z.string(), producto_b: z.string(), tamano: Tamano, cantidad: Cantidad, notas: Notas }),
       ejecutar: (a: { producto_a: string; producto_b: string; tamano: string; cantidad: number; notas: string | null }) =>
         anotar('carrito_agregar_mitad', a, async () => {
+          const rechazo = sinConsultar(a.producto_a, a.producto_b) ?? masaNoPedida(true, a.producto_a, a.producto_b)
+          if (rechazo) return rechazo
           const r = siCambio(await d.repo.carritoAgregarMitad(tel, a))
           montosDe((r.agregado as Record<string, unknown>) ?? {})
           return { ok: r.ok, error: r.error, message: r.message, agregado: r.agregado, explicacion: r.explicacion }
@@ -90,6 +167,8 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
       esquema: z.object({ producto_a: z.string(), producto_b: z.string(), tamano: Tamano }),
       ejecutar: (a: { producto_a: string; producto_b: string; tamano: string }) =>
         anotar('cotizar_mitad_y_mitad', a, async () => {
+          const rechazo = sinConsultar(a.producto_a, a.producto_b) ?? masaNoPedida(true, a.producto_a, a.producto_b)
+          if (rechazo) return rechazo
           const r = await d.repo.cotizarMitad(a.producto_a, a.producto_b, a.tamano)
           montosDe(r)
           return r

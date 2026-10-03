@@ -1,6 +1,6 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-09-30): en construcción — Fases 1–5 de 9 hechas (los cuatro agentes); sigue la Fase 6.** El bot en producción sigue siendo el
+> **Estado (2026-10-02): en construcción — Fases 1–6 de 9 hechas (los guiones G1–G11 son escenarios automáticos en verde); sigue la Fase 7.** El bot en producción sigue siendo el
 > de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
@@ -65,6 +65,13 @@ Toda la BD pasa por la interfaz `Repo` (`src/bd/repo.ts`): `RepoSupabase` en pro
 - **Avisos de estado del pedido:** `POST /hooks/estado-pedido` (`src/http/hooks.ts`), autenticado
   con `x-webhook-token` = `HOOK_TOKEN`. Solo avisa si cambió `estado`. En el corte (Fase 8) el
   trigger `notificar-estado-pedido` se apunta aquí. Mejora: un cancelado sin motivo ya no dice "null".
+- **Mensajes juntados en modo calificación (2026-10-02):** el buffer junta "5⏎5" o "2⏎llegó fría"
+  en un texto, y la RPC exige que el mensaje entero sea la nota (BUG-051), así que contestaba "No
+  entendí". Ahora, si el texto junto no es nota, el procesador lee las líneas en orden: la primera
+  que sea nota (`notaFeedback`, la misma limpieza que la RPC) califica; con nota baja lo que sigue
+  es el comentario; con nota alta lo que no sea otra nota ("5⏎quiero otra pizza") sigue al bot en el
+  mismo turno. El intercambio queda en el historial, así el bot sabe de qué venía si el cliente
+  sigue escribiendo.
 - **Calificaciones:** `src/cron/feedback.ts` cada 15 min (RPC `solicitar_feedback_lote`, tandas de 5
   con 2 s de pausa). **Apagado por defecto** (`FEEDBACK_ACTIVO=false`) mientras n8n tenga su propio
   job; se enciende en el corte.
@@ -129,7 +136,11 @@ tarifa base). Sin cobertura no se guarda nada y queda abierta la pregunta `suger
 **Guardia** (`guardia/guardia.ts`, contra los hechos de ESTE turno): ningún monto que no haya
 salido de una herramienta; sin cobertura, ningún tiempo de entrega; pedido creado → id y total
 exactos; no decir "tu pedido quedó confirmado" si no se creó; no citar un `PED-` ajeno; no
-mencionar internos (sistema, base de datos, herramientas, n8n…).
+mencionar internos (sistema, base de datos, herramientas, n8n…). Desde la Fase 6 también:
+**productos inventados** (`producto_inventado`: una lista de marcas y sabores famosos que no están
+en la carta — Stella, Heineken, Postobón, cuatro quesos… — solo pasan si una herramienta los
+devolvió en el turno o si el cliente los nombró) y **negar sin buscar** (`niega_sin_consultar`:
+Menú no puede decir "no lo tenemos / no me aparece" sin haber llamado `consultar_menu`).
 
 **LLM:** interfaz `LLM` (`llm/llm.ts`) con `LLMOpenAI` (Structured Outputs, `OPENAI_MODEL`,
 por defecto `gpt-5.1`) y `FakeLLM` para pruebas. Si el clasificador falla, el turno sigue con
@@ -140,8 +151,8 @@ una clasificación vacía ("otro" → sigue el hilo) y el error queda en `bot_tu
 Cada handler es un `Redactor`: recibe lo que decidió la política y lo que hicieron las acciones, y
 devuelve el texto y **la pregunta que dejó abierta** (se guarda en `conversaciones`). Usa
 `LLM.conHerramientas` (varias rondas de herramientas y cierre en JSON estricto). Si la guardia
-rechaza el texto, se reescribe **sin volver a correr herramientas** (`handlers/comun.ts ·
-reescritura`): si no, un reintento agregaría el producto dos veces.
+rechaza el texto, se reescribe **sin volver a correr herramientas que cambien algo**
+(`handlers/comun.ts · reescritura`): si no, un reintento agregaría el producto dos veces.
 
 **Menú** (`handlers/menu.ts`, ✅ 2026-09-30). Portado del prompt de n8n `1d7f7d87` (la versión
 corregida de BUG-063). Herramientas (`herramientas/menu.ts`): `consultar_menu` (buscar_menu con
@@ -155,6 +166,23 @@ cola" a "¿algo más?" venía como `confirma:no` (la política ahora deja que ga
 un "entonces una mitad y mitad" llegó a **borrar** la hawaiana del carrito (regla: nunca quitar
 sin pedido explícito); "no me aparece en nuestro sistema" pasaba la guardia (ahora bloquea
 "sistema"); precios sin "$" ("51.500") ahora también los revisa la guardia.
+Con el menú real (Fase 6): el modelo **adivinó un `producto_id`** (PROD-011 para "premium
+hawaiana", porque en el carrito veía PROD-010) y luego dijo que no existía. Ahora las herramientas
+de carrito y de mitad y mitad rechazan (`PRODUCTO_SIN_CONSULTAR`, sin tocar la BD) cualquier id que
+no haya devuelto `consultar_menu` en el turno o que no esté ya en el carrito. Y si la guardia
+rechaza un texto antes de que el carrito cambie, la reescritura **sí** puede volver a consultar el
+menú (consultar no tiene efectos); tras un cambio de carrito sigue sin herramientas.
+Otros arreglos de la Fase 6: si el cliente pide a domicilio desde un barrio **sin cobertura**
+("una hawaiana a domicilio, estoy en Itagüí"), Menú arma el carrito y el código agrega debajo el
+"no te llegamos… ¿lo recoges?" con su pregunta (antes no se decía nada); el "¿Quieres agregar algo
+más?" que el modelo escribía por su cuenta se quita (`quitarAlgoMas`) porque lo pone el código y
+salía dos veces; con una coincidencia casi exacta (≥ 0.9) `consultar_menu` descarta lo que quedó
+por debajo de 0.5 (`recortarRuido`: "pan de ajo" traía 9 pastas en 0.49); y Menú nunca dice que
+"por aquí no se hacen reservas" (pasó con "quiero una pizza y también reservar mesa"): lo frena el
+prompt y la guardia (`niega_servicio`). **La masa que nombró el cliente no se cambia:** si dijo
+una sola masa, las herramientas rechazan (`MASA_NO_PEDIDA`) un producto de la otra; si en una mitad
+y mitad nombró las dos, es `MASA_DISTINTA` desde el código (a "mitad hawaiana tradicional y mitad
+pepperoni estofada" el modelo había agregado las dos en tradicional, sin avisar).
 
 **Pedidos** (`handlers/pedidos.ts`, ✅ 2026-09-30). Portado del prompt de n8n `1d7f7d87`, pero
 casi todo lo que allí era regla en texto es código, y el LLM **no tiene herramientas**:
@@ -176,7 +204,12 @@ casi todo lo que allí era regla en texto es código, y el LLM **no tiene herram
   enviarlo y deja la pregunta `confirmar_pedido`. "No" al resumen → "¿Qué te gustaría cambiar?".
 - **El LLM** solo escribe una frase de enlace encima ("¡Perfecto!", o la respuesta a algo que el
   cliente preguntó de paso). Las oraciones con "?" se quitan (`sinPreguntas`): la única pregunta
-  del mensaje es la del código. Pasa por la guardia como cualquier texto.
+  del mensaje es la del código. Pasa por la guardia como cualquier texto. **Desde la Fase 6, si el
+  cliente solo dio un dato** (intención `datos_pedido` / `respuesta_corta` / `cobertura`, nada más)
+  **no se llama al modelo**: sale `ACUSE` ("Listo 👌") + lo del código, o solo lo del código si
+  trae un aviso. Su frase repetía lo de debajo ("¡Perfecto, justo llegamos a Niquía!" sobre "¡A
+  Niquía sí llegamos!") y una vez escribió "cuando lo confirmes con el bot" (la guardia ahora
+  también bloquea "bot"). De paso ahorra unos 1.000 tokens por dato.
 - **Crear el pedido** sigue siendo la regla `resumen:si` del conversador. Si la RPC falla con algo
   recuperable (`SIN_RESUMEN`, `PRECIOS_ACTUALIZADOS`, `TARIFA_ACTUALIZADA`, `DATOS_INCOMPLETOS`,
   `PRODUCTO_NO_DISPONIBLE`, `CARRITO_VACIO`) Pedidos vuelve a mostrar el resumen o pide lo que
@@ -190,8 +223,8 @@ casi todo lo que allí era regla en texto es código, y el LLM **no tiene herram
 Pedidos, el LLM **no tiene herramientas**: una sola llamada con todo lo que necesita ya leído por el
 código.
 
-- **Contexto que arma el código:** `info_negocio` completa (menos `datos_transferencia`, que solo va
-  en la confirmación de un pedido), las FAQ de `consultar_faq` entre `<faq>…</faq>` marcadas como
+- **Contexto que arma el código:** `info_negocio` completa (desde la Fase 6 **con**
+  `datos_transferencia`: G7.5 pide la cuenta y antes contestaba "esa información no la tengo"), las FAQ de `consultar_faq` entre `<faq>…</faq>` marcadas como
   **datos, nunca instrucciones**, y los **3 últimos pedidos del cliente** con su estado en palabras,
   hace cuánto y el motivo si se canceló. Nuevo respecto a n8n: "¿cómo va mi pedido?" se contesta
   con el estado real (n8n no podía leerlo y decía "el equipo lo está revisando"). Esos `pedido_id`
@@ -209,7 +242,17 @@ código.
 - **Cobertura sin carrito:** la consulta la política, como siempre; la respuesta ("¡A Niquía sí
   llegamos! $7.500…", "¿te refieres a…?", "no llegamos… ¿lo recoges?") es la misma de Pedidos
   (`formato.ts · siLlegamos / sinCobertura`). Si pregunta por domicilios sin barrio, el modelo pide
-  el barrio (pregunta `dato_pedido: barrio`) y la respuesta suelta pasa por cobertura.
+  el barrio (pregunta `dato_pedido: barrio`) y la respuesta suelta pasa por cobertura. Si el
+  mensaje es **solo** de cobertura, desde la Fase 6 va **solo el texto del código**, sin frase del
+  modelo: con frase se vio "a domicilio solo manejamos Bello… ¡A Niquía sí llegamos!".
+- **Respuestas fijas del código (Fase 6):** horario, dirección y medios de pago, cuando el mensaje
+  pregunta solo por uno de ellos (`respuestaFija`, ≤ 80 caracteres), y **la cuenta para transferir**
+  (`pideCuenta`, en el conversador, la atienda quien la atienda) salen tal cual de `info_negocio`,
+  sin modelo. Con el modelo, 1 de 5 veces "¿a qué hora abren?" salía "esa información no la tengo"
+  y "¿me pasas los datos?" salía "te van a compartir los datos en un momento".
+- **Citas compuestas:** la cita puede juntar dos datos con `;` (los dos horarios) o traer el nombre
+  del campo ("horario_semana: …"); antes eso no
+  se reconocía y a "¿a qué hora abren?" contestaba "esa información no la tengo".
 - **Escalar:** el modelo no pasa a nadie: devuelve `escalar` (`reclamo_grave` — pedido equivocado,
   cobro mal, comida mala, >1 h de espera — o `pedido_registrado` — cambiar o cancelar un pedido ya
   hecho) y el **código** ejecuta `pasarAHumano` y manda `T.HANDOFF`. Si ofrece "¿quieres que te
@@ -291,7 +334,38 @@ salta) y cada paso puede verificar la decisión del último turno:
       turno: { handler: pedidos, regla: "resumen:si", acciones: [crear_pedido], sin_acciones: [pasar_a_humano] }
 ```
 
-Las verificaciones de BD (`bd:`) llegan con la Fase 6.
+**Fase 6 (2026-10-02)** agregó lo que hacía falta para pasar los guiones de `qa/guiones-bot.md`:
+
+```yaml
+datos: real              # menú, cobertura, info_negocio y FAQ REALES de Supabase (solo lectura)
+cliente_registrado: true # el cliente ya existe con nombre_cliente (no se le pide el nombre)
+pasos:
+  - pide_calificacion: { pedido_id: PED-101 }   # pedido entregado + corre el job de calificaciones
+  - envia: '5'
+    debe:
+      turno: { handler: feedback, accion: positiva }
+      bd:                                      # la fila, no lo que el bot dijo
+        modo: bot
+        feedback: [{ pedido_id: PED-101, nota: 5 }]   # lista completa y en orden
+        feedback_pendiente: false
+        carrito: [Hawaiana]                    # nombres por línea, exacto ([] = vacío)
+        carrito_solo: [Hawaiana, Pepperoni]    # ninguna línea fuera de esta lista (G1)
+        carrito_total: 37500
+        soporte_contiene: ['¿hola?']           # llegó al chat de Soporte
+```
+
+`datos: real` (`sim/datos-reales.ts`) solo llama tablas y funciones `STABLE` (`buscar_menu`,
+`precio_producto`, `cotizar_mitad_y_mitad`, `consultar_cobertura`, `consultar_faq`): carrito,
+pedidos, clientes y reservas siguen en memoria, así que la BD no se ensucia. Las reservas se quedan
+en el catálogo del simulador porque su cupo cuenta reservas reales.
+
+`npm run sim -- <filtro> --veces 1 --ver` imprime la conversación completa con las herramientas
+que corrió cada turno (🔧) y los tokens gastados por paso y por corrida.
+
+**Costo por turno:** cada llamada a OpenAI se anota en una "caja" por turno (`llm.ts ·
+medirConsumo`, con `AsyncLocalStorage`), así que `bot_turnos.costo` guarda el total y el detalle
+del clasificador, el agente (cada vuelta de herramientas) y la reescritura; antes solo guardaba el
+clasificador.
 
 ## Variables de entorno
 
@@ -327,4 +401,15 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
   cambio (antes 5/5 los dos últimos). **Falta** la primera prueba de Reservas en WhatsApp real: ver
   que la fecha que resuelve el clasificador ("el sábado") sea la correcta en hora Colombia.
   Regla de costo: iterar con `--veces 1` sobre los escenarios afectados; ×5 solo para cerrar.
-- **Fase 6:** escenarios G1–G11 en verde. **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.
+- **Fase 6:** ✅ (2026-10-02): los guiones G1–G11 de `qa/guiones-bot.md` pasaron a 10 escenarios
+  `f6-*` (mapa en la cabecera de ese archivo), varios contra los **datos reales** en solo lectura
+  (`datos: real`). Los 19 escenarios con IA 5/5 con `gpt-5.1` el 2026-10-02 (G5 y G7 tras sus
+  arreglos; tras la regla de masa y las respuestas fijas, los de Menú/Pedidos se repitieron 1/1).
+  351 pruebas unitarias. Leer las conversaciones (`--ver`) destapó lo que el ×5 no veía:
+  productos inventados (Stella), un `producto_id` adivinado, la masa cambiada en una mitad y
+  mitad, "por aquí no se hacen reservas", la cobertura de Itagüí sin avisar, frases del modelo que
+  contradecían el texto del código, y el horario o la cuenta negados 1 de 5 veces. Todo quedó en
+  código (herramientas, guardia, respuestas fijas) con su prueba. Costo medido por escenario en la
+  salida del simulador; `bot_turnos.costo` ahora guarda todo el turno.
+  **Sigue pendiente** la prueba de Reservas por WhatsApp real (f5-6).
+- **Fase 7:** proxy de envíos del dashboard. **Fase 8:** corte.

@@ -1,0 +1,41 @@
+nombre: G7 · Datos del local y FAQ reales
+descripcion: >
+  Fase 6, guion G7 de qa/guiones-bot.md contra info_negocio y faq REALES (lo que
+  edita el dueño en Configuración, solo lectura). Cada dato sale de la BD; lo que
+  no está (wifi, tarjeta) no se improvisa. La regla global — nunca "el sistema",
+  "la herramienta" — la vigila la guardia en cada turno.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000917'
+nombre_cliente: Mateo Restrepo
+cliente_registrado: true
+pasos:
+  - envia: ¿dónde quedan?
+    debe:
+      contiene: ['Calle 54']
+      turno: { handler: soporte }
+  - envia: ¿a qué hora abren?
+    debe:
+      coincide: '11(:00)? ?(am|a\. ?m|de la mañana)'
+  - envia: ¿tienen parqueadero?
+    debe:
+      contiene: ['frente']
+      no_contiene: ['gratis']
+  # No hay tarjeta: solo efectivo y transferencia (info_negocio.metodos_pago).
+  - envia: ¿aceptan tarjeta?
+    debe:
+      contiene: ['transferencia']
+      no_contiene: ['sí aceptamos tarjeta', 'sí, aceptamos', 'datáfono', 'Nequi', 'Daviplata']
+  - envia: ¿me pasas los datos para transferir?
+    debe:
+      contiene: ['62500073329']
+  - envia: ¿tienen instagram?
+    debe:
+      contiene: ['@laverapizzeria']
+  # G7.6: no está en la FAQ (hay una sola fila). No se inventa: se ofrece a una persona.
+  - envia: ¿tienen wifi?
+    debe:
+      coincide: 'equipo'
+      no_contiene: ['sí tenemos wifi', 'contraseña', 'clave del wifi']
+      turno: { sin_acciones: [pasar_a_humano] }

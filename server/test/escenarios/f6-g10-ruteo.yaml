@@ -1,0 +1,54 @@
+nombre: G10 · El mensaje llega al agente correcto
+descripcion: >
+  Fase 6, guion G10 de qa/guiones-bot.md. Mezcla dominios a propósito: un saludo
+  no abre un pedido, dos pedidos en un mensaje no pierden ninguno, "¿cuánto llevo?"
+  lee el carrito real, un barrio suelto va a cobertura y no al menú (BUG-062), y
+  un "gracias" después de confirmar no abre otro pedido.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000919'
+nombre_cliente: Daniela Pérez
+cliente_registrado: true
+pasos:
+  - envia: hola
+    debe:
+      no_contiene: ['🛒', 'Subtotal', '¿Es para domicilio']
+      turno: { sin_acciones: [crear_pedido] }
+      bd: { carrito: [] }
+  # 10.6: una palabra que es un barrio → cobertura, no el PDF del menú.
+  - envia: prado
+    debe:
+      contiene: ['Prado', '$5.000']
+      no_contiene: ['menu_vera.pdf']
+  # 10.2: dos cosas en un mensaje; ninguna se pierde.
+  - envia: quiero una pizza y también reservar mesa
+    debe:
+      coincide: 'reserv'
+      no_contiene: ['Reserva confirmada']
+      bd: { carrito: [] }
+  - envia: dame una pepperoni tradicional mediana
+    debe:
+      contiene: ['Pepperoni', 'Subtotal: $']
+      bd: { carrito: [Pepperoni] }
+  # 10.3: lee el carrito real, no la memoria.
+  - envia: ¿cuánto llevo en mi pedido?
+    debe:
+      contiene: ['Pepperoni']
+      coincide: '\$37\.500'
+      bd: { carrito: [Pepperoni] }
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: 'es para recoger, pago en efectivo'
+    debe:
+      contiene: ['Recoger en el local', '¿Te lo confirmo así?']
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: sí
+    debe:
+      contiene: ['¡Pedido registrado!']
+      turno: { acciones: [crear_pedido] }
+  # 10.5: el "gracias" después de confirmar no abre nada.
+  - envia: gracias
+    debe:
+      respuestas: 1
+      no_contiene: ['🛒', '¿Te lo confirmo así?', '¡Pedido registrado!', 'Subtotal']
+      turno: { sin_acciones: [crear_pedido] }

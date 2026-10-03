@@ -1,0 +1,31 @@
+nombre: G6 · Paso a una persona cuando lo pide
+descripcion: >
+  Fase 6, guion G6 de qa/guiones-bot.md. Una duda normal la atiende el bot; "quiero
+  hablar con alguien" pasa al cliente a modo humano con el texto fijo; desde ahí el
+  bot calla y lo que escribe llega al chat de Soporte. Una queja grave (pedido
+  equivocado, algo faltante, mucha demora) pasa a una persona de una, sin esperar
+  a que lo pida: eso lo cubre f5-soporte-reclamo. Que el panel muestre la
+  conversación previa lo cubre registrar_contexto_handoff (qa/sql) y la prueba de
+  integración del historial.
+critico: true
+bot: decision
+telefono: '573000000921'
+nombre_cliente: Carlos Mejía
+cliente_registrado: true
+pasos:
+  - envia: hola, una pregunta, ¿hasta qué hora hacen domicilios?
+    debe:
+      respuestas: 1
+      turno: { sin_acciones: [crear_pedido, pasar_a_humano] }
+      bd: { modo: bot }
+  - envia: quiero hablar con alguien
+    debe:
+      contiene: ['Te conecto con nuestro equipo']
+      respuestas: 1
+      turno: { acciones: [pasar_a_humano] }
+      bd: { modo: humano }
+  - envia: ¿hola? ¿alguien?
+    debe:
+      respuestas: 0
+      turno: { handler: humano }
+      bd: { modo: humano, soporte_contiene: ['¿hola? ¿alguien?'] }

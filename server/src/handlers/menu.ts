@@ -4,7 +4,7 @@ import type { LLM, MensajeLLM } from '../llm/llm.js'
 import type { EntradaRedactor, Redaccion, Redactor } from '../decision/conversador.js'
 import type { UltimaPregunta } from '../decision/contexto.js'
 import { herramientasMenu, type RastroMenu } from '../herramientas/menu.js'
-import { bloqueCarrito, carritoParaLLM, montosDeCarrito } from './formato.js'
+import { bloqueCarrito, carritoParaLLM, montosDeCarrito, sinCobertura } from './formato.js'
 import { contextoComun, reescritura } from './comun.js'
 
 // AGENTE MENÚ: ayuda a elegir y arma el carrito. Portado del prompt de n8n
@@ -27,6 +27,7 @@ El único link válido es ${LINK_MENU} — envíalo tal cual cuando pidan la car
 ## Tu límite
 Solo manejas el menú y el carrito. NUNCA preguntes ni comentes: domicilio o recoger, barrio, dirección, método de pago, con cuánto paga, cobertura o tarifa de domicilio. Si el cliente da alguno de esos datos, NO los repitas ni los confirmes: ya quedaron guardados; sigue con lo del menú. Si solo nombra un barrio o lugar sin pedir nada, responde "¡Claro! ¿Qué te gustaría pedir?".
 No crees pedidos ni anuncies lo que pasará después ("ahora te pedirán los datos").
+Este mismo WhatsApp también hace reservas de mesa, responde preguntas del local y atiende quejas. Si en el mismo mensaje pide algo de eso, NUNCA digas que por aquí no se puede ni lo mandes a otra línea o canal: ocúpate de lo del menú y dile que en seguida le ayudas con lo otro (p. ej. "y apenas me digas, te ayudo con la reserva 😊").
 Si tienes que nombrar métodos de pago: solo Efectivo y Transferencia (no hay tarjeta, Nequi, Daviplata ni datáfono).
 
 ## Preguntar NO es pedir
@@ -40,6 +41,7 @@ Si tienes que nombrar métodos de pago: solo Efectivo y Transferencia (no hay ta
 - Elige el que coincida con lo que pidió; nunca otro solo porque salió primero. similitud < 0.5 → confirma: "¿Te refieres a …?".
 - agotados: SÍ los manejamos pero hoy se acabaron. Dilo así, nunca "no lo manejamos", y ofrece algo parecido de disponibles. Nunca los agregues, listes como opción ni les des precio. No prometas cuándo vuelven.
 - Si no aparece en ninguna lista: no está en la carta → dilo y comparte el link.
+- Al dar opciones o ejemplos ("tenemos Corona, Club Colombia…"), nombra SOLO productos que devolvió consultar_menu, con su nombre exacto. Nunca completes la lista con marcas o sabores que conoces de otros lados.
 
 ## Mitad y mitad
 Una pizza con dos sabores. Se cobra la mitad MÁS CARA (lo calcula el sistema; tú nunca). Misma masa en las dos mitades, no en porción, no con pizzas dulces, dos sabores distintos, solo dos. Si solo pregunta el precio usa cotizar_mitad_y_mitad; si la pide, agregar_mitad_y_mitad. Si da error, explica el \`message\` con tus palabras.
@@ -74,8 +76,15 @@ type Salida = z.infer<typeof Salida>
 export function crearRedactorMenu(d: { repo: Repo; llm: LLM }): Redactor {
   return async (e: EntradaRedactor): Promise<Redaccion> => {
     const tel = e.turno.telefono
-    const rastro: RastroMenu = { montos: [...(e.previo?.montos ?? [])], cambioCarrito: false }
     const carritoAntes = await d.repo.carrito(tel)
+    const rastro: RastroMenu = {
+      montos: [...(e.previo?.montos ?? [])],
+      cambioCarrito: false,
+      productos: [...(e.previo?.productos ?? [])],
+      // Ids válidos: los del carrito y los que ya devolvió consultar_menu si esto es una reescritura.
+      ids: [...carritoAntes.lineas.map((l) => l.producto_id), ...idsConsultados(e.previo?.llamadas ?? [])],
+      masas: Object.fromEntries(carritoAntes.lineas.map((l) => [l.producto_id, l.masa])),
+    }
     const mensajes: MensajeLLM[] = [
       { rol: 'system', texto: PROMPT },
       {
@@ -93,46 +102,73 @@ export function crearRedactorMenu(d: { repo: Repo; llm: LLM }): Redactor {
 
     let salida: Salida
     let llamadas = e.previo?.llamadas ?? []
-    if (e.previo) {
-      // Reescritura: mismas herramientas ya corridas, sin volver a ejecutarlas.
-      mensajes.push(...reescritura(e.previo, e.violaciones))
+    if (e.previo) mensajes.push(...reescritura(e.previo, e.violaciones))
+    if (e.previo && llamadas.some((l) => MUTANTES.has(l.nombre))) {
+      // Reescritura tras cambiar el carrito: sin herramientas, o agregaría el producto dos veces.
       salida = (await d.llm.estructurado({ nombre: 'menu', esquema: Salida, mensajes })).datos
     } else {
+      // Primer intento, o reescritura sin cambios en el carrito: puede (volver a) consultar el menú.
       const r = await d.llm.conHerramientas({
         nombre: 'menu',
         esquema: Salida,
         mensajes,
-        herramientas: herramientasMenu({ repo: d.repo, turno: e.turno, rastro }),
+        herramientas: herramientasMenu({ repo: d.repo, turno: e.turno, rastro, texto: e.texto }),
       })
       salida = r.datos
-      llamadas = r.llamadas
+      llamadas = [...llamadas, ...r.llamadas]
     }
 
     const cambio = rastro.cambioCarrito || llamadas.some((l) => esCambioExitoso(l))
     let texto = salida.texto.trim()
     let pregunta: UltimaPregunta | null = aPregunta(salida)
     const montos = [...rastro.montos, ...montosDeCarrito(carritoAntes)]
+    const productos = [...rastro.productos, ...carritoAntes.lineas.map((l) => l.nombre)]
+
+    // "una hawaiana a domicilio, estoy en Itagüí": la política consultó el barrio y no
+    // llegamos. Menú arma el carrito, pero el cliente tiene que saberlo en este mismo
+    // mensaje (2026-10-02: se agregaba la pizza y del barrio no se decía nada).
+    const cob = e.efectos.cobertura
+    const sinCob = cob && !cob.cubierto ? sinCobertura(cob) : null
 
     if (cambio) {
       const carrito = await d.repo.carrito(tel)
       montos.push(...montosDeCarrito(carrito))
       if (carrito.lineas.length) {
-        texto = [texto, bloqueCarrito(carrito)].filter(Boolean).join('\n\n')
+        // El "¿algo más?" lo pone el código: si el modelo también lo escribió, salía dos veces.
+        texto = [quitarAlgoMas(texto), bloqueCarrito(carrito)].filter(Boolean).join('\n\n')
         // Si el modelo no dejó otra pregunta abierta, se cierra con "¿algo más?".
-        if (salida.pregunta === 'ninguna' || salida.pregunta === 'algo_mas') {
+        if (!sinCob && (salida.pregunta === 'ninguna' || salida.pregunta === 'algo_mas')) {
           texto += `\n\n${PREGUNTA_ALGO_MAS}`
           pregunta = { tipo: 'algo_mas' }
         }
       }
     }
-    return { texto, pregunta, montos, llamadas }
+    if (sinCob) {
+      texto = [texto, sinCob.texto].filter(Boolean).join('\n\n')
+      pregunta = sinCob.pregunta
+    }
+    const consultoMenu = llamadas.some((l) => l.nombre === 'consultar_menu')
+    return { texto, pregunta, montos, llamadas, productos, consultoMenu }
   }
 }
+
+/** Quita del texto del modelo las preguntas de "¿algo más?" (y el emoji que las cierra). */
+export const quitarAlgoMas = (t: string) =>
+  t
+    .replace(/¿[^¿?]*\balgo\s+m[aá]s\b[^¿?]*\?[\s\p{Extended_Pictographic}️]*/giu, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 
 function aPregunta(s: Salida): UltimaPregunta | null {
   if (s.pregunta === 'algo_mas') return { tipo: 'algo_mas' }
   if (s.pregunta === 'agregar_producto' && s.producto_sugerido) return { tipo: 'agregar_producto', producto: s.producto_sugerido }
   return null
+}
+
+function idsConsultados(llamadas: { nombre: string; resultado: unknown }[]): string[] {
+  return llamadas
+    .filter((l) => l.nombre === 'consultar_menu')
+    .flatMap((l) => ((l.resultado as { disponibles?: { producto_id: string }[] } | null)?.disponibles ?? []).map((p) => p.producto_id))
 }
 
 const MUTANTES = new Set(['agregar_al_carrito', 'agregar_mitad_y_mitad', 'quitar_del_carrito'])

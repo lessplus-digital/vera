@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { z } from 'zod'
 
 // El bot habla con el modelo solo a través de esta interfaz. Implementaciones:
@@ -8,6 +9,33 @@ import type { z } from 'zod'
 export type MensajeLLM = { rol: 'system' | 'user' | 'assistant'; texto: string }
 
 export type UsoLLM = { modelo: string; tokens_entrada: number; tokens_salida: number; ms: number }
+
+// ── Consumo por turno ──────────────────────────────────────────────────────
+// Cada llamada al modelo anota su uso en el turno en curso, sin pasar el turno
+// por todos los agentes: el conversador abre una "caja" (medirConsumo) y lo que
+// pase dentro de ella —clasificador, agente, reescritura— cae ahí. Sirve para
+// saber cuánto cuesta atender a un cliente, no solo lo del clasificador.
+
+export type ConsumoLLM = { nombre: string } & UsoLLM
+const cajaConsumo = new AsyncLocalStorage<ConsumoLLM[]>()
+
+/** La implementación del LLM lo llama tras cada petición. Fuera de una caja no hace nada. */
+export function anotarConsumo(nombre: string, uso: UsoLLM) {
+  cajaConsumo.getStore()?.push({ nombre, ...uso })
+}
+
+export type ResumenConsumo = { tokens_entrada: number; tokens_salida: number; ms: number; llamadas: ConsumoLLM[] }
+
+/** Corre `fn` dentro de una caja de consumo; `registrar` recibe el resumen aunque `fn` falle. */
+export async function medirConsumo<T>(fn: () => Promise<T>, registrar: (c: ResumenConsumo) => void): Promise<T> {
+  const llamadas: ConsumoLLM[] = []
+  try {
+    return await cajaConsumo.run(llamadas, fn)
+  } finally {
+    const sumar = (k: 'tokens_entrada' | 'tokens_salida' | 'ms') => llamadas.reduce((s, l) => s + l[k], 0)
+    if (llamadas.length) registrar({ tokens_entrada: sumar('tokens_entrada'), tokens_salida: sumar('tokens_salida'), ms: sumar('ms'), llamadas })
+  }
+}
 
 export type PeticionEstructurada<T> = {
   /** Nombre del formato (aparece en el log y en la petición a OpenAI). */

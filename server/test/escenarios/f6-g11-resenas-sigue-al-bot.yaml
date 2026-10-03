@@ -1,0 +1,31 @@
+nombre: G11 · Después de calificar, el cliente sigue con el bot
+descripcion: >
+  Fase 6, guion G11.6 con la IA real. Tras la nota, el cliente vuelve a modo bot:
+  un "5" repetido en otro mensaje recibe respuesta (BUG-057 era el silencio) sin
+  reabrir la calificación, y "5⏎quiero una hawaiana…" califica Y atiende el pedido
+  en el mismo turno, sin perder ninguna de las dos cosas.
+critico: true
+bot: decision
+telefono: '573000000912'
+nombre_cliente: Andrés Ruiz
+pasos:
+  - pide_calificacion: { pedido_id: PED-201 }
+  - envia: '5'
+    debe:
+      contiene: ['reseña en Google']
+      bd: { modo: bot, feedback: [{ pedido_id: PED-201, nota: 5 }] }
+  - envia: '5'
+    debe:
+      respuestas: 1
+      no_contiene: ['No entendí', 'Lamento', 'Califícalo']
+      turno: { sin_acciones: [crear_pedido] }
+      bd: { modo: bot, feedback_pendiente: false, feedback: [{ pedido_id: PED-201, nota: 5 }] }
+  - pide_calificacion: { pedido_id: PED-202 }
+  - envia: ['5', 'quiero una hawaiana tradicional mediana']
+    debe:
+      contiene: ['reseña en Google', 'Subtotal: $37.500']
+      respuestas: 2
+      turno: { handler: menu, sin_acciones: [crear_pedido] }
+      bd:
+        modo: bot
+        feedback: [{ pedido_id: PED-201, nota: 5 }, { pedido_id: PED-202, nota: 5 }]

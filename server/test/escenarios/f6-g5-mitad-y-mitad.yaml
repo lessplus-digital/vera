@@ -1,0 +1,32 @@
+nombre: G5 · Mitad y mitad con el menú real
+descripcion: >
+  Fase 6, guion G5 de qa/guiones-bot.md. La RPC ya pasó 3.024 pares sin fallos
+  (qa/sql); aquí se prueba que el agente la llame bien y que se cobre la mitad MÁS
+  CARA (lo calcula la BD). Masas distintas, mitades iguales y porción se rechazan
+  sin tocar el carrito.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000920'
+nombre_cliente: Juliana Torres
+cliente_registrado: true
+pasos:
+  # Hawaiana tradicional mediana $37.500, Premium Hawaiana tradicional mediana $47.000 → se cobra $47.000.
+  - envia: quiero una pizza mitad hawaiana y mitad premium hawaiana, tradicional, mediana
+    debe:
+      contiene: ['Mitad Hawaiana / Mitad Premium Hawaiana', '$47.000']
+      no_contiene: ['$42.250', '$84.500']
+      bd: { carrito_total: 47000 }
+  - envia: otra mitad hawaiana masa tradicional y mitad pepperoni masa estofada, mediana
+    debe:
+      coincide: 'misma masa|mismas? masas?|masa distinta|masas distintas'
+      bd: { carrito_total: 47000 }
+  - envia: y una mitad hawaiana y mitad hawaiana, grande tradicional
+    debe:
+      coincide: 'mism[oa]|distint|diferent|igual|dos sabores'
+      bd: { carrito_total: 47000 }
+  - envia: entonces una porción mitad hawaiana mitad pepperoni tradicional
+    debe:
+      coincide: 'porci'
+      bd: { carrito_total: 47000 }
+      turno: { sin_acciones: [crear_pedido] }

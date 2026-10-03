@@ -4,7 +4,7 @@ import { correrFeedback } from '../../src/cron/feedback.js'
 import { loggerMudo } from '../../src/log.js'
 import { avisoEstadoPedido, pedirCalificacion } from '../../src/textos.js'
 import * as T from '../../src/textos.js'
-import { extension } from '../../src/turno/procesador.js'
+import { extension, notaFeedback } from '../../src/turno/procesador.js'
 
 const TEL = '573000000901'
 
@@ -90,6 +90,65 @@ describe('modo esperando_feedback', () => {
     const sim = await simConCola()
     expect(await turno(sim, () => sim.enviarTexto(TEL, '10/10'))).toEqual([T.FEEDBACK_NOTA_INVALIDA])
     expect(sim.repo.clientes.get(TEL)?.modo).toBe('esperando_feedback')
+  })
+
+  it('notaFeedback lee como la RPC: sin signos ni tildes, el mensaje entero es la nota', () => {
+    for (const [m, n] of [['5', 5], ['¡5!', 5], ['Cinco ⭐', 5], ['tres.', 3], [' 1 ', 1]] as const) expect(notaFeedback(m), m).toBe(n)
+    for (const m of ['10/10', '5/5', 'quiero 2 pizzas', 'me demoraron 45 minutos', '0', '6', '']) expect(notaFeedback(m), m).toBeNull()
+  })
+
+  it('"5" dos veces seguidas (el buffer las junta) → una sola respuesta positiva, no "No entendí"', async () => {
+    const sim = await simConCola()
+    const r = await turno(sim, async () => {
+      await sim.enviarTexto(TEL, '5')
+      await sim.enviarTexto(TEL, '5')
+    })
+    expect(r).toEqual([T.FEEDBACK_POSITIVA])
+    expect(sim.repo.feedback).toEqual([{ pedido_id: 'PED-1', nota: 5, comentario: null }])
+    expect(sim.repo.clientes.get(TEL)?.modo).toBe('bot')
+  })
+
+  it('nota baja + comentario juntos → guarda ambos y agradece sin volver a preguntar', async () => {
+    const sim = await simConCola()
+    const r = await turno(sim, async () => {
+      await sim.enviarTexto(TEL, 'hola')
+      await sim.enviarTexto(TEL, '2')
+      await sim.enviarTexto(TEL, 'llegó fría')
+      await sim.enviarTexto(TEL, 'y tarde')
+    })
+    expect(r).toEqual([T.FEEDBACK_AGRADECER])
+    expect(sim.repo.feedback).toEqual([{ pedido_id: 'PED-1', nota: 2, comentario: 'llegó fría\ny tarde' }])
+    expect(sim.repo.clientes.get(TEL)?.modo).toBe('bot')
+  })
+
+  it('nota alta + otra cosa juntas → califica y lo demás sigue al bot', async () => {
+    const sim = await simConCola()
+    const r = await turno(sim, async () => {
+      await sim.enviarTexto(TEL, '5')
+      await sim.enviarTexto(TEL, 'quiero otra pizza')
+    })
+    expect(r).toEqual([T.FEEDBACK_POSITIVA, 'Eco: quiero otra pizza'])
+    expect(sim.repo.feedback).toEqual([{ pedido_id: 'PED-1', nota: 5, comentario: null }])
+  })
+
+  it('varias líneas sin ninguna nota → pide la nota otra vez y no guarda nada', async () => {
+    const sim = await simConCola()
+    const r = await turno(sim, async () => {
+      await sim.enviarTexto(TEL, 'hola')
+      await sim.enviarTexto(TEL, 'quiero 2 pizzas')
+    })
+    expect(r).toEqual([T.FEEDBACK_NOTA_INVALIDA])
+    expect(sim.repo.feedback).toEqual([])
+    expect(sim.repo.clientes.get(TEL)?.modo).toBe('esperando_feedback')
+  })
+
+  it('el intercambio de la calificación queda en el historial (el bot sabe de qué venía)', async () => {
+    const sim = await simConCola()
+    await turno(sim, () => sim.enviarTexto(TEL, '5'))
+    expect(sim.repo.historial.get(TEL)).toEqual([
+      { tipo: 'human', texto: '5' },
+      { tipo: 'ai', texto: T.FEEDBACK_POSITIVA },
+    ])
   })
 
   it('una foto se rechaza sin tocar la calificación', async () => {

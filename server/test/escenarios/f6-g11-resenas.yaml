@@ -1,0 +1,107 @@
+nombre: G11 · Flujo de reseñas (calificación tras la entrega)
+descripcion: >
+  Fase 6, guion G11 de qa/guiones-bot.md. La máquina de estados es la RPC
+  procesar_respuesta_feedback (qa/sql/10-resenas.sql); aquí se prueba la
+  conversación completa: el job pide la nota, nota alta → reseña en Google, nota
+  baja → comentario, "saltar", notas inválidas (BUG-051) y mensajes juntados por
+  el buffer ("5⏎5" ya no contesta "No entendí"). Cada nota queda pegada a SU
+  pedido (BUG-050) y el cliente siempre recibe respuesta (BUG-057). Sin LLM.
+critico: true
+bot: eco
+telefono: '573000000911'
+nombre_cliente: Laura Gómez
+pasos:
+  # 11.1 — el job pide la calificación
+  - pide_calificacion: { pedido_id: PED-101 }
+    debe:
+      contiene: ['Hola Laura', 'Califícalo del 1 al 5']
+      respuestas: 1
+      bd: { modo: esperando_feedback, feedback_pendiente: true, feedback: [] }
+  # 11.7 — "10/10" no es una nota 1 (BUG-051)
+  - envia: 10/10
+    debe:
+      contiene: ['responde solo con un número del 1 al 5']
+      respuestas: 1
+      turno: { handler: feedback, accion: nota_invalida }
+      bd: { modo: esperando_feedback, feedback: [] }
+  # 11.8 — "quiero 2 pizzas" no es una nota 2
+  - envia: quiero 2 pizzas
+    debe:
+      contiene: ['responde solo con un número del 1 al 5']
+      respuestas: 1
+      bd: { modo: esperando_feedback, feedback: [] }
+  # 11.2 — nota alta: reseña en Google, nunca "Lamento" (BUG-056)
+  - envia: '5'
+    debe:
+      contiene: ['reseña en Google', 'google.com/maps']
+      no_contiene: ['Lamento']
+      respuestas: 1
+      turno: { handler: feedback, accion: positiva }
+      bd: { modo: bot, feedback_pendiente: false, feedback: [{ pedido_id: PED-101, nota: 5 }] }
+  # 11.3 / 11.4 — otro pedido, nota baja: pide comentario y lo guarda en ESE pedido
+  - pide_calificacion: { pedido_id: PED-102 }
+    debe:
+      contiene: ['Califícalo del 1 al 5']
+      bd: { modo: esperando_feedback }
+  - envia: '2'
+    debe:
+      contiene: ['¿Nos cuentas qué pasó?']
+      respuestas: 1
+      turno: { accion: pedir_comentario }
+      bd: { modo: esperando_feedback, feedback_pendiente: true }
+  - envia: llegó frío
+    debe:
+      contiene: ['¡Gracias por contarnos!']
+      respuestas: 1
+      turno: { accion: agradecer }
+      bd:
+        modo: bot
+        feedback_pendiente: false
+        feedback: [{ pedido_id: PED-101, nota: 5 }, { pedido_id: PED-102, nota: 2, comentario: llegó frío }]
+  # 11.5 — "saltar" cierra sin comentario
+  - pide_calificacion: { pedido_id: PED-103 }
+  - envia: '1'
+    debe:
+      contiene: ['¿Nos cuentas qué pasó?']
+  - envia: saltar
+    debe:
+      contiene: ['¡Gracias por contarnos!']
+      respuestas: 1
+      bd:
+        modo: bot
+        feedback_pendiente: false
+        feedback:
+          - { pedido_id: PED-101, nota: 5 }
+          - { pedido_id: PED-102, nota: 2, comentario: llegó frío }
+          - { pedido_id: PED-103, nota: 1 }
+  # 11.6 — "5" dos veces seguidas (el buffer las junta): una sola respuesta, la buena
+  - pide_calificacion: { pedido_id: PED-104 }
+  - envia: ['5', '5']
+    debe:
+      contiene: ['reseña en Google']
+      no_contiene: ['No entendí', 'Lamento']
+      respuestas: 1
+      bd: { modo: bot, feedback_pendiente: false }
+  # Nota baja y comentario seguidos: no pregunta lo que ya le dijeron
+  - pide_calificacion: { pedido_id: PED-105 }
+  - envia: ['2', 'la pizza llegó fría']
+    debe:
+      contiene: ['¡Gracias por contarnos!']
+      no_contiene: ['No entendí', '¿Nos cuentas qué pasó?']
+      respuestas: 1
+      bd: { modo: bot, feedback_pendiente: false }
+  # La nota con adornos sigue siendo nota (la RPC quita signos y tildes)
+  - pide_calificacion: { pedido_id: PED-106 }
+  - envia: ¡Cinco! ⭐
+    debe:
+      contiene: ['reseña en Google']
+      respuestas: 1
+      bd:
+        modo: bot
+        feedback:
+          - { pedido_id: PED-101, nota: 5 }
+          - { pedido_id: PED-102, nota: 2, comentario: llegó frío }
+          - { pedido_id: PED-103, nota: 1 }
+          - { pedido_id: PED-104, nota: 5 }
+          - { pedido_id: PED-105, nota: 2, comentario: la pizza llegó fría }
+          - { pedido_id: PED-106, nota: 5 }

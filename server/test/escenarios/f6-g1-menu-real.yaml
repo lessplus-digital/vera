@@ -1,0 +1,42 @@
+nombre: G1 · El menú devuelve lo que el cliente pidió (menú real)
+descripcion: >
+  Fase 6, guion G1.1–1.6 de qa/guiones-bot.md sobre el menú REAL de Supabase
+  (buscar_menu de verdad, solo lectura): BUG-039/045 venían de que la búsqueda
+  empata productos distintos. El bot puede agregar o preguntar, pero el carrito
+  NUNCA puede tener un producto que el cliente no pidió.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000913'
+pasos:
+  - envia: hola, me das el pan de ajo?
+    debe:
+      contiene: ['Pan de Ajo']
+      no_contiene: ['De Mi Tierra', 'Limonada']
+      turno: { handler: menu, sin_acciones: [crear_pedido] }
+      bd: { carrito_solo: [Pan de Ajo] }
+  - envia: quiero una copa de vino
+    debe:
+      contiene: ['Copa de Vino']
+      no_contiene: ['Limonada de Vino']
+      bd: { carrito_solo: [Pan de Ajo, Copa de Vino] }
+  - envia: una lasaña de pollo
+    debe:
+      contiene: ['Lasaña Pollo']
+      no_contiene: ['Pollo Champiñon']
+      bd: { carrito_solo: [Pan de Ajo, Copa de Vino, Lasaña Pollo] }
+  - envia: me das una limonada de mango
+    debe:
+      contiene: ['Limonada Mango Biche']
+      bd: { carrito_solo: [Pan de Ajo, Copa de Vino, Lasaña Pollo, Limonada Mango Biche] }
+  # Hay 6 cervezas: el bot ofrece, no elige por el cliente.
+  - envia: quiero una chelita
+    debe:
+      coincide: 'Corona|Águila|Aguila|Club Colombia|Pilsen|Tres Cordilleras'
+      # 2026-10-02: ofreció Stella y Michelob, que no están en la carta (ahora lo frena la guardia).
+      no_contiene: ['Stella', 'Michelob', 'Heineken', 'Budweiser', 'Déjame revisar bien eso']
+      bd: { carrito_solo: [Pan de Ajo, Copa de Vino, Lasaña Pollo, Limonada Mango Biche] }
+  - envia: agrégame una papata mexicana
+    debe:
+      contiene: ['Patatas Mexicanas']
+      bd: { carrito_solo: [Pan de Ajo, Copa de Vino, Lasaña Pollo, Limonada Mango Biche, Patatas Mexicanas] }

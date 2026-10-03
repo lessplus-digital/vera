@@ -26,6 +26,30 @@ describe('verificar', () => {
   })
 })
 
+describe('verificar · bd', () => {
+  const foto = { modo: 'bot', feedback: [{ pedido_id: 'PED-1', nota: 5, comentario: null }], feedback_pendiente: false, carrito: [{ nombre: 'Pan de Ajo', subtotal: 13900 }], soporte: ['hola'] }
+
+  it('compara modo, la lista completa de calificaciones y la cola', () => {
+    expect(verificar(debe({ bd: { modo: 'bot', feedback: [{ pedido_id: 'PED-1', nota: 5 }], feedback_pendiente: false } }), [], undefined, foto)).toEqual([])
+    expect(verificar(debe({ bd: { modo: 'esperando_feedback' } }), [], undefined, foto)).toEqual(['modo bot, esperaba esperando_feedback'])
+    expect(verificar(debe({ bd: { feedback: [] } }), [], undefined, foto)).toHaveLength(1)
+    expect(verificar(debe({ bd: { feedback: [{ pedido_id: 'PED-2', nota: 5 }] } }), [], undefined, foto)).toHaveLength(1)
+    expect(verificar(debe({ bd: { feedback_pendiente: true } }), [], undefined, foto)).toHaveLength(1)
+  })
+
+  it('carrito exacto, solo productos permitidos y total', () => {
+    expect(verificar(debe({ bd: { carrito: ['Pan de Ajo'], carrito_solo: ['pan de ajo', 'Corona'], carrito_total: 13900 } }), [], undefined, foto)).toEqual([])
+    expect(verificar(debe({ bd: { carrito: [] } }), [], undefined, foto)).toHaveLength(1)
+    expect(verificar(debe({ bd: { carrito_solo: ['Corona'] } }), [], undefined, foto)).toEqual(['el carrito tiene productos que no se pidieron: Pan de Ajo'])
+    expect(verificar(debe({ bd: { carrito_total: 1 } }), [], undefined, foto)).toEqual(['carrito_total 13900, esperaba 1'])
+  })
+
+  it('turno.accion compara decision.accion', () => {
+    expect(verificar(debe({ turno: { accion: 'positiva' } }), [], { accion: 'positiva' })).toEqual([])
+    expect(verificar(debe({ turno: { accion: 'positiva' } }), [], { accion: 'nota_invalida' })).toEqual(['accion nota_invalida, esperaba positiva'])
+  })
+})
+
 describe('esquema de escenarios', () => {
   it('rechaza claves con typo en vez de ignorarlas', () => {
     expect(() => esquemaEscenario.parse({ nombre: 'x', pasos: [{ envia: 'x', debe: { contine: ['a'] } }] })).toThrow()
@@ -61,10 +85,12 @@ describe('veredicto', () => {
 })
 
 describe('correrEscenario (de punta a punta)', () => {
-  it('los escenarios de la Fase 3 pasan', async () => {
+  it('los escenarios sin LLM (bot: eco) pasan', async () => {
     const dir = join(import.meta.dirname, '..', 'escenarios')
-    for (const f of readdirSync(dir).filter((f) => f.startsWith('f3-'))) {
-      const r = await correrEscenario(cargarEscenario(join(dir, f)))
+    for (const f of readdirSync(dir).filter((f) => f.endsWith('.yaml'))) {
+      const e = cargarEscenario(join(dir, f))
+      if (e.bot !== 'eco') continue
+      const r = await correrEscenario(e)
       expect(r.pasos.flatMap((p) => p.fallos), f).toEqual([])
     }
   })

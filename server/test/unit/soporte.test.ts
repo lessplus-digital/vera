@@ -3,7 +3,7 @@ import { EntornoSim } from '../../src/sim/entorno.js'
 import { FakeLLM, type MensajeLLM } from '../../src/llm/llm.js'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
 import { noLlegamos, siLlegamos } from '../../src/handlers/formato.js'
-import { S, citaRespaldada, pedidosParaLLM } from '../../src/handlers/soporte.js'
+import { S, citaRespaldada, pedidosParaLLM, pideCuenta, respuestaFija } from '../../src/handlers/soporte.js'
 import * as T from '../../src/textos.js'
 import { fechaUtc } from '../../src/bd/repo-supabase.js'
 
@@ -72,15 +72,15 @@ describe('nombre', () => {
 })
 
 describe('lo que el código le da al modelo', () => {
-  it('info_negocio completa (sin la cuenta bancaria), las FAQ como datos y sus pedidos con estado real', async () => {
+  it('info_negocio completa (con la cuenta: G7.5 la pide), las FAQ como datos y sus pedidos con estado real', async () => {
     const { sim, turno, contexto } = montar()
     await sim.repo.clientePorTelefono(TEL)
     cliente(sim).nombre = 'Ana'
     sim.repo.agregarPedido({ pedido_id: 'PED-501', telefono: TEL, estado: 'en_cocina', tipo_pedido: 'domicilio', total: 45000 })
-    await turno('a qué hora abren?', { intencion: 'info_negocio' })
+    await turno('¿cuál es su instagram?', { intencion: 'info_negocio' })
     const c = contexto()
     expect(c).toContain('horario_semana: Lunes a Viernes 11:00am - 10:00pm')
-    expect(c).not.toContain('62500073329')
+    expect(c).toContain('datos_transferencia: Bancolombia ahorros 62500073329')
     expect(c).toContain('<faq>\nP: ¿Tienen parqueadero?')
     expect(c).toContain('PED-501')
     expect(c).toContain('aprobado y en preparación en la cocina')
@@ -114,16 +114,24 @@ describe('lo que el código le da al modelo', () => {
 })
 
 describe('cobertura sin carrito', () => {
-  it('"¿llegan a niqia?" → la respuesta con la tarifa la pone el código; como es pregunta, no se guarda nada', async () => {
-    const { sim, turno } = montar(() => ({ texto: '¡Claro que sí! ¿Qué te gustaría pedir?' }))
+  it('"¿llegan a niqia?" → solo la respuesta del código, sin frase del modelo; como es pregunta, no se guarda nada', async () => {
+    const { sim, turno } = montar(() => ({ texto: 'Sofi, a domicilio solo manejamos Bello 😉' }))
     await sim.repo.clientePorTelefono(TEL)
     cliente(sim).nombre = 'Ana'
     const t = await turno('¿llegan a niqia?', { intencion: 'cobertura', barrio: 'niqia' })
     expect(t.registro.decision).toMatchObject({ handler: 'soporte' })
-    expect(t.r).toContain(siLlegamos({ cubierto: true, barrio: 'Niquía', zona: 'Norte', costo_domicilio: 7500, tiempo_estimado: '30 a 45 minutos', sugerencias: [] }))
-    expect(t.r.startsWith('¡Claro que sí!')).toBe(true)
-    expect(t.r).not.toContain('¿Qué te gustaría pedir?') // la única pregunta sería la del código
+    expect(t.r).toBe(siLlegamos({ cubierto: true, barrio: 'Niquía', zona: 'Norte', costo_domicilio: 7500, tiempo_estimado: '30 a 45 minutos', sugerencias: [] }))
     expect(sim.repo.carritos.get(TEL)).toBeUndefined()
+  })
+
+  it('cobertura + otra cosa en el mismo mensaje → la frase del modelo va encima, sin sus preguntas', async () => {
+    const { sim, turno } = montar(() => ({ texto: '¡Hola Ana! 👋 ¿Qué te gustaría pedir?' }))
+    await sim.repo.clientePorTelefono(TEL)
+    cliente(sim).nombre = 'Ana'
+    const t = await turno('hola! ¿llegan a niqia?', { intencion: 'saludo', intenciones_extra: ['cobertura'], barrio: 'niqia' })
+    expect(t.r.startsWith('¡Hola Ana!')).toBe(true)
+    expect(t.r).not.toContain('¿Qué te gustaría pedir?') // la única pregunta sería la del código
+    expect(t.r).toContain('$7.500')
   })
 
   it('sin cobertura → "no llegamos" + ofrecer recoger (pregunta del código), sin tarifa ni tiempo', async () => {
@@ -219,7 +227,7 @@ describe('pregunta del negocio: la respuesta tiene que citar un dato que exista'
     )
     await sim.repo.clientePorTelefono(TEL)
     cliente(sim).nombre = 'Ana'
-    expect((await turno('¿a qué hora abren el sábado?', { intencion: 'info_negocio' })).r).toBe('Los sábados abrimos de 12:00 pm a 11:00 pm 🍕')
+    expect((await turno('¿y el sábado hasta tarde también?', { intencion: 'info_negocio' })).r).toBe('Los sábados abrimos de 12:00 pm a 11:00 pm 🍕')
     expect((await turno('¿tienen parqueadero?', { intencion: 'info_negocio' })).r).toBe('Sí, hay parqueadero frente al local 🚗')
   })
 
@@ -230,5 +238,47 @@ describe('pregunta del negocio: la respuesta tiene que citar un dato que exista'
     expect(citaRespaldada('Parque de Bello … wifi gratis', f)).toBe(false)
     expect(citaRespaldada('', f)).toBe(false)
     expect(citaRespaldada('a', f)).toBe(false)
+  })
+})
+
+describe('la cuenta para transferir la da el código', () => {
+  it('reconoce las formas de pedirla, y no confunde una pregunta por medios de pago', () => {
+    for (const t of ['¿me pasas los datos para transferir?', 'a qué cuenta consigno', 'número de cuenta porfa', 'dame los datos para pagar', '¿a dónde transfiero?'])
+      expect(pideCuenta(t), t).toBe(true)
+    for (const t of ['¿aceptan transferencia?', '¿aceptan tarjeta?', 'ya transferí', 'hola']) expect(pideCuenta(t), t).toBe(false)
+  })
+
+  it('responde con el dato de info_negocio, sin modelo', async () => {
+    const { sim, turno } = montar(() => {
+      throw new Error('no debía llamarse al modelo')
+    })
+    await sim.repo.clientePorTelefono(TEL)
+    cliente(sim).nombre = 'Ana'
+    const t = await turno('¿me pasas los datos para transferir?', { intencion: 'info_negocio' })
+    expect(t.r).toBe(S.cuenta('Bancolombia ahorros 62500073329'))
+  })
+
+  it('una cita con el nombre del campo también está respaldada', () => {
+    expect(citaRespaldada('horario_semana: Lunes a Viernes 11:00am - 10:00pm', 'horario_semana: Lunes a Viernes 11:00am - 10:00pm')).toBe(true)
+  })
+})
+
+describe('respuestas fijas del local', () => {
+  const info = {
+    horario_semana: 'Lunes a Viernes 11:00am - 10:00pm',
+    horario_finsemana: 'Sábados y Domingos 12:00pm - 11:00pm',
+    horario_feriados: 'Cerrado',
+    direccion: 'Parque de Bello Calle 54 # 52 -07',
+    metodos_pago: 'Efectivo y transferencia bancaria',
+  }
+  it('un solo tema → el dato de la BD, tal cual', () => {
+    expect(respuestaFija('¿a qué hora abren?', info)).toBe('Nuestro horario 🕐\nLunes a Viernes 11:00am - 10:00pm\nSábados y Domingos 12:00pm - 11:00pm\nFestivos: Cerrado')
+    expect(respuestaFija('¿dónde quedan?', info)).toBe('Estamos en Parque de Bello Calle 54 # 52 -07 📍')
+    expect(respuestaFija('¿aceptan tarjeta?', info)).toBe('Recibimos efectivo y transferencia bancaria 💵')
+  })
+  it('dos temas, ninguno o un mensaje largo → sigue el modelo', () => {
+    expect(respuestaFija('¿a qué hora abren y dónde quedan?', info)).toBeNull()
+    expect(respuestaFija('¿tienen parqueadero?', info)).toBeNull()
+    expect(respuestaFija(`¿a qué hora abren? ${'x'.repeat(80)}`, info)).toBeNull()
   })
 })

@@ -3,7 +3,7 @@ import { EntornoSim } from '../../src/sim/entorno.js'
 import { FakeLLM, type MensajeLLM } from '../../src/llm/llm.js'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
 import type { UltimaPregunta } from '../../src/decision/contexto.js'
-import { enviarA, noLlegamos, P, sigues, sinPreguntas } from '../../src/handlers/pedidos.js'
+import { ACUSE, enviarA, noLlegamos, P, sigues, sinPreguntas } from '../../src/handlers/pedidos.js'
 import { PREGUNTA_CONFIRMAR } from '../../src/handlers/formato.js'
 import * as T from '../../src/textos.js'
 
@@ -43,6 +43,17 @@ async function preparar(
 
 const pregunta = async (sim: EntornoSim) => (await sim.repo.leerConversacion(TEL)).ultima_pregunta
 
+describe('solo un dato: sin modelo', () => {
+  it('"a domicilio" no llama al modelo de Pedidos (su frase repetía lo de debajo)', async () => {
+    const { sim, turno } = montar(() => {
+      throw new Error('no debía llamarse al modelo de Pedidos')
+    })
+    await preparar(sim)
+    const t = await turno('a domicilio', { intencion: 'datos_pedido', tipo_pedido: 'domicilio' })
+    expect(t.r).toBe(`${ACUSE}\n\n${P.barrio}`)
+  })
+})
+
 describe('flujo completo de un domicilio', () => {
   it('pregunta UNA cosa a la vez según faltantes, arma el resumen y crea el pedido con el "sí"', async () => {
     const { sim, turno } = montar()
@@ -50,7 +61,7 @@ describe('flujo completo de un domicilio', () => {
 
     let t = await turno('no, eso es todo', { intencion: 'respuesta_corta', confirma: 'no' })
     expect(t.registro.decision).toMatchObject({ handler: 'pedidos', regla: 'algo_mas:no' })
-    expect(t.r).toBe(`¡Perfecto!\n\n${P.tipoPedido}`)
+    expect(t.r).toBe(`${ACUSE}\n\n${P.tipoPedido}`) // solo un dato: sin modelo, acuse fijo
     expect(await pregunta(sim)).toEqual({ tipo: 'dato_pedido', dato: 'tipo_pedido' })
 
     t = await turno('a domicilio', { intencion: 'datos_pedido', tipo_pedido: 'domicilio' })
@@ -179,14 +190,14 @@ describe('casos borde', () => {
   it('la frase del LLM no puede agregar otra pregunta: el mensaje lleva UNA', async () => {
     const { sim, turno } = montar(() => '¡Listo! ¿Te ayudo con algo más?')
     await preparar(sim)
-    const t = await turno('ya', { intencion: 'respuesta_corta', confirma: 'no' })
+    const t = await turno('ya, ¿y se demoran mucho?', { intencion: 'otro', confirma: 'no' })
     expect(t.r).toBe(`¡Listo!\n\n${P.tipoPedido}`)
   })
 
   it('la frase del LLM con un precio inventado la frena la guardia y se reescribe', async () => {
     const { sim, turno } = montar((m) => (m.some((x) => x.texto.startsWith('Tu respuesta anterior NO se envió')) ? 'Perfecto 👌' : 'Perfecto, son $99.000'))
     await preparar(sim)
-    const t = await turno('ya', { intencion: 'respuesta_corta', confirma: 'no' })
+    const t = await turno('ya, ¿y se demoran mucho?', { intencion: 'otro', confirma: 'no' })
     expect(t.r).toBe(`Perfecto 👌\n\n${P.tipoPedido}`)
     expect(t.registro.guardia).toMatchObject({ intentos_fallidos: 1 })
   })

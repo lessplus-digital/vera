@@ -17,6 +17,7 @@ cliente puede romper no vive en el LLM: vive en Postgres.
 |---|---|---|---|
 | **A · SQL determinista** | funciones, triggers, constraints, RLS | ~0 (segundos, sin LLM) | sí, infinitas veces |
 | **B · Conversación WhatsApp** | el modelo: ruteo, prompts, redacción, memoria | alto (minutos + tokens) | no |
+| **B' · Simulador del bot Node** (2026-10-02) | lo mismo que B, sin WhatsApp: los guiones G1–G11 como escenarios en `server/test/escenarios/` con la IA real y, si hace falta, los datos reales en solo lectura | medio (tokens, sin manos) | sí, ×5 por escenario |
 | **C · Vitest sobre utils puras** | agregados y formateo del dashboard | ~0 | sí — **fuera del MVP** |
 
 **Cómo se ejecuta la Capa A:** cada fichero de `sql/` se pasa al MCP de Supabase. Devuelven **solo

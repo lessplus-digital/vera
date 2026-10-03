@@ -70,6 +70,16 @@ const EXTENSIONES: Record<string, string> = {
   'image/heic': 'heic',
   'application/pdf': 'pdf',
 }
+/**
+ * La nota tal como la lee procesar_respuesta_feedback: sin tildes ni signos, el
+ * mensaje entero tiene que SER la nota (BUG-051: "10/10" no es 1).
+ */
+export function notaFeedback(mensaje: string): number | null {
+  const limpio = mensaje.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+  if (/^[1-5]$/.test(limpio)) return Number(limpio)
+  return ({ uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5 } as Record<string, number>)[limpio] ?? null
+}
+
 export const extension = (mime: string) => EXTENSIONES[mime.split(';')[0]!.trim().toLowerCase()] ?? 'bin'
 
 export function crearProcesador(d: DepsProcesador): ProcesadorTurno {
@@ -107,16 +117,40 @@ export function crearProcesador(d: DepsProcesador): ProcesadorTurno {
   }
 
   // ── modo esperando_feedback ───────────────────────────────────────────────
-  /** Devuelve true si el turno quedó resuelto; false si debe seguir al bot. */
-  async function modoFeedback(turno: Turno, c: Clasificados): Promise<boolean> {
+  const procesarFeedback = (turno: Turno, mensaje: string) =>
+    turno.herramienta('procesar_respuesta_feedback', { mensaje }, () =>
+      d.repo.procesarRespuestaFeedback(turno.telefono, mensaje),
+    )
+
+  /**
+   * Devuelve el texto que debe seguir al bot (null = turno resuelto).
+   *
+   * El buffer junta los mensajes seguidos en un solo texto ("5⏎5", "2⏎llegó
+   * fría"), y la RPC exige que el mensaje entero SEA la nota (BUG-051). Si el
+   * texto junto no es una nota, se leen las líneas en orden: la primera que sea
+   * nota califica, lo que sigue es el comentario (nota baja) o vuelve al bot
+   * (nota alta). Sin esto, "5" mandado dos veces contestaba "No entendí".
+   */
+  async function modoFeedback(turno: Turno, c: Clasificados): Promise<string | null> {
     if (!c.texto) {
       turno.decision = { handler: 'feedback', accion: 'rechazar_no_texto' }
       if (c.imagenes.length || c.noSoportados) await enviar(turno, T.FEEDBACK_SIN_IMAGENES)
-      return true
+      return null
     }
-    const accion = await turno.herramienta('procesar_respuesta_feedback', { mensaje: c.texto }, () =>
-      d.repo.procesarRespuestaFeedback(turno.telefono, c.texto),
-    )
+    let accion = await procesarFeedback(turno, c.texto)
+    let resto: string[] = []
+    const lineas = c.texto.split('\n').map((l) => l.trim()).filter(Boolean)
+    if (accion === 'nota_invalida' && lineas.length > 1) {
+      const i = lineas.findIndex((l) => notaFeedback(l) !== null)
+      if (i >= 0) {
+        accion = await procesarFeedback(turno, lineas[i]!)
+        resto = lineas.slice(i + 1)
+        if (accion === 'pedir_comentario' && resto.length) {
+          accion = await procesarFeedback(turno, resto.join('\n'))
+          resto = []
+        }
+      }
+    }
     turno.decision = { handler: 'feedback', accion }
     const respuesta = {
       positiva: T.FEEDBACK_POSITIVA,
@@ -125,11 +159,14 @@ export function crearProcesador(d: DepsProcesador): ProcesadorTurno {
       nota_invalida: T.FEEDBACK_NOTA_INVALIDA,
       sin_pendiente: null,
     }[accion]
-    if (respuesta) {
-      await enviar(turno, respuesta)
-      return true
-    }
-    return false // sin_pendiente: la RPC ya lo devolvió a 'bot'
+    if (!respuesta) return c.texto // sin_pendiente: la RPC ya lo devolvió a 'bot'
+    // El intercambio queda en el historial: si el cliente sigue escribiendo, el bot sabe de qué venía.
+    await d.repo.agregarHistorial(turno.telefono, { tipo: 'human', texto: c.texto })
+    await enviar(turno, respuesta)
+    await d.repo.agregarHistorial(turno.telefono, { tipo: 'ai', texto: respuesta })
+    // Tras una nota alta, lo que no sea otra nota ("5⏎quiero otra pizza") sigue al bot.
+    const paraBot = resto.filter((l) => notaFeedback(l) === null).join('\n')
+    return paraBot || null
   }
 
   // ── modo bot: comprobante por foto ────────────────────────────────────────
@@ -198,8 +235,8 @@ export function crearProcesador(d: DepsProcesador): ProcesadorTurno {
       if (cliente.modo === 'humano') {
         await modoHumano(turno, c)
       } else if (cliente.modo === 'esperando_feedback') {
-        const resuelto = await modoFeedback(turno, c)
-        if (!resuelto) await modoBot(turno, { ...cliente, modo: 'bot' }, { ...c, imagenes: [] })
+        const paraBot = await modoFeedback(turno, c)
+        if (paraBot) await modoBot(turno, { ...cliente, modo: 'bot' }, { ...c, texto: paraBot, imagenes: [] })
       } else {
         await modoBot(turno, cliente, c)
       }

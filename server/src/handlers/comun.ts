@@ -26,7 +26,8 @@ export function contextoComun(e: EntradaRedactor): string {
 /**
  * Mensajes para reescribir un texto que la guardia rechazó: se le muestran al
  * modelo su texto anterior, los resultados de las herramientas que ya corrió y
- * por qué se rechazó. No se le dan herramientas.
+ * por qué se rechazó. No se le dan herramientas que cambien algo (Menú puede
+ * volver a consultar el menú si todavía no tocó el carrito).
  */
 export function reescritura(previo: Redaccion, violaciones: Violacion[]): MensajeLLM[] {
   const resultados = (previo.llamadas ?? [])

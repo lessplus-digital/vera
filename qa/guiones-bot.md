@@ -5,7 +5,30 @@
 >
 > Resultados → [`RESULTADOS.md`](RESULTADOS.md) · Bugs → [`../docs/bug-tracker.md`](../docs/bug-tracker.md)
 
-## Estado de los guiones
+## Bot Node (Fase 6): los guiones ya son escenarios automáticos
+
+Desde 2026-10-02 cada guion tiene su escenario en `server/test/escenarios/` y corre con el
+simulador (`npm run sim`, desde `server/`) contra la IA real, sin WhatsApp ni reset manual: cada
+corrida empieza de cero. Con `datos: real` el escenario lee el **menú, la cobertura, la info del
+local y la FAQ reales** de Supabase (solo funciones de lectura); carrito, pedidos, clientes y
+reservas siguen en memoria, así que no ensucian la BD. La columna "Estado" de abajo es la de
+**n8n por WhatsApp**; la del bot Node está en `docs/bot/servidor.md` §Pendiente por fase.
+
+| Guion | Escenario | Qué cambió al automatizarlo |
+|---|---|---|
+| G1.1–1.6 | `f6-g1-menu-real` | destapó **productos inventados** (a "chelita" ofreció Stella y Michelob) y un **`producto_id` adivinado** (PROD-011 para "premium hawaiana"): ahora los frenan la guardia y las herramientas |
+| G1.7 | `f6-g1-quiero-una-pizza` | — |
+| G3 | `f6-g3-cobertura` | con los 59 barrios reales |
+| G4 | `f5-pedidos-domicilio` (Fase 5) | ya cubría el `PED-` real en la confirmación |
+| G5 | `f6-g5-mitad-y-mitad` | — |
+| G6 | `f6-g6-handoff` | verifica el modo y que lo siguiente llegue al chat de Soporte |
+| G7 | `f6-g7-soporte-datos-reales` | contra `info_negocio` y `faq` reales |
+| G8 | `f6-g8-no-inventa` | verifica la fila del carrito, no el tono |
+| G9 | `f5-reservas-nueva`, `f5-reservas-cambios` (Fase 5) | los precios de `motivos_reserva` siguen siendo placeholder |
+| G10 | `f6-g10-ruteo` | — |
+| G11 | `f6-g11-resenas` (sin IA) + `f6-g11-resenas-sigue-al-bot` | destapó que **"5" mandado dos veces seguidas contestaba "No entendí"** (el buffer junta los mensajes); arreglado en el procesador |
+
+## Estado de los guiones (n8n, por WhatsApp)
 
 | Guion | Qué ataca | Estado |
 |---|---|---|

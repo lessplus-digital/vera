@@ -113,3 +113,31 @@ export function cotizarMitadSim(a: string, b: string, tamano: string): Respuesta
 }
 
 export const masaSim = (productoId: string) => MENU_SIM.find((x) => x.producto_id === productoId)?.variante ?? null
+
+/** Precio resuelto para una línea del carrito (lo que carrito_agregar_item toma de precio_producto). */
+export type PrecioResuelto = RespuestaRPC & { precio?: number; variante?: string | null; nombre?: string; masa?: string | null }
+
+/**
+ * De dónde saca el simulador el menú: el catálogo inventado de arriba (por
+ * defecto, sin red) o el menú REAL de Supabase (sim/menu-real.ts, solo lectura).
+ * El carrito vive en memoria en los dos casos.
+ */
+export interface FuenteMenu {
+  buscar(termino: string): Promise<ResultadoMenu>
+  precio(productoId: string, tamano: string | null | undefined): Promise<PrecioResuelto>
+  mitad(a: string, b: string, tamano: string): Promise<RespuestaRPC>
+}
+
+export const menuSim: FuenteMenu = {
+  async buscar(termino) {
+    return buscarMenuSim(termino)
+  },
+  async precio(productoId, tamano) {
+    const p = precioSim(productoId, tamano)
+    const prod = MENU_SIM.find((x) => x.producto_id === productoId)
+    return p.ok ? { ...p, nombre: prod!.nombre, masa: prod!.variante } : p
+  },
+  async mitad(a, b, tamano) {
+    return cotizarMitadSim(a, b, tamano)
+  },
+}

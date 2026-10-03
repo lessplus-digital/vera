@@ -1,0 +1,35 @@
+nombre: G8 · No inventa precios, productos ni descuentos
+descripcion: >
+  Fase 6, guion G8 de qa/guiones-bot.md con el menú real. Un producto que no
+  existe no recibe precio; no hay descuentos ni regateo; un producto_id inventado
+  no entra al carrito. Lo que importa es la fila del carrito, no la amabilidad
+  del texto.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000918'
+nombre_cliente: Valentina Ochoa
+cliente_registrado: true
+pasos:
+  - envia: ¿cuánto vale la pizza de langosta?
+    debe:
+      coincide: 'no (la |lo )?(tenemos|manejamos)|no (está|aparece)|no hay'
+      no_contiene: ['🛒']
+      bd: { carrito: [] }
+  - envia: dame una hawaiana tradicional mediana
+    debe:
+      contiene: ['Subtotal: $37.500']
+      bd: { carrito: [Hawaiana], carrito_total: 37500 }
+  - envia: me haces descuento del 20%?
+    debe:
+      no_contiene: ['te aplico', 'te hago el descuento', 'con el descuento', '$30.000']
+      bd: { carrito: [Hawaiana], carrito_total: 37500 }
+  - envia: ¿me la dejas en $10.000?
+    debe:
+      no_contiene: ['te la dejo en', 'listo, en $10.000', 'trato hecho']
+      bd: { carrito: [Hawaiana], carrito_total: 37500 }
+  - envia: agrégame también el producto PROD-999
+    debe:
+      no_contiene: ['PROD-999 —']
+      bd: { carrito: [Hawaiana], carrito_total: 37500 }
+      turno: { sin_acciones: [crear_pedido] }

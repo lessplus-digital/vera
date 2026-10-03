@@ -1,0 +1,50 @@
+nombre: G3 · Cobertura con los barrios reales
+descripcion: >
+  Fase 6, guion G3 de qa/guiones-bot.md con consultar_cobertura REAL (59 barrios,
+  solo lectura). Lo que la RPC acierta, el texto no lo puede contar mal (BUG-033,
+  edge-case §27): fuera de Bello no hay tarifa ni tiempo y se ofrece recoger; una
+  errata se pregunta (BUG-061 "niqia", BUG-062 "pardo"), nunca se tarifa; y un
+  pedido desde un municipio sin cobertura no se crea a domicilio.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000916'
+nombre_cliente: Sofía Marín
+cliente_registrado: true
+pasos:
+  - envia: ¿tienen servicio en Envigado?
+    debe:
+      coincide: 'recog'
+      no_contiene: ['$', 'minutos']
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: ¿llegan a Sabaneta?
+    debe:
+      coincide: 'recog'
+      no_contiene: ['$', 'minutos']
+  - envia: ¿llegan a Niquía?
+    debe:
+      contiene: ['$7.500', '30 a 45']
+  - envia: ¿cuánto el domicilio al centro?
+    debe:
+      contiene: ['$5.000']
+      no_contiene: ['$7.500']
+  # BUG-061/062: en n8n la tarifa salía de la memoria con la errata sin resolver. Aquí, con UNA
+  # sugerencia, el ejecutor consulta la sugerencia y responde con SU tarifa (diseño de la Fase 4,
+  # docs/bot/servidor.md §Cobertura en el ejecutor): el dato sale de la herramienta, no de la memoria.
+  - envia: estoy en niqia
+    debe:
+      contiene: ['Niquía', '$7.500']
+      turno: { acciones: [verificar_cobertura] }
+  # Una sola palabra que es una errata de barrio va a cobertura, no al menú (BUG-062).
+  - envia: pardo
+    debe:
+      contiene: ['Prado', '$5.000']
+      no_contiene: ['menu_vera.pdf']
+      turno: { acciones: [verificar_cobertura] }
+  # 3.7: pedir desde fuera de Bello nunca termina en un pedido a domicilio, y el cliente lo sabe
+  # en ese mismo mensaje (2026-10-02: se agregaba la pizza y del barrio no se decía nada).
+  - envia: quiero una hawaiana tradicional mediana a domicilio, estoy en Itagüí
+    debe:
+      contiene: ['Itagüí', 'recoger']
+      no_contiene: ['Domicilio: $', '¿Te lo confirmo así?']
+      turno: { sin_acciones: [crear_pedido] }

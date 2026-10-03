@@ -1,0 +1,26 @@
+nombre: G1.7 · "quiero una pizza" ofrece opciones, no agrega (menú real)
+descripcion: >
+  Fase 6, guion G1.7. Con el menú real, "pizza" devuelve decenas de productos
+  empatados con similitud alta; en n8n el prompt lo leía como "match confiable,
+  agregar sin confirmar". Aquí el carrito tiene que seguir vacío hasta que el
+  cliente diga cuál, qué masa y qué tamaño; y "una hawaiana" tampoco basta
+  (hay Tradicional y Estofada).
+critico: true
+bot: decision
+datos: real
+telefono: '573000000914'
+pasos:
+  - envia: quiero una pizza
+    debe:
+      no_contiene: ['🛒', 'Subtotal']
+      turno: { handler: menu, sin_acciones: [crear_pedido] }
+      bd: { carrito: [] }
+  - envia: una hawaiana
+    debe:
+      contiene: ['Tradicional', 'Estofada']
+      no_contiene: ['Subtotal']
+      bd: { carrito: [] }
+  - envia: tradicional familiar
+    debe:
+      contiene: ['Hawaiana Tradicional (Familiar) — $58.500', 'Subtotal: $58.500']
+      bd: { carrito: [Hawaiana], carrito_total: 58500 }

@@ -661,3 +661,23 @@ Tres lecciones:
    descartar y se descarta primero.
 3. **Es un argumento a favor de mover la lógica a código versionado:** en `server/` el código que
    corre es el del commit, y una prueba unitaria que falla lo dice en segundos.
+
+## 41. Un escenario en verde no prueba que la respuesta sea buena: hay que leerla (2026-10-02)
+
+Al pasar G1 al simulador del bot Node, `f6-g1-menu-real` salió ✅ a la primera. Leyendo la
+conversación completa (`--ver`), a "quiero una chelita" el bot había ofrecido **"Club Colombia,
+Corona, Stella, Michelob…"**: dos cervezas que no están en la carta (Michelob, seguramente, salió de
+"Adición Michelada"). El paso solo exigía que nombrara alguna cerveza real, y lo hizo. En la misma
+tanda, otra corrida destapó que el modelo **adivinó un `producto_id`** (PROD-011) en vez de buscarlo,
+y luego le dijo al cliente que la Premium Hawaiana "no aparece en el menú".
+
+Tres lecciones:
+
+1. **Una verificación positiva ("contiene X") no detecta lo que sobra.** Para lo que el bot no
+   puede inventar, la verificación tiene que ser negativa o sobre la fila (`bd: carrito_solo`), y
+   la defensa de verdad va en código (guardia `producto_inventado`), no en el escenario.
+2. **Correr una vez y leer, antes de correr cinco y contar.** El ×5 mide la estabilidad de lo que
+   el escenario verifica; no encuentra lo que el escenario no mira.
+3. **Una regla de prompt que el modelo puede romper ("el producto_id siempre sale de
+   consultar_menu") pertenece al código.** Ahora la herramienta rechaza un id que no salió de la
+   búsqueda del turno ni del carrito; el modelo recibe el error, busca y vuelve a intentar.

@@ -1,9 +1,10 @@
 import type { Cliente, MensajeHistorial, Repo } from '../bd/repo.js'
-import type { LLM, LlamadaLLM } from '../llm/llm.js'
+import { medirConsumo, type LLM, type LlamadaLLM } from '../llm/llm.js'
 import type { Turno } from '../log/turnos.js'
 import type { Conversador } from '../turno/procesador.js'
 import { conGuardia, type Violacion } from '../guardia/guardia.js'
 import * as T from '../textos.js'
+import { pideCuenta, S } from '../handlers/soporte.js'
 import { clasificar, hoyEnColombia } from './clasificador.js'
 import type { Clasificacion } from './clasificacion.js'
 import type { BorradorReserva, Conversacion, EstadoPedido, Handler, UltimaPregunta } from './contexto.js'
@@ -47,6 +48,10 @@ export type Redaccion = {
   llamadas?: LlamadaLLM[]
   /** Pedidos del cliente que el redactor leyó de la BD: son los únicos PED- que puede citar. */
   pedidos?: string[]
+  /** Productos que el redactor leyó del menú o del carrito: los únicos que puede nombrar. */
+  productos?: string[]
+  /** Menú: si llamó consultar_menu en este turno (para no negar un producto sin buscarlo). */
+  consultoMenu?: boolean
   /** El redactor pasó al cliente a una persona (Soporte ante un reclamo grave). */
   handoff?: boolean
   /** Borrador de reserva actualizado (Reservas). undefined = no lo tocó. */
@@ -86,94 +91,106 @@ export type DepsConversador = {
 
 export function crearConversadorDecision(d: DepsConversador): Conversador {
   return {
-    async responder({ cliente, texto, historial, turno }) {
-      const tel = turno.telefono
-      const [estado, conversacion] = await Promise.all([d.repo.estadoPedido(tel), d.repo.leerConversacion(tel)])
-      // El cliente nace como 'Pendiente'; lo que diga que se llama se guarda (política).
-      const sinNombre = !/\p{L}/u.test(cliente.nombre ?? '') || cliente.nombre!.trim().toLowerCase() === 'pendiente'
-      const contexto = { estado, conversacion, texto, sin_nombre: sinNombre }
-      turno.contexto = { ...(turno.contexto as object), estado, conversacion }
+    // Todo lo que el turno gasta en el modelo (clasificador + agente + reescritura) queda en bot_turnos.costo.
+    responder: (ctx) => medirConsumo(() => responderTurno(ctx), (c) => (ctx.turno.costo = c)),
+  }
 
-      const cl = await clasificar(d.llm, { texto, historial, contexto, hoy: hoyEnColombia(d.ahora?.()) })
-      turno.clasificacion = cl.error ? { ...cl.clasificacion, error: cl.error } : cl.clasificacion
-      if (cl.uso) turno.costo = { clasificador: cl.uso }
+  async function responderTurno({ cliente, texto, historial, turno }: Parameters<Conversador['responder']>[0]): Promise<string[]> {
+    const tel = turno.telefono
+    const [estado, conversacion] = await Promise.all([d.repo.estadoPedido(tel), d.repo.leerConversacion(tel)])
+    // El cliente nace como 'Pendiente'; lo que diga que se llama se guarda (política).
+    const sinNombre = !/\p{L}/u.test(cliente.nombre ?? '') || cliente.nombre!.trim().toLowerCase() === 'pendiente'
+    const contexto = { estado, conversacion, texto, sin_nombre: sinNombre }
+    turno.contexto = { ...(turno.contexto as object), estado, conversacion }
 
-      const decision = decidir(cl.clasificacion, contexto)
-      turno.decision = decision
+    const cl = await clasificar(d.llm, { texto, historial, contexto, hoy: hoyEnColombia(d.ahora?.()) })
+    turno.clasificacion = cl.error ? { ...cl.clasificacion, error: cl.error } : cl.clasificacion
 
-      const efectos = await ejecutar(decision.acciones, { repo: d.repo, turno, cliente, estado, reserva: conversacion.reserva ?? null })
-      // El borrador de reserva se conserva salvo que alguien lo cambie o lo termine.
-      const reserva = conversacion.reserva ?? null
+    const decision = decidir(cl.clasificacion, contexto)
+    turno.decision = decision
 
-      if (efectos.handoff) {
-        await d.repo.guardarConversacion(tel, { handler: null, ultima_pregunta: null, reserva })
-        return [efectos.errorPedido ? T.PEDIDO_FALLO_HANDOFF : T.HANDOFF]
+    const efectos = await ejecutar(decision.acciones, { repo: d.repo, turno, cliente, estado, reserva: conversacion.reserva ?? null })
+    // El borrador de reserva se conserva salvo que alguien lo cambie o lo termine.
+    const reserva = conversacion.reserva ?? null
+
+    if (efectos.handoff) {
+      await d.repo.guardarConversacion(tel, { handler: null, ultima_pregunta: null, reserva })
+      return [efectos.errorPedido ? T.PEDIDO_FALLO_HANDOFF : T.HANDOFF]
+    }
+    if (efectos.pedido) {
+      // La confirmación la arma el código: número y total salen de la BD, tal cual.
+      const p = efectos.pedido
+      await d.repo.guardarConversacion(tel, { handler: 'soporte', ultima_pregunta: null, reserva })
+      if (p.tipo_pedido === 'domicilio' && p.direccion_entrega && p.direccion_entrega !== cliente.direccion_principal) {
+        // La próxima vez se le ofrece esta dirección ("¿te lo enviamos a …?"). Si
+        // falla, el pedido ya existe: se registra y se sigue.
+        await turno
+          .herramienta('actualizar_direccion_cliente', { direccion_principal: p.direccion_entrega, barrio: p.barrio }, () =>
+            d.repo.actualizarDireccionCliente(cliente.cliente_id, { direccion_principal: p.direccion_entrega!, barrio: p.barrio }),
+          )
+          .catch(() => undefined)
       }
-      if (efectos.pedido) {
-        // La confirmación la arma el código: número y total salen de la BD, tal cual.
-        const p = efectos.pedido
-        await d.repo.guardarConversacion(tel, { handler: 'soporte', ultima_pregunta: null, reserva })
-        if (p.tipo_pedido === 'domicilio' && p.direccion_entrega && p.direccion_entrega !== cliente.direccion_principal) {
-          // La próxima vez se le ofrece esta dirección ("¿te lo enviamos a …?"). Si
-          // falla, el pedido ya existe: se registra y se sigue.
-          await turno
-            .herramienta('actualizar_direccion_cliente', { direccion_principal: p.direccion_entrega, barrio: p.barrio }, () =>
-              d.repo.actualizarDireccionCliente(cliente.cliente_id, { direccion_principal: p.direccion_entrega!, barrio: p.barrio }),
-            )
-            .catch(() => undefined)
-        }
-        const cuenta = p.metodo_pago === 'Transferencia' ? await d.repo.infoNegocio('datos_transferencia').catch(() => null) : null
-        return [T.pedidoCreado(p, cuenta)]
-      }
-      if (efectos.reserva) {
-        // Igual que el pedido: la confirmación la arma el código con lo que devolvió la BD.
-        const motivos = await d.repo.motivosReserva().catch(() => [])
-        await d.repo.guardarConversacion(tel, { handler: 'reservas', ultima_pregunta: null, reserva: null })
-        return [T.reservaCreada(efectos.reserva, motivos.find((m) => m.clave === efectos.reserva!.motivo)?.nombre ?? null)]
-      }
-      if (efectos.reservaCancelada) {
-        await d.repo.guardarConversacion(tel, { handler: 'reservas', ultima_pregunta: null, reserva })
-        return [T.reservaCancelada(efectos.reservaCancelada)]
-      }
+      const cuenta = p.metodo_pago === 'Transferencia' ? await d.repo.infoNegocio('datos_transferencia').catch(() => null) : null
+      return [T.pedidoCreado(p, cuenta)]
+    }
+    if (efectos.reserva) {
+      // Igual que el pedido: la confirmación la arma el código con lo que devolvió la BD.
+      const motivos = await d.repo.motivosReserva().catch(() => [])
+      await d.repo.guardarConversacion(tel, { handler: 'reservas', ultima_pregunta: null, reserva: null })
+      return [T.reservaCreada(efectos.reserva, motivos.find((m) => m.clave === efectos.reserva!.motivo)?.nombre ?? null)]
+    }
+    if (efectos.reservaCancelada) {
+      await d.repo.guardarConversacion(tel, { handler: 'reservas', ultima_pregunta: null, reserva })
+      return [T.reservaCancelada(efectos.reservaCancelada)]
+    }
+    // La cuenta para transferir es un dato crítico: la da el código, tal cual sale de la BD, lo
+    // atienda quien lo atienda (con el modelo, 1 de 5 veces prometió "te van a compartir los
+    // datos en un momento"). La conversación no se toca: la pregunta que estaba abierta sigue.
+    if (pideCuenta(texto) && !decision.acciones.length) {
+      const cuenta = await d.repo.infoNegocio('datos_transferencia').catch(() => null)
+      if (cuenta) return [S.cuenta(cuenta)]
+    }
 
-      const handler = decision.handler as Handler
-      const redactor = d.redactores?.[handler] ?? redactorProvisional
-      const estadoDespues = decision.acciones.length ? await d.repo.estadoPedido(tel) : estado
-      let ultima: Redaccion | null = null
-      const r = await conGuardia(
-        async (violaciones) => {
-          ultima = await redactor({
-            handler,
-            texto,
-            cliente,
-            historial,
-            clasificacion: cl.clasificacion,
-            decision,
-            efectos,
-            conversacion,
-            estado: estadoDespues,
-            violaciones,
-            previo: ultima,
-            turno,
-          })
-          efectos.hechos.montos.push(...(ultima.montos ?? []))
-          efectos.hechos.pedidosConocidos = [...(efectos.hechos.pedidosConocidos ?? []), ...(ultima.pedidos ?? [])]
-          return ultima.texto
-        },
-        efectos.hechos,
-        T.TEXTO_SEGURO,
-      )
-      turno.guardia = { intentos_fallidos: r.intentos_fallidos, violaciones: r.violaciones }
+    const handler = decision.handler as Handler
+    const redactor = d.redactores?.[handler] ?? redactorProvisional
+    const estadoDespues = decision.acciones.length ? await d.repo.estadoPedido(tel) : estado
+    let ultima: Redaccion | null = null
+    efectos.hechos.textoCliente = texto
+    const r = await conGuardia(
+      async (violaciones) => {
+        ultima = await redactor({
+          handler,
+          texto,
+          cliente,
+          historial,
+          clasificacion: cl.clasificacion,
+          decision,
+          efectos,
+          conversacion,
+          estado: estadoDespues,
+          violaciones,
+          previo: ultima,
+          turno,
+        })
+        efectos.hechos.montos.push(...(ultima.montos ?? []))
+        efectos.hechos.pedidosConocidos = [...(efectos.hechos.pedidosConocidos ?? []), ...(ultima.pedidos ?? [])]
+        efectos.hechos.productos = [...(efectos.hechos.productos ?? []), ...(ultima.productos ?? [])]
+        if (ultima.consultoMenu !== undefined) efectos.hechos.consultoMenu = ultima.consultoMenu
+        return ultima.texto
+      },
+      efectos.hechos,
+      T.TEXTO_SEGURO,
+    )
+    turno.guardia = { intentos_fallidos: r.intentos_fallidos, violaciones: r.violaciones }
 
-      const redaccion = ultima as Redaccion | null
-      const pregunta = r.intentos_fallidos === 2 ? null : redaccion?.pregunta !== undefined ? redaccion.pregunta : efectos.pregunta
-      // Tras un handoff atiende una persona: el próximo turno del bot empieza sin hilo.
-      const borrador = redaccion?.reserva !== undefined ? redaccion.reserva : reserva
-      await d.repo.guardarConversacion(
-        tel,
-        redaccion?.handoff ? { handler: null, ultima_pregunta: null, reserva: borrador } : { handler, ultima_pregunta: pregunta, reserva: borrador },
-      )
-      return [r.texto]
-    },
+    const redaccion = ultima as Redaccion | null
+    const pregunta = r.intentos_fallidos === 2 ? null : redaccion?.pregunta !== undefined ? redaccion.pregunta : efectos.pregunta
+    // Tras un handoff atiende una persona: el próximo turno del bot empieza sin hilo.
+    const borrador = redaccion?.reserva !== undefined ? redaccion.reserva : reserva
+    await d.repo.guardarConversacion(
+      tel,
+      redaccion?.handoff ? { handler: null, ultima_pregunta: null, reserva: borrador } : { handler, ultima_pregunta: pregunta, reserva: borrador },
+    )
+    return [r.texto]
   }
 }

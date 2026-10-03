@@ -7,8 +7,9 @@ import type {
   Repo,
 } from '../bd/repo.js'
 import type { Carrito, Cobertura, DatosFlujo, Faq, LineaCarrito, MotivoReserva, PedidoCliente, PedidoCreado, Reserva, ResultadoMenu, RespuestaRPC } from '../bd/repo.js'
-import { buscarMenuSim, cotizarMitadSim, masaSim, MENU_SIM, precioSim } from './menu-memoria.js'
+import { menuSim, type FuenteMenu } from './menu-memoria.js'
 import type { Conversacion, EstadoPedido, Faltante, PasoFlujo } from '../decision/contexto.js'
+import { notaFeedback } from '../turno/procesador.js'
 
 /** Una línea del carrito tal como la guardan las RPC carrito_agregar_*. */
 export type ItemMem = {
@@ -19,6 +20,8 @@ export type ItemMem = {
   precio_unitario: number
   subtotal: number
   notas?: string | null
+  /** Masa del producto (Tradicional / Estofada), como la lee estado_pedido del menú. */
+  masa?: string | null
   mitades?: { producto_id: string; nombre: string; variante: string | null; precio: number }[]
 }
 
@@ -92,6 +95,8 @@ export class RepoMemoria implements Repo {
   /** Pedidos creados desde el carrito (crear_orden_desde_carrito). */
   readonly ordenes: { pedido_id: string; telefono: string; total: number; carrito: CarritoMem }[] = []
   private n = 0
+  /** De dónde salen productos y precios: el catálogo inventado o el menú real (solo lectura). */
+  menu: FuenteMenu = menuSim
 
   // ── Ayudas de carrito para escenarios ────────────────────────────────────
   /**
@@ -168,22 +173,24 @@ export class RepoMemoria implements Repo {
       this.ponerModo(telefono, 'bot')
       return 'sin_pendiente'
     }
-    const texto = mensaje.trim().toLowerCase()
     if (cola.estado === 'esperando_nota') {
-      const palabras: Record<string, number> = { uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5 }
-      const nota = /^[1-5]$/.test(texto) ? Number(texto) : palabras[texto]
+      const nota = notaFeedback(mensaje)
       if (!nota) return 'nota_invalida'
-      this.feedback.push({ pedido_id: cola.pedido_id, nota, comentario: null })
-      if (nota >= 4) {
+      // UPSERT por pedido_id (BUG-057): repetir la nota la pisa, no duplica.
+      const previa = this.feedback.find((x) => x.pedido_id === cola.pedido_id)
+      if (previa) previa.nota = nota
+      else this.feedback.push({ pedido_id: cola.pedido_id, nota, comentario: null })
+      if (nota > 3) {
         volverABot()
         return 'positiva'
       }
       cola.estado = 'esperando_comentario'
       return 'pedir_comentario'
     }
-    if (texto !== 'saltar') {
+    const comentario = mensaje.trim()
+    if (comentario && comentario.toLowerCase() !== 'saltar') {
       const f = this.feedback.find((x) => x.pedido_id === cola.pedido_id)
-      if (f) f.comentario = mensaje.trim()
+      if (f) f.comentario = comentario.slice(0, 2000)
     }
     volverABot()
     return 'agradecer'
@@ -457,7 +464,7 @@ export class RepoMemoria implements Repo {
 
   // ── Menú y carrito (Fase 5) ──────────────────────────────────────────────
   async buscarMenu(termino: string): Promise<ResultadoMenu> {
-    return buscarMenuSim(termino)
+    return this.menu.buscar(termino)
   }
 
   async carrito(telefono: string): Promise<Carrito> {
@@ -467,7 +474,7 @@ export class RepoMemoria implements Repo {
       producto_id: i.producto_id,
       nombre: i.nombre,
       variante: i.variante,
-      masa: i.mitades ? (i.mitades[0]?.variante ?? null) : masaSim(i.producto_id),
+      masa: i.mitades ? (i.mitades[0]?.variante ?? null) : (i.masa ?? null),
       cantidad: i.cantidad,
       precio_unitario: i.precio_unitario,
       subtotal: i.subtotal,
@@ -490,22 +497,22 @@ export class RepoMemoria implements Repo {
 
   async carritoAgregarItem(telefono: string, i: { producto_id: string; tamano?: string | null; cantidad: number; notas?: string | null }) {
     if (!Number.isInteger(i.cantidad) || i.cantidad < 1 || i.cantidad > 50) return { ok: false, error: 'CANTIDAD_INVALIDA' }
-    const p = precioSim(i.producto_id, i.tamano)
+    const p = await this.menu.precio(i.producto_id, i.tamano)
     if (!p.ok) return p
     const c = this.carritoDe(telefono)
-    const nombre = MENU_NOMBRE(i.producto_id)
+    const nombre = p.nombre ?? i.producto_id
     const igual = c.items.find((x) => !x.mitades && x.producto_id === i.producto_id && x.variante === p.variante && (x.notas ?? null) === (i.notas ?? null))
     if (igual) {
       igual.cantidad += i.cantidad
       igual.subtotal = igual.cantidad * igual.precio_unitario
     } else {
-      c.items.push({ producto_id: i.producto_id, nombre, variante: p.variante ?? null, cantidad: i.cantidad, precio_unitario: p.precio!, subtotal: p.precio! * i.cantidad, notas: i.notas ?? null })
+      c.items.push({ producto_id: i.producto_id, nombre, variante: p.variante ?? null, cantidad: i.cantidad, precio_unitario: p.precio!, subtotal: p.precio! * i.cantidad, notas: i.notas ?? null, masa: p.masa ?? null })
     }
     return { ...this.tocado(c), agregado: { nombre, variante: p.variante ?? null, cantidad: i.cantidad, precio_unitario: p.precio } }
   }
 
   async carritoAgregarMitad(telefono: string, m: { producto_a: string; producto_b: string; tamano: string; cantidad: number; notas?: string | null }) {
-    const r = cotizarMitadSim(m.producto_a, m.producto_b, m.tamano)
+    const r = await this.menu.mitad(m.producto_a, m.producto_b, m.tamano)
     if (!r.ok) return r
     const c = this.carritoDe(telefono)
     const precio = r.precio_unitario as number
@@ -536,8 +543,6 @@ export class RepoMemoria implements Repo {
   }
 
   async cotizarMitad(productoA: string, productoB: string, tamano: string) {
-    return cotizarMitadSim(productoA, productoB, tamano)
+    return this.menu.mitad(productoA, productoB, tamano)
   }
 }
-
-const MENU_NOMBRE = (id: string) => MENU_SIM.find((p) => p.producto_id === id)?.nombre ?? id

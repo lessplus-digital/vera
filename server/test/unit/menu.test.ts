@@ -3,7 +3,8 @@ import { EntornoSim } from '../../src/sim/entorno.js'
 import { FakeLLM, type LlamadaLLM, type MensajeLLM, type PasoFake } from '../../src/llm/llm.js'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
 import type { UltimaPregunta } from '../../src/decision/contexto.js'
-import { PREGUNTA_ALGO_MAS } from '../../src/handlers/menu.js'
+import { PREGUNTA_ALGO_MAS, quitarAlgoMas } from '../../src/handlers/menu.js'
+import { masasNombradas, recortarRuido } from '../../src/herramientas/menu.js'
 
 // El agente de Menú dentro del simulador, con un LLM de guion: se verifica lo
 // que hace el CÓDIGO alrededor del modelo (precio desde la BD, bloque del
@@ -40,6 +41,14 @@ async function turno(sim: EntornoSim, texto: string) {
 
 const pedir: Partial<Clasificacion> = { intencion: 'agregar_producto' }
 
+/**
+ * Lo que devolvieron las herramientas en el turno, en orden. Se verifica aquí y no
+ * con expect dentro del guion del LLM falso: allí un fallo se traga (el turno
+ * responde ERROR_GENERICO) y la prueba pasaría igual.
+ */
+const resultados = (registro: { herramientas: { nombre: string; resultado: unknown }[] }, nombre: string) =>
+  registro.herramientas.filter((h) => h.nombre === nombre).map((h) => h.resultado)
+
 describe('agregar al carrito', () => {
   it('el precio lo pone la BD y el bloque 🛒 lo arma el código', async () => {
     const { sim } = montar(pedir, [
@@ -59,6 +68,7 @@ describe('agregar al carrito', () => {
 
   it('distingue la masa: la hawaiana estofada tiene otro precio y otra línea', async () => {
     const { sim } = montar(pedir, [
+      () => llamar('consultar_menu', { termino: 'hawaiana' }),
       () => ({ llamar: [
         { nombre: 'agregar_al_carrito', args: { producto_id: 'PROD-010', tamano: 'grande', cantidad: 1, notas: null } },
         { nombre: 'agregar_al_carrito', args: { producto_id: 'PROD-015', tamano: 'grande', cantidad: 1, notas: 'bien tostada' } },
@@ -95,6 +105,7 @@ describe('agregar al carrito', () => {
 describe('mitad y mitad', () => {
   it('se cobra la mitad más cara y la línea muestra masa y tamaño', async () => {
     const { sim } = montar(pedir, [
+      () => llamar('consultar_menu', { termino: 'hawaiana' }),
       () => llamar('agregar_mitad_y_mitad', { producto_a: 'PROD-010', producto_b: 'PROD-031', tamano: 'grande', cantidad: 1, notas: null }),
       () => final('¡Listo! En las mitad y mitad se cobra la más cara 😊'),
     ])
@@ -104,14 +115,49 @@ describe('mitad y mitad', () => {
 
   it('masas distintas: error, sin carrito', async () => {
     const { sim } = montar(pedir, [
+      () => llamar('consultar_menu', { termino: 'hawaiana' }),
       () => llamar('agregar_mitad_y_mitad', { producto_a: 'PROD-010', producto_b: 'PROD-015', tamano: 'grande', cantidad: 1, notas: null }),
-      (previas) => {
-        expect(previas[0]?.resultado).toMatchObject({ ok: false, error: 'MASA_DISTINTA' })
-        return final('Las dos mitades tienen que ser de la misma masa. ¿Tradicional o estofada?', 'otra')
-      },
+      () => final('Las dos mitades tienen que ser de la misma masa. ¿Tradicional o estofada?', 'otra'),
     ])
-    await turno(sim, 'mitad hawaiana tradicional mitad hawaiana estofada')
+    const { registro } = await turno(sim, 'mitad hawaiana tradicional mitad hawaiana estofada')
+    expect(resultados(registro, 'carrito_agregar_mitad')).toMatchObject([{ ok: false, error: 'MASA_DISTINTA' }])
     expect(sim.repo.carritos.get(TEL)?.items ?? []).toHaveLength(0)
+  })
+})
+
+describe('el producto_id sale de consultar_menu, nunca adivinado', () => {
+  it('un id que no salió de la búsqueda se rechaza sin tocar la BD; tras buscar, entra', async () => {
+    const { sim } = montar(pedir, [
+      () => llamar('agregar_al_carrito', { producto_id: 'PROD-031', tamano: 'grande', cantidad: 1, notas: null }),
+      () => llamar('consultar_menu', { termino: 'premium hawaiana' }),
+      () => llamar('agregar_al_carrito', { producto_id: 'PROD-031', tamano: 'grande', cantidad: 1, notas: null }),
+      () => final('¡Listo! 🍕'),
+    ])
+    const { respuestas, registro } = await turno(sim, 'una premium hawaiana grande')
+    expect(resultados(registro, 'carrito_agregar_item')).toMatchObject([{ ok: false, error: 'PRODUCTO_SIN_CONSULTAR' }, { ok: true }])
+    expect(sim.repo.carritos.get(TEL)?.items.map((i) => i.producto_id)).toEqual(['PROD-031'])
+    expect(respuestas[0]).toMatch(/1x Premium Hawaiana.*\(Grande\) — \$57\.000/)
+  })
+
+  it('mitad y mitad con un id adivinado tampoco llega a la BD', async () => {
+    const { sim } = montar(pedir, [
+      () => llamar('consultar_menu', { termino: 'hawaiana' }),
+      () => llamar('agregar_mitad_y_mitad', { producto_a: 'PROD-010', producto_b: 'PROD-011', tamano: 'grande', cantidad: 1, notas: null }),
+      () => final('¿Cuál es la otra mitad? 🍕', 'otra'),
+    ])
+    const { registro } = await turno(sim, 'mitad hawaiana mitad la otra')
+    expect(resultados(registro, 'carrito_agregar_mitad')).toMatchObject([{ ok: false, error: 'PRODUCTO_SIN_CONSULTAR' }])
+    expect(sim.repo.carritos.get(TEL)?.items ?? []).toHaveLength(0)
+  })
+
+  it('lo que ya está en el carrito se puede volver a pedir sin buscarlo ("otra igual")', async () => {
+    const { sim } = montar(pedir, [
+      () => llamar('agregar_al_carrito', { producto_id: 'PROD-010', tamano: 'mediana', cantidad: 1, notas: null }),
+      () => final('¡Listo! 🍕'),
+    ])
+    sim.repo.ponerCarrito(TEL, { items: [{ producto_id: 'PROD-010', nombre: 'Hawaiana', variante: 'Mediana', cantidad: 1, precio_unitario: 37500, subtotal: 37500 }] })
+    await turno(sim, 'otra igual')
+    expect(sim.repo.carritos.get(TEL)?.items[0]?.cantidad).toBe(2)
   })
 })
 
@@ -120,8 +166,9 @@ describe('guardia y reescritura', () => {
     const { sim, menuLlamadas } = montar(
       pedir,
       [
+        () => llamar('consultar_menu', { termino: 'hawaiana' }),
         () => llamar('agregar_al_carrito', { producto_id: 'PROD-010', tamano: 'mediana', cantidad: 1, notas: null }),
-        () => final('¡Listo! Te agregué la hawaiana por $30.000'),
+        () => final('¡Listo! Te agregué la hawaiana por $31.000'),
       ],
       { texto: '¡Listo! 🍕', pregunta: 'ninguna', producto_sugerido: null },
     )
@@ -129,7 +176,7 @@ describe('guardia y reescritura', () => {
     expect(sim.repo.carritos.get(TEL)?.items).toHaveLength(1)
     expect(sim.repo.carritos.get(TEL)?.items[0]?.cantidad).toBe(1)
     expect(registro.guardia).toMatchObject({ intentos_fallidos: 1 })
-    expect(respuestas[0]).not.toContain('$30.000')
+    expect(respuestas[0]).not.toContain('$31.000')
     expect(respuestas[0]).toContain('$37.500')
     // La reescritura vio lo que ya se había hecho.
     expect(menuLlamadas.at(-1)!.at(-1)!.texto).toContain('agregar_al_carrito')
@@ -155,5 +202,62 @@ describe('preguntas abiertas', () => {
     await sim.repo.guardarConversacion(TEL, { handler: 'menu', ultima_pregunta: { tipo: 'agregar_producto', producto: 'Hawaiana Tradicional' } })
     await turno(sim, 'dale')
     expect(menuLlamadas[0]!.at(-1)!.texto).toContain('agregar: Hawaiana Tradicional')
+  })
+})
+
+describe('recortarRuido', () => {
+  const p = (nombre: string, similitud: number) => ({ producto_id: nombre, nombre, categoria: 'x', variante: null, descripcion: null, precio: 1, tamanos: null, similitud })
+  it('con una coincidencia clara, quita lo que está por debajo de 0.5', () => {
+    const r = recortarRuido({ disponibles: [p('Pan de Ajo', 1), p('Copa de Sangría', 0.81), p('Pasta Alfredo', 0.49)], agotados: [p('Jarra', 0.3)] })
+    expect(r.disponibles.map((x) => x.nombre)).toEqual(['Pan de Ajo', 'Copa de Sangría'])
+    expect(r.agotados).toEqual([])
+  })
+  it('sin coincidencia clara devuelve todo (el modelo tiene que preguntar)', () => {
+    const r = { disponibles: [p('Mexicana', 0.7), p('Patatas de la Casa', 0.28)], agotados: [] }
+    expect(recortarRuido(r)).toEqual(r)
+  })
+})
+
+describe('quitarAlgoMas', () => {
+  it('quita la pregunta que el código va a poner, con su emoji', () => {
+    expect(quitarAlgoMas('Te agregué la hawaiana 🍕\n\n¿Quieres agregar algo más? 😊')).toBe('Te agregué la hawaiana 🍕')
+    expect(quitarAlgoMas('Listo. ¿Deseas algo mas?')).toBe('Listo.')
+    expect(quitarAlgoMas('¿La quieres tradicional o estofada?')).toBe('¿La quieres tradicional o estofada?')
+  })
+})
+
+describe('la masa que nombró el cliente no se cambia', () => {
+  it('masasNombradas', () => {
+    expect([...masasNombradas('una hawaiana Tradicional')]).toEqual(['tradicional'])
+    expect([...masasNombradas('mitad hawaiana masa tradicional y mitad pepperoni masa estofada')].sort()).toEqual(['estofada', 'tradicional'])
+    expect([...masasNombradas('la quiero rellena')]).toEqual(['estofada'])
+    expect(masasNombradas('una hawaiana mediana').size).toBe(0)
+  })
+
+  it('pidió estofada y el modelo agrega la tradicional → MASA_NO_PEDIDA, sin tocar el carrito', async () => {
+    const { sim } = montar(pedir, [
+      () => llamar('consultar_menu', { termino: 'hawaiana' }),
+      () => llamar('agregar_al_carrito', { producto_id: 'PROD-010', tamano: 'mediana', cantidad: 1, notas: null }),
+      () => llamar('agregar_al_carrito', { producto_id: 'PROD-015', tamano: 'mediana', cantidad: 1, notas: null }),
+      () => final('¡Listo! 🍕'),
+    ])
+    const { registro } = await turno(sim, 'una hawaiana estofada mediana')
+    expect(resultados(registro, 'carrito_agregar_item')).toMatchObject([{ ok: false, error: 'MASA_NO_PEDIDA' }, { ok: true }])
+    expect(sim.repo.carritos.get(TEL)?.items.map((i) => i.producto_id)).toEqual(['PROD-015'])
+  })
+
+  it('mitad y mitad con una mitad en cada masa → MASA_DISTINTA desde el código (G5, 2026-10-02)', async () => {
+    const { sim } = montar(pedir, [
+      () => ({ llamar: [
+        { nombre: 'consultar_menu', args: { termino: 'hawaiana' } },
+        { nombre: 'consultar_menu', args: { termino: 'pepperoni' } },
+      ] }),
+      () => final('(no se usa: el guion elige el paso por cuántas herramientas ya corrieron)'),
+      () => llamar('agregar_mitad_y_mitad', { producto_a: 'PROD-010', producto_b: 'PROD-020', tamano: 'mediana', cantidad: 1, notas: null }),
+      () => final('Las dos mitades tienen que ser de la misma masa 🙏 ¿Tradicional o estofada?', 'otra'),
+    ])
+    const { registro } = await turno(sim, 'mitad hawaiana masa tradicional y mitad pepperoni masa estofada, mediana')
+    expect(resultados(registro, 'carrito_agregar_mitad')).toMatchObject([{ ok: false, error: 'MASA_DISTINTA', message: expect.stringContaining('una mitad en masa tradicional') }])
+    expect(sim.repo.carritos.get(TEL)?.items ?? []).toHaveLength(0)
   })
 })

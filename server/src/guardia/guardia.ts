@@ -17,6 +17,12 @@ export type Hechos = {
   pedidoCreado?: { pedido_id: string; total: number }
   /** Ids de pedido que el cliente puede ver citados (los suyos, leídos de la BD). */
   pedidosConocidos?: string[]
+  /** Nombres de productos que devolvió el menú o que están en el carrito en este turno. */
+  productos?: string[]
+  /** Lo que escribió el cliente: puede nombrar algo que no tenemos ("¿tienen Heineken?") y el bot contestarle. */
+  textoCliente?: string
+  /** Solo el agente de Menú lo pone: false = respondió sin llamar consultar_menu en este turno. */
+  consultoMenu?: boolean
 }
 
 export type Violacion =
@@ -25,12 +31,15 @@ export type Violacion =
   | { regla: 'tiempo_sin_cobertura'; detalle: string }
   | { regla: 'pedido_sin_id_o_total'; detalle: string }
   | { regla: 'pedido_inventado'; detalle: string }
+  | { regla: 'producto_inventado'; detalle: string }
+  | { regla: 'niega_sin_consultar'; detalle: string }
+  | { regla: 'niega_servicio'; detalle: string }
 
 export const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-CO').replace(/,/g, '.')}`
 
 // El bot nunca habla de sus tripas (regla global de docs/bot/ai-agents.md).
 const INTERNOS =
-  /\b(n8n|supabase|base de datos|herramientas?|tools?|json|rpc|api|sistema|prompt|backend|servidor)\b/i
+  /\b(n8n|supabase|base de datos|herramientas?|tools?|json|rpc|api|sistema|prompt|backend|servidor|bot|chatbot)\b/i
 
 // "$7.500", "$ 7500", "7.500 pesos", "7 mil", "$7,500", y "51.500" sin signo: un número
 // con punto de miles en esta conversación es plata (visto con gpt-5.1 el 2026-09-30).
@@ -57,6 +66,30 @@ const TIEMPO = /\b\d+\s?(?:a|-|y)?\s?\d*\s?(?:minutos?|mins?)\b|\b(?:una|media|1
 const PEDIDO_ID = /\bPED-\d+\b/gi
 const DICE_CREADO =
   /\b(?:tu\s+)?pedido\s+(?:qued[óo]|fue|est[áa]|ha sido|ya est[áa])?\s*(?:creado|registrado|confirmado|realizado)\b/i
+
+// Productos famosos que el modelo nombra de memoria al "dar ejemplos" (G1.5, 2026-10-02:
+// a "quiero una chelita" ofreció Stella y Michelob, que no están en la carta). Solo
+// pasan si una herramienta los devolvió en este turno —así, si el restaurante los
+// agrega a la carta, dejan de bloquearse solos— o si el cliente los nombró.
+const PRODUCTOS_AJENOS = [
+  'stella', 'michelob', 'heineken', 'budweiser', 'poker', 'costena', 'costenita', "redd's", 'miller', 'coors',
+  'peroni', 'bbc', 'tecate', 'pepsi', 'postobon', '7up', 'seven up', 'fanta',
+  'pony malta', 'gatorade', 'red bull', 'napolitana', 'cuatro quesos', 'cuatro estaciones', 'marinera', 'bbq',
+  'barbacoa', 'diavola', 'capricciosa', 'prosciutto', 'calabresa', 'quattro formaggi',
+]
+const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const AJENOS = PRODUCTOS_AJENOS.map((p) => ({ p, re: new RegExp(`(?<![\\p{L}\\d])${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\d])`, 'u') }))
+
+// "no lo tenemos", "no encontré…", "no está en la carta": decir que algo NO existe
+// exige haberlo buscado (G1.6, 2026-10-02: "papata mexicana" → "no la encontré" sin buscar).
+const NIEGA =
+  /(?<!\p{L})no\s+(?:l[oa]s?\s+|me\s+)?(?:encontr[ée]|tenemos|manejamos|vendemos|ofrecemos|aparecen?)(?!\p{L})|(?<!\p{L})no\s+(?:est[áa]n?|aparecen?)\s+en\s+(?:la\s+carta|el\s+men[uú]|nuestr[oa]\s+(?:men[uú]|carta))/iu
+
+// Este WhatsApp hace pedidos, reservas, info del local y quejas. Ningún agente puede
+// mandar al cliente a "otra línea" (2026-10-02: Menú contestó "por aquí solo manejo
+// pedidos; para reservar comunícate a la línea de reservas").
+const NIEGA_SERVICIO =
+  /(?:no|solo)\s+(?:manejo|manejamos|hago|hacemos|tomo|tomamos|puedo|podemos|atiendo|atendemos)\b[^.!?\n]{0,40}\breserv|comun[ií]cate[^.!?\n]{0,50}\b(?:l[ií]nea|canal|tel[eé]fono|n[uú]mero|reserv)|(?:l[ií]nea|canal)\s+de\s+reservas/iu
 
 const citaConocido = (texto: string, ids: string[]) =>
   (texto.match(PEDIDO_ID) ?? []).some((id) => ids.some((k) => k.toUpperCase() === id.toUpperCase()))
@@ -94,6 +127,22 @@ export function revisar(texto: string, h: Hechos): Violacion[] {
   const ids = new Set([...(h.pedidosConocidos ?? []), ...(h.pedidoCreado ? [h.pedidoCreado.pedido_id] : [])].map((s) => s.toUpperCase()))
   for (const id of texto.match(PEDIDO_ID) ?? []) {
     if (!ids.has(id.toUpperCase())) v.push({ regla: 'pedido_inventado', detalle: `cita ${id}, que no es un pedido suyo` })
+  }
+
+  if (h.consultoMenu === false) {
+    const n = texto.match(NIEGA)
+    if (n) v.push({ regla: 'niega_sin_consultar', detalle: `dice "${n[0]}" sin haber buscado en el menú en este turno: llama consultar_menu antes de decir que no lo tenemos` })
+  }
+
+  const ns = texto.match(NIEGA_SERVICIO)
+  if (ns) v.push({ regla: 'niega_servicio', detalle: `dice "${ns[0]}": por este mismo chat se hacen pedidos y reservas; nunca lo mandes a otra línea` })
+
+  const t = normalizar(texto)
+  const permitido = normalizar([...(h.productos ?? []), h.textoCliente ?? ''].join('\n'))
+  for (const { p, re } of AJENOS) {
+    if (re.test(t) && !re.test(permitido)) {
+      v.push({ regla: 'producto_inventado', detalle: `nombra "${p}", que no salió del menú en este turno: solo se ofrecen productos que devolvió consultar_menu` })
+    }
   }
 
   return v
