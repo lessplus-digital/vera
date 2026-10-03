@@ -662,6 +662,14 @@ describe('"¿te conecto con alguien del equipo?"', () => {
     expect(d.handler).toBe('soporte')
     expect(d.acciones).toEqual([])
   })
+  it('otra intención concreta con confirma:si NO es el "sí" a la oferta (G9: "cancela la reserva RES-001" terminó en handoff)', () => {
+    const d = decidir(
+      clasificacionVacia({ intencion: 'reserva_cancelar', confirma: 'si' }),
+      ctx('cancela la reserva RES-001', { ultima: { tipo: 'ofrecer_humano' }, handler: 'reservas' }),
+    )
+    expect(d.handler).toBe('reservas')
+    expect(d.acciones.map((a) => a.tipo)).not.toContain('pasar_a_humano')
+  })
 })
 
 describe('barrio del historial', () => {

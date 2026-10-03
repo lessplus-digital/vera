@@ -44,7 +44,21 @@ export const R = {
   cualCancelar: '¿Cuál quieres cancelar?',
   reservaNoEncontrada: 'No encontré esa reserva activa 🤔',
   confirmar: '¿Te la reservo?',
+  borradorDescartado: 'Listo, dejé esa reserva de lado 👌 Si quieres armar otra, me dices.',
 } as const
+
+/**
+ * Las reglas que aplica consultar_disponibilidad_reserva (batería qa/sql/12), para
+ * que el modelo pueda contestar "¿puedo reservar para dentro de 3 meses?" sin
+ * inventar (2026-10-02: contestó "claro que puedes, sin lío"). Si cambian en la BD,
+ * cambian aquí: la BD sigue siendo quien rechaza.
+ */
+export const REGLAS_RESERVA = [
+  'Por WhatsApp se reserva para 1 a 12 personas; los grupos más grandes los atiende el equipo.',
+  'Máximo 14 días de anticipación.',
+  'Para el mismo día, mínimo 5 horas antes.',
+  'Lunes a viernes de 12:00 a 20:30; sábados y domingos de 12:00 a 21:30 (hora de llegada).',
+]
 
 export function preguntaMotivo(motivos: MotivoReserva[]): string {
   const ocasiones = motivos.filter((m) => m.clave !== 'sin_ocasion').map((m) => m.nombre.toLowerCase())
@@ -74,6 +88,8 @@ type Plan = {
   hechos: string[]
   /** undefined = este turno no tocó el borrador (consultar / cancelar). */
   reserva?: BorradorReserva | null
+  /** El código ya dice todo (consultar, cancelar): no se llama al modelo; su frase lo repetía. */
+  fijo?: boolean
 }
 
 /** Qué dato limpiar y volver a preguntar según el error de disponibilidad. */
@@ -97,8 +113,21 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
   if (e.decision.regla === 'cancelar_reserva:no') return cierra(R.noCancelar)
   const cancelando = c.intencion === 'reserva_cancelar' || ultima?.tipo === 'elegir_reserva'
   if (cancelando || e.efectos.errorReserva === 'RESERVA_NO_ENCONTRADA' || e.efectos.errorReserva === 'RESERVA_YA_CANCELADA') {
+    plan.fijo = true
     const lista = await repo.reservasDelCliente(tel)
     if (e.efectos.errorReserva?.startsWith('RESERVA_')) plan.avisos.push(R.reservaNoEncontrada)
+    // Nombró una reserva concreta ("cancela la RES-001") que no está entre las suyas: se le dice
+    // eso, sin soltar el borrador ni dar pistas de reservas ajenas (BUG-005/009).
+    const nombrada = e.texto.match(/\bRES-[\w-]+/i)?.[0]?.toUpperCase()
+    if (nombrada && !lista.some((r) => r.reserva_id.toUpperCase() === nombrada)) {
+      plan.reserva = undefined
+      return cierra(lista.length ? `${R.reservaNoEncontrada}\n\nTienes estas reservas:\n${lista.map(lineaReserva).join('\n')}` : R.reservaNoEncontrada)
+    }
+    // "Mejor olvídalo" con una reserva a medio armar y ninguna creada: es soltar el borrador.
+    if (!lista.length && e.conversacion.reserva && !e.efectos.errorReserva) {
+      plan.reserva = null
+      return cierra(R.borradorDescartado)
+    }
     if (!lista.length) return cierra(e.efectos.errorReserva ? R.sinReservas : R.sinReservasCancelar)
     const elegida = elegirReserva(lista, c.fecha, c.hora, ultima?.tipo === 'elegir_reserva' ? e.texto : null)
     if (elegida) return cierra(confirmarCancelar(elegida), { tipo: 'cancelar_reserva', reserva_id: elegida.reserva_id })
@@ -107,6 +136,7 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
 
   // ── Consultar ────────────────────────────────────────────────────────────
   if (c.intencion === 'reserva_consultar') {
+    plan.fijo = true
     const lista = await repo.reservasDelCliente(tel)
     for (const r of lista) plan.montos.push(r.costo_motivo)
     return cierra(lista.length ? `Tienes ${lista.length === 1 ? 'esta reserva' : 'estas reservas'}:\n${lista.map((r) => lineaReserva(r)).join('\n')}` : R.sinReservas)
@@ -226,6 +256,16 @@ export function crearRedactorReservas(d: { repo: Repo; llm: LLM }): Redactor {
       planes.set(e.turno, plan)
     }
     const debajo = [...plan.avisos, plan.cierre].filter(Boolean).join('\n\n')
+    // Lo que el código ya explica completo (consultar, cancelar, un rechazo de la BD) va sin
+    // frase del modelo: repetía lo de debajo ("reservamos de 12 a 9:30" + "se reserva de 12:00 a 21:30").
+    if ((plan.fijo || plan.avisos.length) && !e.previo) {
+      return {
+        texto: debajo,
+        pregunta: plan.pregunta,
+        montos: plan.montos,
+        ...(plan.reserva !== undefined ? { reserva: plan.reserva } : {}),
+      }
+    }
     const motivos = await d.repo.motivosReserva()
     const mensajes: MensajeLLM[] = [
       { rol: 'system', texto: PROMPT },
@@ -237,6 +277,7 @@ export function crearRedactorReservas(d: { repo: Repo; llm: LLM }): Redactor {
             .filter((m) => m.clave !== 'sin_ocasion')
             .map((m) => `- ${m.nombre}: ${m.descripcion ?? ''} — ${pesos(m.costo)}`)
             .join('\n')}`,
+          `REGLAS DE RESERVA (si pregunta por anticipación, personas u horario, contesta SOLO con esto):\n${REGLAS_RESERVA.map((r) => `- ${r}`).join('\n')}`,
           plan.hechos.length ? `Hechos de este turno:\n${plan.hechos.map((h) => `- ${h}`).join('\n')}` : '',
           `LO QUE VA DEBAJO (no lo repitas):\n${debajo}`,
           `MENSAJE DEL CLIENTE:\n${e.texto}`,

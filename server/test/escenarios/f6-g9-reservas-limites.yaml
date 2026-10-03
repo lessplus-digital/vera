@@ -1,0 +1,34 @@
+nombre: G9 · Reservas fuera de las reglas no se crean
+descripcion: >
+  Fase 6, guion G9 de qa/guiones-bot.md (lo que no depende de los precios de
+  motivos_reserva, que siguen siendo placeholder). Hora fuera de la ventana
+  (BUG-049: entre semana la última es 20:30), más de 14 días, más de 12 personas,
+  y cancelar una reserva que no es suya (BUG-005/009): nada de eso crea ni
+  cancela, y el cliente sabe por qué. Las reglas viven en la BD (batería 12);
+  aquí se prueba que la conversación las respete.
+critico: true
+bot: decision
+telefono: '573000000924'
+nombre_cliente: Felipe Arango
+cliente_registrado: true
+pasos:
+  - envia: quiero reservar para 4 el sábado a las 11 de la noche
+    debe:
+      coincide: '21:30|9:30'
+      no_contiene: ['Reserva confirmada']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: mejor olvídalo. Otra cosa, ¿puedo reservar para dentro de 3 meses?
+    debe:
+      coincide: '14 días|dos semanas'
+      no_contiene: ['Reserva confirmada']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: ok, entonces para 20 personas el viernes a las 7 de la noche
+    debe:
+      coincide: 'equipo|12'
+      no_contiene: ['Reserva confirmada']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: cancela la reserva RES-001
+    debe:
+      contiene: ['No encontré esa reserva']
+      no_contiene: ['cancelé tu reserva']
+      turno: { sin_acciones: [cancelar_reserva] }

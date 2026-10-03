@@ -46,6 +46,9 @@ export type Decision = {
 }
 
 // El carrito lo arma Menú (tiene el catálogo); Pedidos recoge los datos y cierra.
+/** Intenciones con las que un "sí" contesta "¿te conecto con alguien del equipo?". */
+const RESPONDE_OFERTA = new Set<Intencion>(['respuesta_corta', 'otro', 'queja', 'saludo'])
+
 const HANDLER_DE: Record<Intencion, Handler | null> = {
   saludo: 'soporte',
   ver_menu: 'menu',
@@ -376,8 +379,12 @@ function responderPregunta(u: UltimaPregunta, c: Clasificacion, estado: EstadoPe
     case 'dato_pedido':
       return null // un "sí" a "¿en qué barrio?" no dice nada: lo resuelve el paso 4
     case 'ofrecer_humano':
-      // "Sí" a "¿te conecto con alguien del equipo?" = pedir una persona, en código.
-      return si ? { handler: 'humano', acciones: [{ tipo: 'pasar_a_humano', motivo: 'lo_pidio' }], regla: 'ofrecer_humano:si' } : null
+      // "Sí" a "¿te conecto con alguien del equipo?" = pedir una persona, en código. Pero solo si
+      // el mensaje ES la respuesta: "cancela la reserva RES-001" llegó con confirma:si y terminó
+      // en handoff (2026-10-02, G9). Otra intención concreta sigue su camino.
+      return si && RESPONDE_OFERTA.has(c.intencion)
+        ? { handler: 'humano', acciones: [{ tipo: 'pasar_a_humano', motivo: 'lo_pidio' }], regla: 'ofrecer_humano:si' }
+        : null
     case 'dato_reserva':
     case 'elegir_reserva':
       return null // la respuesta la interpreta Reservas (regla 3b)

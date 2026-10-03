@@ -285,6 +285,13 @@ del prompt de n8n `1d7f7d87`; el LLM **no tiene herramientas** y solo escribe la
 - **Consultar / cancelar:** `reservas_del_cliente`; con varias, "¿cuál?" (pregunta `elegir_reserva`,
   vale "la 2" o el día); cancelar siempre pide confirmación (pregunta `cancelar_reserva`) y lo hace
   el ejecutor con `cancelar_reserva_bot`, que no cancela una ajena (`RESERVA_NO_ENCONTRADA`).
+- **Fase 6 (G9):** las reglas de reserva (`REGLAS_RESERVA`: 1–12 personas, máx. 14 días, 5 h el
+  mismo día, horarios) van en el contexto del modelo (contestó "claro que puedes reservar para
+  dentro de 3 meses"); consultar, cancelar y los rechazos de la BD salen sin frase del modelo
+  (`plan.fijo`); "olvídalo" con un borrador y sin reservas suelta el borrador; nombrar un `RES-`
+  que no es suyo responde "no encontré esa reserva" sin mostrar nada ajeno. En la política, el
+  "sí" a "¿te conecto con alguien?" solo cuenta si el mensaje no trae otra intención concreta
+  (`RESPONDE_OFERTA`: "cancela la reserva RES-001" llegó con `confirma: si` y terminó en handoff).
 
 **Arreglado de paso:** `repo-supabase` filtraba las preguntas guardadas con una lista escrita a mano
 que no tenía `nombre` ni `ofrecer_humano`: en producción el "sí" a "¿te conecto con alguien?" se

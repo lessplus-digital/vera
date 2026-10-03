@@ -1,0 +1,29 @@
+nombre: G2 · El carrito conserva lo pedido (BUG-032)
+descripcion: >
+  Fase 6, guion G2 de qa/guiones-bot.md con el menú real. Dos productos sin
+  confirmar; después "quiero algo más: una hawaiana" agrega sin reiniciar ni
+  duplicar el carrito, y como no dijo la masa, la pregunta antes de agregar. Lo
+  que cuenta es la fila del carrito.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000923'
+nombre_cliente: Paula Ríos
+cliente_registrado: true
+pasos:
+  - envia: una lasaña de pollo y una copa de vino
+    debe:
+      bd: { carrito_solo: [Lasaña Pollo, Copa de Vino] }
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: sí, las dos
+    debe:
+      bd: { carrito: [Lasaña Pollo, Copa de Vino], carrito_total: 38500 }
+  - envia: 'quiero algo más: una hawaiana'
+    debe:
+      contiene: ['Tradicional', 'Estofada']
+      bd: { carrito: [Lasaña Pollo, Copa de Vino], carrito_total: 38500 }
+  - envia: tradicional familiar
+    debe:
+      contiene: ['Subtotal: $97.000']
+      bd: { carrito: [Lasaña Pollo, Copa de Vino, Hawaiana], carrito_total: 97000 }
+      turno: { sin_acciones: [crear_pedido] }

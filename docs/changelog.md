@@ -50,6 +50,11 @@ los contesta el código; con solo un dato o solo cobertura, Pedidos y Soporte no
 entendí": el procesador ahora lee los mensajes juntados línea por línea. Además, `bot_turnos.costo`
 guarda todo lo que gasta el turno (antes solo el clasificador).
 
+**Después, el mismo día (G2 y G9):** Reservas recibe sus reglas como datos (contestaba "claro, sin
+lío" a 3 meses de anticipación), consultar/cancelar/rechazos van sin frase del modelo, "olvídalo"
+suelta el borrador, un `RES-` ajeno responde "no encontré esa reserva", y en la política un "sí"
+mal clasificado ya no convierte otra petición en un paso a persona. 21 escenarios con IA 5/5.
+
 **Impacto:** `server/src/` (guardia, herramientas y handlers de Menú, Pedidos y Soporte,
 conversador, procesador, `llm.ts`, simulador: `datos-reales.ts`, `bd:`, `pide_calificacion`,
 `--ver` con herramientas y tokens), 10 escenarios nuevos, 351 pruebas. Docs: `docs/bot/servidor.md`,

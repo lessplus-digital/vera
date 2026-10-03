@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EntornoSim } from '../../src/sim/entorno.js'
 import { FakeLLM } from '../../src/llm/llm.js'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
-import { R, confirmarCancelar, preguntaMotivo } from '../../src/handlers/reservas.js'
+import { R, REGLAS_RESERVA, confirmarCancelar, preguntaMotivo } from '../../src/handlers/reservas.js'
 import * as T from '../../src/textos.js'
 
 // El agente de Reservas dentro del simulador. Se prueba el CÓDIGO: una pregunta
@@ -203,5 +203,61 @@ describe('la frase del modelo', () => {
     await conNombre(sim)
     const t = await turno('quiero reservar', { intencion: 'reserva_nueva' })
     expect(t.r).toBe(`¡Qué bien!\n\n${R.personas}`)
+  })
+})
+
+describe('Fase 6: lo que destapó G9', () => {
+  it('"mejor olvídalo" con una reserva a medio armar suelta el borrador (no busca reservas para cancelar)', async () => {
+    const { sim, turno, conv } = montar('esto no debía salir')
+    await conNombre(sim)
+    await turno('quiero reservar para 4 el sábado', { intencion: 'reserva_nueva', personas: 4, fecha: SABADO })
+    expect((await conv()).reserva).toMatchObject({ personas: 4, fecha: SABADO })
+    const t = await turno('mejor olvídalo', { intencion: 'reserva_cancelar' })
+    expect(t.r).toBe(R.borradorDescartado)
+    expect((await conv()).reserva ?? null).toBeNull()
+  })
+
+  it('consultar y cancelar los contesta el código, sin frase del modelo encima', async () => {
+    const { sim, turno } = montar('Por ahora no tengo ninguna reserva activa 😊')
+    await conNombre(sim)
+    expect((await turno('¿tengo reservas?', { intencion: 'reserva_consultar' })).r).toBe(R.sinReservas)
+    expect((await turno('cancela mi reserva', { intencion: 'reserva_cancelar' })).r).toBe(R.sinReservasCancelar)
+  })
+
+  it('un rechazo de la BD va sin frase del modelo (la repetía)', async () => {
+    const { sim, turno } = montar('Te cuento que ese día reservamos de 12 a 9:30 pm.')
+    await conNombre(sim)
+    const t = await turno('para 4 el sábado a las 11 de la noche', { intencion: 'reserva_nueva', personas: 4, fecha: SABADO, hora: '23:00' })
+    expect(t.r).not.toContain('Te cuento')
+    expect(t.r).toContain('21:30')
+  })
+
+  it('las reglas de reserva van en el contexto del modelo', async () => {
+    let contexto = ''
+    const llm = new FakeLLM((nombre, mensajes) => {
+      if (nombre === 'clasificacion') return clasificacionVacia({ intencion: 'reserva_nueva' })
+      contexto = mensajes.map((m) => m.texto).join('\n')
+      return { texto: '' }
+    })
+    const sim = new EntornoSim({ llm, redactores: 'agentes' })
+    sim.repo.ahora = () => AHORA
+    await conNombre(sim)
+    await sim.enviarTexto(TEL, '¿puedo reservar para dentro de 3 meses?')
+    await sim.esperar()
+    for (const r of REGLAS_RESERVA) expect(contexto).toContain(r)
+  })
+})
+
+describe('cancelar una reserva nombrada que no es suya (BUG-005/009)', () => {
+  it('"cancela la RES-001" sin ser suya → "no encontré esa reserva", y el borrador sigue', async () => {
+    const { sim, turno, conv } = montar('esto no debía salir')
+    await conNombre(sim)
+    sim.repo.reservas.push({ reserva_id: 'RES-001', telefono: '573000000999', fecha: SABADO, hora: '19:00', personas: 2, motivo: 'sin_ocasion', costo_motivo: 0, estado: 'confirmada' })
+    await turno('quiero reservar para 4 el sábado', { intencion: 'reserva_nueva', personas: 4, fecha: SABADO })
+    const t = await turno('cancela la reserva RES-001', { intencion: 'reserva_cancelar' })
+    expect(t.r).toBe(R.reservaNoEncontrada)
+    expect(t.r).not.toContain('19:00')
+    expect((await conv()).reserva).toMatchObject({ personas: 4 })
+    expect(sim.repo.reservas[0]!.estado).toBe('confirmada')
   })
 })
