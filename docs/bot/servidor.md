@@ -1,7 +1,10 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-10-02): en construcción — Fases 1–7 de 9 hechas (G1–G11 automáticos en verde; el proxy de envíos del dashboard listo, se enciende en el corte); sigue la Fase 8, el corte.** El bot en producción sigue siendo el
-> de n8n (`n8n-workflow.md` y compañía) hasta el corte de la Fase 8. Plan completo y fases:
+> **Estado (2026-10-05): el corte se hizo.** El servidor corre en el VPS de Hostinger (`/root/vera/server`,
+> `bot.plateo.cloud` por el Traefik de n8n; guía en `despliegue.md`), Meta le manda los mensajes del número
+> de pruebas (322 681 7466; aún no hay clientes reales), el trigger `notificar-estado-pedido` apunta aquí,
+> `FEEDBACK_ACTIVO=true` y los 7 workflows de n8n están **desactivados (no borrados)**. Falta: quitar el token
+> del dashboard (Vercel) y rotarlo, y las pruebas manuales (Reservas). `n8n-*.md` pasan a histórico. Plan completo y fases:
 > `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
 
 ## Por qué
@@ -438,4 +441,4 @@ Ver `server/.env.example`. Obligatorias: `WA_VERIFY_TOKEN`, `WA_APP_SECRET` y, c
   corte:** `DASHBOARD_ORIGENES` en el VPS, `VITE_WA_PROXY_URL` en Vercel, borrar
   `VITE_WA_ACCESS_TOKEN` de Vercel y **rotar** el token en Meta (Clavo); después se puede quitar
   el camino directo de `whatsapp.js`.
-- **Fase 8:** corte.
+- **Fase 8:** ✅ corte hecho el 2026-10-05 (ver arriba y `despliegue.md`). Pendiente: Vercel (`VITE_WA_PROXY_URL`, borrar `VITE_WA_ACCESS_TOKEN`, rotar el token en Meta), pruebas manuales, dump de Supabase.

@@ -14,6 +14,22 @@
 ```
 
 ---
+### 2026-10-05 — Bot Node, Fase 8: corte a producción (n8n desactivado)
+
+**Contexto:** desde el 29-sep el webhook de Meta apuntaba a un túnel de pruebas ya muerto, así que el
+bot no contestaba: n8n no recibía nada y el servidor Node no estaba desplegado.
+
+**Decisión:** el servidor corre en el VPS de Hostinger junto a n8n, publicado por **su Traefik**
+(`bot.plateo.cloud`, registro A al VPS, certificado `mytlschallenge`); el contenedor se une a la red
+`n8n_default`. Webhook de Meta → `/webhook/whatsapp`; trigger `notificar-estado-pedido` →
+`/hooks/estado-pedido`; `FEEDBACK_ACTIVO=true`; los 7 workflows de n8n **desactivados (no borrados)**.
+`n8n_chat_histories` se conserva: es el historial del bot nuevo. Aún no hay clientes reales: el
+número es el de pruebas de Plateo (322 681 7466). De paso, `MITADES_IGUALES` ahora le dice al
+modelo cómo corregirse (un fallo intermitente del ×5: el mismo `producto_id` en las dos mitades).
+
+**Impacto:** `server/docker-compose.yml`, `docs/bot/despliegue.md`, `server/src/herramientas/menu.ts`.
+Pendiente: Vercel (`VITE_WA_PROXY_URL`, borrar y rotar el token), pruebas manuales, dump de Supabase.
+
 ### 2026-10-02 — Bot Node, Fase 7: los envíos del dashboard pasan por el servidor (listo, se enciende en el corte)
 
 **Contexto:** el riesgo diferido de `VITE_WA_ACCESS_TOKEN` (el token de Meta viaja en el bundle).
