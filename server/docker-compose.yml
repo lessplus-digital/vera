@@ -1,6 +1,8 @@
 # En el VPS: copiar .env.example → .env, completar, y `docker compose up -d --build`.
-# El puerto solo escucha en localhost: el HTTPS lo pone el proxy del VPS
-# (el mismo que ya publica n8n), apuntando bot.plateo.cloud → 127.0.0.1:3000.
+# HTTPS: lo pone el Traefik que ya publica n8n (/docker/n8n). El bot se une a la red de ese
+# proyecto (`n8n_default`) y le dice a Traefik, por etiquetas, que atienda bot.plateo.cloud
+# con el mismo certificado automático (resolvedor `mytlschallenge`). Requiere el registro DNS
+# `bot` (tipo A) apuntando a la IP del VPS. Si la red no se llama n8n_default: `docker network ls`.
 services:
   bot:
     build: .
@@ -8,9 +10,23 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3000:3000"   # solo para probar desde el propio VPS (curl .../salud)
+    networks:
+      - n8n_default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      - traefik.http.routers.bot.rule=Host(`bot.plateo.cloud`)
+      - traefik.http.routers.bot.entrypoints=web,websecure
+      - traefik.http.routers.bot.tls=true
+      - traefik.http.routers.bot.tls.certresolver=mytlschallenge
+      - traefik.http.services.bot.loadbalancer.server.port=3000
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
+
+networks:
+  n8n_default:
+    external: true

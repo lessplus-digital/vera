@@ -102,6 +102,19 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
     }
   }
   /** null si todos los ids salieron de consultar_menu o del carrito; si no, el error para el modelo. */
+  /**
+   * Las dos mitades con el mismo producto_id (2026-10-05: el modelo buscó "Hawaiana Tradicional" y
+   * "Premium Hawaiana" y pasó PROD-010 en las dos; la RPC rechazó, pero el bot se lo explicó al
+   * cliente en vez de corregir). El rechazo le dice qué hacer, no solo qué pasó.
+   */
+  const mitadesIguales = (a: string, b: string): RespuestaRPC | null =>
+    a !== b
+      ? null
+      : {
+          ok: false,
+          error: 'MITADES_IGUALES',
+          message: `producto_a y producto_b son el mismo (${a}). Es un error tuyo, no del cliente: busca con consultar_menu cada sabor por separado (solo el nombre, p. ej. "Premium Hawaiana") y usa el producto_id propio de cada uno. Solo si el cliente de verdad pidió el mismo sabor en las dos mitades, explícaselo.`,
+        }
   const sinConsultar = (...ids: string[]): RespuestaRPC | null => {
     const faltan = ids.filter((id) => !d.rastro.ids.includes(id))
     if (!faltan.length) return null
@@ -154,7 +167,7 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
       esquema: z.object({ producto_a: z.string(), producto_b: z.string(), tamano: Tamano, cantidad: Cantidad, notas: Notas }),
       ejecutar: (a: { producto_a: string; producto_b: string; tamano: string; cantidad: number; notas: string | null }) =>
         anotar('carrito_agregar_mitad', a, async () => {
-          const rechazo = sinConsultar(a.producto_a, a.producto_b) ?? masaNoPedida(true, a.producto_a, a.producto_b)
+          const rechazo = mitadesIguales(a.producto_a, a.producto_b) ?? sinConsultar(a.producto_a, a.producto_b) ?? masaNoPedida(true, a.producto_a, a.producto_b)
           if (rechazo) return rechazo
           const r = siCambio(await d.repo.carritoAgregarMitad(tel, a))
           montosDe((r.agregado as Record<string, unknown>) ?? {})
@@ -167,7 +180,7 @@ export function herramientasMenu(d: { repo: Repo; turno: Turno; rastro: RastroMe
       esquema: z.object({ producto_a: z.string(), producto_b: z.string(), tamano: Tamano }),
       ejecutar: (a: { producto_a: string; producto_b: string; tamano: string }) =>
         anotar('cotizar_mitad_y_mitad', a, async () => {
-          const rechazo = sinConsultar(a.producto_a, a.producto_b) ?? masaNoPedida(true, a.producto_a, a.producto_b)
+          const rechazo = mitadesIguales(a.producto_a, a.producto_b) ?? sinConsultar(a.producto_a, a.producto_b) ?? masaNoPedida(true, a.producto_a, a.producto_b)
           if (rechazo) return rechazo
           const r = await d.repo.cotizarMitad(a.producto_a, a.producto_b, a.tamano)
           montosDe(r)

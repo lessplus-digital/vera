@@ -261,3 +261,18 @@ describe('la masa que nombró el cliente no se cambia', () => {
     expect(sim.repo.carritos.get(TEL)?.items ?? []).toHaveLength(0)
   })
 })
+
+describe('mitad y mitad con el mismo producto en las dos mitades', () => {
+  it('→ MITADES_IGUALES con instrucción de corregir, sin tocar el carrito (2026-10-05)', async () => {
+    const { sim } = montar(pedir, [
+      () => llamar('consultar_menu', { termino: 'hawaiana' }),
+      () => llamar('agregar_mitad_y_mitad', { producto_a: 'PROD-010', producto_b: 'PROD-010', tamano: 'grande', cantidad: 1, notas: null }),
+      () => final('Listo 🍕'),
+    ])
+    const { registro } = await turno(sim, 'una mitad hawaiana mitad premium hawaiana, grande')
+    expect(resultados(registro, 'carrito_agregar_mitad')).toMatchObject([
+      { ok: false, error: 'MITADES_IGUALES', message: expect.stringContaining('busca con consultar_menu cada sabor') },
+    ])
+    expect(sim.repo.carritos.get(TEL)?.items ?? []).toHaveLength(0)
+  })
+})
