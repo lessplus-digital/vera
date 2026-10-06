@@ -74,6 +74,10 @@ que esta prueba **es** el corte (paso 6). Por eso se hace en horario tranquilo y
 ### 6. El corte
 1. Meta → WhatsApp → Configuración → Webhook: URL `https://bot.plateo.cloud/webhook/whatsapp` y
    el `WA_VERIFY_TOKEN`; "Verificar y guardar". Suscribir solo el campo `messages`.
+   **Trampa vista el 2026-10-05:** el primer "hola" llegó, pero los siguientes no: Meta no tenía
+   suscrito el campo `messages` hasta que se volvió a guardar la configuración ("Se suscribió
+   automáticamente a messages v26.0"). Si el bot calla tras el primer mensaje, `wa_eventos` sin filas
+   nuevas = Meta no entrega; revisar esa suscripción.
 2. Escribir al bot desde un teléfono: debe contestar, y en Supabase debe aparecer la fila en
    `bot_turnos` y `wa_eventos`.
 3. Apuntar el aviso de estado al servidor (SQL de abajo) y cambiar un pedido de estado en el
