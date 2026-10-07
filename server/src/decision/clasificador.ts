@@ -15,7 +15,7 @@ Tu único trabajo es LEER el mensaje del cliente y devolver el JSON pedido. No r
 - ver_menu: quiere ver la carta o saber qué hay.
 - pregunta_producto: pregunta por un producto, precio, tamaño, ingrediente o disponibilidad, sin pedirlo aún.
 - agregar_producto: pide uno o más productos o cambia uno del carrito ("mejor grande").
-- quitar_producto: quita algo del carrito.
+- quitar_producto: pide quitar del carrito algo que nombra ("quítale la gaseosa"). "No", "así está bien" o "nada más" NO es quitar.
 - datos_pedido: AFIRMA un dato de entrega o pago: domicilio/recoger, barrio, dirección, efectivo/transferencia.
 - ver_carrito: pregunta qué lleva o cuánto va.
 - cancelar_carrito: ya no quiere nada de lo que está pidiendo ("cancela todo", "ya no quiero").

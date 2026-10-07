@@ -88,14 +88,23 @@ const distinto = (nuevo: string | null | undefined, guardado: string | null | un
  * repetir el pago o el barrio del historial en un "sí, confírmalo" (visto con
  * gpt-5.1 el 2026-09-30: el pedido no se creaba).
  */
-const cambiaElPedido = (c: Clasificacion, e: EstadoPedido | null) =>
+const cambiaElPedido = (c: Clasificacion, e: EstadoPedido | null, texto: string) =>
   c.productos.length > 0 ||
   c.intencion === 'quitar_producto' ||
-  c.intenciones_extra.includes('quitar_producto') ||
+  (c.intenciones_extra.includes('quitar_producto') && pideQuitar(texto)) ||
   distinto(c.tipo_pedido, e?.tipo_pedido) ||
   distinto(c.barrio, e?.barrio) ||
   distinto(c.direccion, e?.direccion_entrega) ||
   distinto(c.metodo_pago, e?.metodo_pago)
+
+/**
+ * Un `quitar_producto` que llega solo como intención EXTRA cuenta si el texto
+ * pide quitar algo. "No así está bien" a "¿algo más?" llegó con
+ * intenciones_extra: ['quitar_producto'], se tomó como cambio y el pedido
+ * quedó en Menú sin avanzar (2026-10-06, 573184821317).
+ */
+const pideQuitar = (texto: string) =>
+  /\b(quit|saca|sacar|sacal|elimin|borr|ya no|no quiero|menos|cambi)/.test(norm(texto))
 
 type DatoPreguntable = Exclude<Faltante, 'carrito' | 'cobertura'>
 
@@ -215,7 +224,7 @@ function decidirBase(c: Clasificacion, ctx: ContextoDecision): Decision {
   // 2 · Respuesta a la última pregunta del bot. Va antes que la intención: un
   // "dale" no significa nada sin saber qué se preguntó.
   if (ultima && c.confirma !== 'na') {
-    const r = responderPregunta(ultima, c, estado, ctx.conversacion.reserva ?? null)
+    const r = responderPregunta(ultima, c, estado, ctx.conversacion.reserva ?? null, ctx.texto)
     if (r) return r
   }
 
@@ -312,19 +321,25 @@ function decidirBase(c: Clasificacion, ctx: ContextoDecision): Decision {
   return conDatos({ handler: carrito ? 'pedidos' : 'soporte', regla: 'sin_hilo' })
 }
 
-function responderPregunta(u: UltimaPregunta, c: Clasificacion, estado: EstadoPedido | null, reserva: BorradorReserva | null): Decision | null {
+function responderPregunta(
+  u: UltimaPregunta,
+  c: Clasificacion,
+  estado: EstadoPedido | null,
+  reserva: BorradorReserva | null,
+  texto: string,
+): Decision | null {
   const si = c.confirma === 'si'
   switch (u.tipo) {
     case 'confirmar_pedido': {
       if (!si) {
         // "Ah no, mejor a Copacabana": es un cambio, no un "no" a secas (visto con gpt-5.1).
-        if (cambiaElPedido(c, estado)) return null
+        if (cambiaElPedido(c, estado, texto)) return null
         return hayCarrito(estado)
           ? { handler: 'pedidos', acciones: [], regla: 'resumen:no', nota: 'no confirmó: preguntar qué quiere cambiar' }
           : null
       }
       // "Sí, pero sin cebolla": primero el cambio; el resumen se vuelve a mostrar.
-      if (cambiaElPedido(c, estado)) return null
+      if (cambiaElPedido(c, estado, texto)) return null
       // El pedido se crea SOLO si la BD dice que el cliente está viendo el resumen
       // y no falta nada. Si no, se vuelve a mostrar (la RPC también lo exige: SIN_RESUMEN).
       if (estado?.paso_flujo === 'resumen' && estado.faltantes.length === 0 && estado.n_items > 0) {
@@ -362,7 +377,7 @@ function responderPregunta(u: UltimaPregunta, c: Clasificacion, estado: EstadoPe
       // producto a "¿algo más?" es pedir más aunque el clasificador diga "no"
       // (visto con gpt-5.1 el 2026-09-30).
       // Lo mismo con cualquier cosa del menú ("¿y la pizza m&m?"): va a Menú, no a cerrar.
-      if (si || cambiaElPedido(c, estado) || HANDLER_DE[c.intencion] === 'menu') return null
+      if (si || cambiaElPedido(c, estado, texto) || HANDLER_DE[c.intencion] === 'menu') return null
       return hayCarrito(estado)
         ? { handler: 'pedidos', acciones: [], regla: 'algo_mas:no', nota: 'seguir con lo que falte del pedido' }
         : null

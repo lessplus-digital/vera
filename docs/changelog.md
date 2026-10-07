@@ -14,6 +14,22 @@
 ```
 
 ---
+### 2026-10-07 — Bot Node: "No así está bien" a "¿algo más?" ya avanza el pedido
+
+**Contexto:** en una prueba real (573184821317, 06-oct) el cliente contestó "No así esta bien" al
+carrito y el bot dijo "te dejo así el pedido" sin preguntar domicilio/recoger ni pago: el pedido
+murió ahí. El clasificador leyó bien el `confirma:no` pero añadió `quitar_producto` en
+`intenciones_extra`; `cambiaElPedido` lo tomó como un cambio, la regla `algo_mas:no` no aplicó y el
+turno cayó en `sigue_el_hilo` → Menú.
+
+**Decisión:** un `quitar_producto` que llega solo como intención extra cuenta como cambio únicamente
+si el texto pide quitar algo (`pideQuitar`: quitar, sacar, eliminar, borrar, "ya no", …). Vale también
+para el "no" al resumen. El prompt del clasificador aclara que "no" / "así está bien" no es quitar.
+
+**Impacto:** `server/src/decision/politica.ts`, `server/src/decision/clasificador.ts`, 3 casos en
+`politica.test.ts`, escenario `f8-algo-mas-asi-esta-bien.yaml`. Requiere redesplegar el contenedor.
+
+---
 ### 2026-10-05 — Bot Node, Fase 8: corte a producción (n8n desactivado)
 
 **Contexto:** desde el 29-sep el webhook de Meta apuntaba a un túnel de pruebas ya muerto, así que el

@@ -166,6 +166,9 @@ y cierra con "¿Quieres agregar algo más?" (pregunta `algo_mas`). La masa se le
 porque la línea del carrito solo guarda el tamaño y hay hawaiana tradicional y estofada.
 Lecciones de las primeras corridas con gpt-5.1, ya convertidas en reglas y pruebas: "y una coca
 cola" a "¿algo más?" venía como `confirma:no` (la política ahora deja que gane el producto);
+al revés, "No así está bien" llegó con una intención extra `quitar_producto` inventada y el pedido
+se quedó en Menú sin pedir los datos (2026-10-06): un `quitar_producto` que viene solo como extra
+cuenta como cambio únicamente si el texto pide quitar algo (`pideQuitar` en `politica.ts`);
 un "entonces una mitad y mitad" llegó a **borrar** la hawaiana del carrito (regla: nunca quitar
 sin pedido explícito); "no me aparece en nuestro sistema" pasaba la guardia (ahora bloquea
 "sistema"); precios sin "$" ("51.500") ahora también los revisa la guardia.

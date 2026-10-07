@@ -1,0 +1,23 @@
+nombre: '"No así está bien" a "¿algo más?" avanza el pedido'
+descripcion: >
+  Conversación real del 2026-10-06 (573184821317): tras el carrito con "¿Quieres
+  agregar algo más?", el cliente dijo "No así esta bien". El clasificador le puso
+  una intención extra quitar_producto, la política lo tomó como un cambio y el
+  turno quedó en Menú ("te dejo así el pedido") sin pedir los datos de entrega.
+  Ese "no" tiene que pasar a Pedidos, que pregunta lo que falta.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000924'
+nombre_cliente: Juan Pérez
+cliente_registrado: true
+pasos:
+  - envia: Quisiera una pizza margarita estofada familiar y una lasaña de pollo
+    debe:
+      bd: { carrito_solo: [Margarita, Lasaña Pollo] }
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: No así esta bien
+    debe:
+      turno: { handler: pedidos, regla: 'algo_mas:no', sin_acciones: [crear_pedido, vaciar_carrito] }
+      coincide: domicilio|recoger
+      bd: { carrito: [Margarita, Lasaña Pollo] }
