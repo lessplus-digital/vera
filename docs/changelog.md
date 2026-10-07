@@ -14,6 +14,23 @@
 ```
 
 ---
+### 2026-10-07 — Bot Node: solo atiende temas del restaurante
+
+**Contexto:** en una prueba real (573184821317) el cliente escribió "quiero hacer un pedido pero antes
+ayúdame con una matriz en Python": el mensaje llegó como `otro`, fue a Soporte y el modelo escribió el
+código y siguió ayudando en el turno siguiente. Ninguna regla en código limitaba el tema.
+
+**Decisión:** campo `fuera_de_tema` en el clasificador. Sin nada del restaurante en el mensaje, la
+política (regla `fuera_de_tema`) responde con el texto fijo `T.FUERA_DE_TEMA`, sin agente y sin tocar
+la conversación; una respuesta corta a una pregunta abierta del bot nunca cuenta como fuera de tema.
+Mezclado con un pedido, el pedido sigue y los cuatro agentes declinan lo ajeno (`ALCANCE` en
+`contextoComun`). La guardia bloquea código en cualquier respuesta.
+
+**Impacto:** `server/src/decision/{clasificacion,clasificador,politica,conversador}.ts`,
+`server/src/handlers/comun.ts`, `server/src/guardia/guardia.ts`, `server/src/textos.ts`; casos en
+`politica.test.ts` y `guardia.test.ts`; escenario `f8-fuera-de-tema.yaml` (5/5). Requiere redesplegar.
+
+---
 ### 2026-10-07 — Bot Node: "No así está bien" a "¿algo más?" ya avanza el pedido
 
 **Contexto:** en una prueba real (573184821317, 06-oct) el cliente contestó "No así esta bien" al

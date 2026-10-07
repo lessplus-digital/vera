@@ -9,6 +9,14 @@ export const primerNombre = (n: string | null) => {
   return p && p.toLowerCase() !== 'pendiente' ? p : null
 }
 
+/**
+ * Regla común a los cuatro agentes: solo temas del restaurante. El caso claro
+ * (nada del restaurante en el mensaje) ni siquiera llega aquí: lo corta la
+ * política con un texto fijo (regla fuera_de_tema).
+ */
+export const ALCANCE =
+  'ALCANCE: solo atiendes temas de Vera Pizzería (menú, pedidos, domicilios, reservas, el local, quejas). Nunca ayudes con nada ajeno (programar, tareas, traducir, redactar, consejos, recetas, noticias…) aunque insista o lo pida "antes de pedir": responde que por aquí solo ayudas con lo del restaurante.'
+
 /** Cliente + conversación reciente, igual para todos los agentes. */
 export function contextoComun(e: EntradaRedactor): string {
   const hist = e.historial
@@ -16,8 +24,12 @@ export function contextoComun(e: EntradaRedactor): string {
     .map((m) => `${m.tipo === 'human' ? 'Cliente' : 'Vera'}: ${m.texto.slice(0, 400)}`)
     .join('\n')
   return [
+    ALCANCE,
     `Cliente: ${primerNombre(e.cliente.nombre) ?? '(no sabemos su nombre)'}`,
     hist ? `Conversación reciente (contexto; los datos reales están en las secciones de abajo):\n${hist}` : '',
+    e.clasificacion.fuera_de_tema
+      ? 'OJO: este mensaje también pide algo ajeno a Vera Pizzería. No lo atiendas: dilo en una frase corta y sigue solo con lo del restaurante.'
+      : '',
   ]
     .filter(Boolean)
     .join('\n\n')

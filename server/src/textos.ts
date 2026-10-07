@@ -55,6 +55,11 @@ export function reservaCancelada(r: { fecha: string; hora: string }): string {
   return `Listo, cancelé tu reserva del ${fechaLegible(r.fecha)} a las ${horaLegible(r.hora)} ✅\n\nSi quieres reservar otro día, me dices 😊`
 }
 
+// ── Fuera de tema ──────────────────────────────────────────────────────────
+// Nuevo (2026-10-07): lo que no es del restaurante no lo contesta el modelo.
+export const FUERA_DE_TEMA =
+  'Por aquí solo te puedo ayudar con lo de Vera Pizzería 🍕: pedidos, el menú, reservas e información del local. ¿En qué te ayudo con eso?'
+
 // ── Paso a humano ──────────────────────────────────────────────────────────
 export const HANDOFF = 'Te conecto con nuestro equipo. Un momento por favor 🙋'
 // Nuevo: crear_orden_desde_carrito falló por algo que el cliente no puede arreglar

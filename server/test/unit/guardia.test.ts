@@ -175,6 +175,24 @@ describe('G10.2: no se niega un servicio que el bot sí presta', () => {
     ]) expect(reglas(t, { montos: [] }), t).toContain('niega_servicio')
   })
 
+  it('código en la respuesta: nunca sale (2026-10-07, matriz en Python)', () => {
+    for (const t of [
+      'Por ejemplo:\n```python\nmatriz = [[0 for j in range(4)] for i in range(3)]\n```',
+      'matriz = [[0] * 4 for _ in range(3)]\nprint(matriz)',
+      'def llenar(m):\n    return m',
+      'import numpy as np',
+      'console.log(matriz)',
+    ]) expect(reglas(t, { montos: [] }), t).toContain('fuera_de_tema')
+  })
+
+  it('texto normal de la pizzería no se toma como código', () => {
+    for (const t of [
+      'Por aquí solo te puedo ayudar con lo de Vera Pizzería 🍕. ¿Qué te gustaría pedir?',
+      'Importante: la pizza familiar sale de 12 porciones (print de la carta en el link).',
+      'Te puedo ayudar con pedidos, el menú y reservas. Desde el menú eliges lo que quieras 😊',
+    ]) expect(reglas(t, { montos: [] }), t).not.toContain('fuera_de_tema')
+  })
+
   it('hablar de la reserva con normalidad pasa', () => {
     expect(reglas('¡Claro! Y apenas me digas, te ayudo con la reserva 😊', { montos: [] })).toEqual([])
     expect(reglas('Tu reserva quedó para el sábado. No hay problema si llegas 10 minutos tarde.', { montos: [] })).toEqual([])

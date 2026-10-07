@@ -34,6 +34,7 @@ export type Violacion =
   | { regla: 'producto_inventado'; detalle: string }
   | { regla: 'niega_sin_consultar'; detalle: string }
   | { regla: 'niega_servicio'; detalle: string }
+  | { regla: 'fuera_de_tema'; detalle: string }
 
 export const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-CO').replace(/,/g, '.')}`
 
@@ -91,6 +92,10 @@ const NIEGA =
 const NIEGA_SERVICIO =
   /(?:no|solo)\s+(?:manejo|manejamos|hago|hacemos|tomo|tomamos|puedo|podemos|atiendo|atendemos)\b[^.!?\n]{0,40}\breserv|comun[ií]cate[^.!?\n]{0,50}\b(?:l[ií]nea|canal|tel[eé]fono|n[uú]mero|reserv)|(?:l[ií]nea|canal)\s+de\s+reservas/iu
 
+// Un mensaje de la pizzería nunca trae código. Red de seguridad de la regla
+// fuera_de_tema (2026-10-07: Soporte mandó una matriz en Python).
+const CODIGO = /```|\bdef\s+\w+\s*\(|\bprint\s*\(|\bconsole\.log\b|\brange\s*\(|^\s*(?:import|from)\s+\w+\s|\bfunction\s+\w+\s*\(|\bSELECT\b[^\n]*\bFROM\b|<\/?(?:div|html|script)\b/im
+
 const citaConocido = (texto: string, ids: string[]) =>
   (texto.match(PEDIDO_ID) ?? []).some((id) => ids.some((k) => k.toUpperCase() === id.toUpperCase()))
 
@@ -136,6 +141,9 @@ export function revisar(texto: string, h: Hechos): Violacion[] {
 
   const ns = texto.match(NIEGA_SERVICIO)
   if (ns) v.push({ regla: 'niega_servicio', detalle: `dice "${ns[0]}": por este mismo chat se hacen pedidos y reservas; nunca lo mandes a otra línea` })
+
+  const cod = texto.match(CODIGO)
+  if (cod) v.push({ regla: 'fuera_de_tema', detalle: `trae código ("${cod[0].trim()}"): solo atiendes temas de Vera Pizzería; no ayudes con nada ajeno` })
 
   const t = normalizar(texto)
   const permitido = normalizar([...(h.productos ?? []), h.textoCliente ?? ''].join('\n'))

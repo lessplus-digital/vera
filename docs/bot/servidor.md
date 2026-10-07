@@ -106,6 +106,13 @@ corrieron (BUG-063), con una diferencia de fondo: el orquestador no sabía qué 
 agente; aquí `ultima_pregunta` está en la BD, así que un "dale" se interpreta sin adivinar.
 
 1. `pide_humano` → handoff en código, gane a todo.
+   1b. **Fuera de tema** (2026-10-07): si el clasificador marca `fuera_de_tema` (programar, tareas,
+   traducir, consejos…) y el mensaje no trae ningún producto ni dato del pedido o la reserva, sale el
+   texto fijo `T.FUERA_DE_TEMA` **sin pasar por ningún agente**, y la conversación (handler y pregunta
+   abierta) queda como estaba. Excepción: una respuesta corta a una pregunta del bot ("no, así está
+   bien") sigue su camino aunque el clasificador arrastre el tema ajeno del historial. Si viene
+   mezclado con un pedido, el pedido se atiende y el agente declina lo ajeno en una frase (línea
+   `ALCANCE` de `handlers/comun.ts`, que va en el contexto de los cuatro agentes).
 2. Respuesta a la última pregunta: **`crear_pedido` solo si** la pregunta fue el resumen, el
    cliente dijo sí sin cambiar nada, y la BD dice `paso_flujo=resumen` con `faltantes=[]`
    (la RPC lo vuelve a exigir: `SIN_RESUMEN`). "Dale" a "¿te agrego una hawaiana?" = Menú agrega
@@ -144,6 +151,8 @@ mencionar internos (sistema, base de datos, herramientas, n8n…). Desde la Fase
 en la carta — Stella, Heineken, Postobón, cuatro quesos… — solo pasan si una herramienta los
 devolvió en el turno o si el cliente los nombró) y **negar sin buscar** (`niega_sin_consultar`:
 Menú no puede decir "no lo tenemos / no me aparece" sin haber llamado `consultar_menu`).
+Desde 2026-10-07, **código en la respuesta** (`fuera_de_tema`: bloques ```, `print(`, `def f(`,
+`import x`…): red de seguridad por si un agente se pone a ayudar con algo ajeno al restaurante.
 
 **LLM:** interfaz `LLM` (`llm/llm.ts`) con `LLMOpenAI` (Structured Outputs, `OPENAI_MODEL`,
 por defecto `gpt-5.1`) y `FakeLLM` para pruebas. Si el clasificador falla, el turno sigue con

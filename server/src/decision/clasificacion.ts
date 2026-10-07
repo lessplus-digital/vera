@@ -58,6 +58,8 @@ export const Clasificacion = z.object({
   pide_humano: z.boolean(),
   /** 0 = tranquilo, 1 = molesto, 2 = muy molesto / insultos / amenaza con irse. */
   frustracion: z.number().int().min(0).max(2),
+  /** Pide algo ajeno al restaurante (programar, tareas, traducir, consejos…), aunque lo mezcle con un pedido. */
+  fuera_de_tema: z.boolean(),
 })
 export type Clasificacion = z.infer<typeof Clasificacion>
 
@@ -77,5 +79,6 @@ export const clasificacionVacia = (c: Partial<Clasificacion> = {}): Clasificacio
   nombre_cliente: null,
   pide_humano: false,
   frustracion: 0,
+  fuera_de_tema: false,
   ...c,
 })

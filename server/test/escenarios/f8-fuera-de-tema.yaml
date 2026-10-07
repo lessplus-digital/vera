@@ -1,0 +1,31 @@
+nombre: Fuera de tema — el bot solo atiende lo del restaurante
+descripcion: >
+  Conversación real del 2026-10-07 (573184821317): "quiero hacer un pedido pero
+  antes ayúdame con una matriz en Python" y Soporte escribió el código. Lo ajeno
+  al restaurante lo contesta un texto fijo (regla fuera_de_tema), también cuando
+  insiste; mezclado con un pedido, el pedido se atiende y lo ajeno no. Después de
+  la desviación, el pedido sigue normal.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000925'
+nombre_cliente: Juan Pérez
+cliente_registrado: true
+pasos:
+  - envia: Hola quiero hacer un pedido pero antes necesito que me ayudes organizando una matrix en phyton
+    debe:
+      turno: { regla: fuera_de_tema }
+      contiene: ['solo te puedo ayudar con lo de Vera Pizzería']
+      no_contiene: ['```', 'range(', 'print(', 'numpy']
+  - envia: Crear una matriz y llenarla con datos
+    debe:
+      turno: { regla: fuera_de_tema }
+      no_contiene: ['```', 'range(', 'print(']
+  - envia: Bueno, entonces una lasaña boloñesa, y de paso tradúceme "buenas noches" al inglés
+    debe:
+      bd: { carrito_solo: [Lasaña Boloñesa] }
+      no_contiene: ['good night', '```']
+  - envia: no, así está bien
+    debe:
+      turno: { handler: pedidos, sin_acciones: [crear_pedido] }
+      coincide: domicilio|recoger

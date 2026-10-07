@@ -106,6 +106,10 @@ const cambiaElPedido = (c: Clasificacion, e: EstadoPedido | null, texto: string)
 const pideQuitar = (texto: string) =>
   /\b(quit|saca|sacar|sacal|elimin|borr|ya no|no quiero|menos|cambi)/.test(norm(texto))
 
+/** El mensaje trae algo que el restaurante puede atender: un producto o un dato del pedido o la reserva. */
+const traeAlgoDelRestaurante = (c: Clasificacion) =>
+  c.productos.length > 0 || !!(c.tipo_pedido || c.barrio || c.direccion || c.metodo_pago || c.fecha || c.hora || c.personas)
+
 type DatoPreguntable = Exclude<Faltante, 'carrito' | 'cobertura'>
 
 /**
@@ -219,6 +223,18 @@ function decidirBase(c: Clasificacion, ctx: ContextoDecision): Decision {
   // 1 · Pedir una persona gana a todo.
   if (c.pide_humano) {
     return { handler: 'humano', acciones: [{ tipo: 'pasar_a_humano', motivo: 'lo_pidio' }], regla: 'pide_humano' }
+  }
+
+  // 1b · Algo ajeno al restaurante (programar, tareas, traducir…) sin nada del
+  // restaurante en el mensaje: lo contesta un texto fijo, sin modelo, y la
+  // conversación queda como estaba. Con el modelo, Soporte se puso a escribir
+  // Python (2026-10-07, 573184821317). Si trae un pedido, sigue su camino y el
+  // agente atiende solo esa parte (ALCANCE en handlers/comun.ts).
+  // Un "no, así está bien" a una pregunta del bot es la respuesta, aunque el
+  // clasificador arrastre el tema ajeno del historial (visto en el simulador).
+  const respondeAlBot = !!ultima && c.confirma !== 'na' && c.intencion === 'respuesta_corta'
+  if (c.fuera_de_tema && !traeAlgoDelRestaurante(c) && !respondeAlBot) {
+    return { handler: 'soporte', acciones: [], regla: 'fuera_de_tema' }
   }
 
   // 2 · Respuesta a la última pregunta del bot. Va antes que la intención: un

@@ -151,6 +151,10 @@ export function crearConversadorDecision(d: DepsConversador): Conversador {
       if (cuenta) return [S.cuenta(cuenta)]
     }
 
+    // Lo ajeno al restaurante no llega a ningún agente. La conversación no se
+    // toca: la pregunta que estaba abierta (p. ej. "¿domicilio o recoger?") sigue.
+    if (decision.regla === 'fuera_de_tema') return [T.FUERA_DE_TEMA]
+
     const handler = decision.handler as Handler
     const redactor = d.redactores?.[handler] ?? redactorProvisional
     const estadoDespues = decision.acciones.length ? await d.repo.estadoPedido(tel) : estado

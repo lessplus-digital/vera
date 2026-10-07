@@ -44,6 +44,46 @@ type Caso = {
 }
 
 const casos: Caso[] = [
+  // ── Fuera de tema (2026-10-07: Soporte escribió Python) ──────────────────
+  {
+    nombre: '"quiero pedir pero antes ayúdame con una matriz en Python" → texto fijo, ningún agente',
+    c: { intencion: 'otro', fuera_de_tema: true },
+    ctx: ctx('Hola quiero hacer un pedido pero antes necesito que me ayudes organizando una matrix en phyton'),
+    handler: 'soporte',
+    acciones: [],
+    regla: 'fuera_de_tema',
+  },
+  {
+    nombre: 'fuera de tema gana a la pregunta abierta y a seguir el hilo (no toca el carrito)',
+    c: { intencion: 'otro', confirma: 'si', fuera_de_tema: true },
+    ctx: ctx('sí, crea la matriz y llénala con datos', { estado: enResumen, ultima: { tipo: 'confirmar_pedido' }, handler: 'soporte' }),
+    handler: 'soporte',
+    acciones: [],
+    regla: 'fuera_de_tema',
+  },
+  {
+    nombre: '"no, así está bien" a "¿algo más?" con fuera_de_tema arrastrado del historial → Pedidos sigue',
+    c: { intencion: 'respuesta_corta', confirma: 'no', fuera_de_tema: true },
+    ctx: ctx('no, así está bien', { estado: carrito(), ultima: { tipo: 'algo_mas' }, handler: 'menu' }),
+    handler: 'pedidos',
+    acciones: [],
+    regla: 'algo_mas:no',
+  },
+  {
+    nombre: 'fuera de tema CON un producto → Menú atiende el pedido (el agente ignora lo ajeno)',
+    c: { intencion: 'agregar_producto', fuera_de_tema: true, productos: [producto('hawaiana')] },
+    ctx: ctx('una hawaiana y de paso tradúceme esto al inglés'),
+    handler: 'menu',
+    acciones: [],
+  },
+  {
+    nombre: 'fuera de tema CON un dato del pedido y carrito → Pedidos guarda el dato',
+    c: { intencion: 'datos_pedido', fuera_de_tema: true, metodo_pago: 'Efectivo' },
+    ctx: ctx('en efectivo, y dime un chiste', { estado: carrito() }),
+    handler: 'pedidos',
+    acciones: [{ tipo: 'guardar_datos', datos: { metodo_pago: 'Efectivo' } }],
+  },
+
   // ── Pedir una persona ────────────────────────────────────────────────────
   {
     nombre: 'pide una persona → handoff en código, aunque esté a mitad de pedido',

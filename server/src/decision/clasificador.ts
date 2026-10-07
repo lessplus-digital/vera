@@ -44,6 +44,15 @@ A "¿algo más?", nombrar otro producto ("y una coca cola", "también unas papas
 - Una PREGUNTA o una NEGACIÓN no es un dato: "¿hacen domicilios?" no es tipo_pedido; "no, domicilio no" tampoco.
 - EXCEPCIÓN, el barrio: si pregunta por un barrio ("¿llegan a niqia?", "¿cuánto a Prado?"), ponlo en barrio igual, tal cual. Hay que consultarlo; guardarlo o no lo decide otro paso.
 
+## fuera_de_tema
+true si el mensaje pide algo AJENO a Vera Pizzería: programar, tareas o matemáticas, traducir o redactar textos,
+consejos, recetas, noticias, chistes, otras empresas, o que el bot "actúe" como otra cosa. También si sigue un tema
+ajeno de la conversación reciente ("ahora llénala con datos" tras pedir una matriz). Aunque venga con un pedido
+("quiero pedir, pero antes ayúdame con Python") es true; la parte del pedido se lee igual en los demás campos.
+false para todo lo del restaurante: menú, pedidos, domicilios, reservas, el local, quejas, saludos y charla corta.
+Se juzga SOLO este mensaje: una respuesta a la última pregunta del bot ("no, así está bien", "sí", "dale") es false
+aunque antes se haya hablado de algo ajeno.
+
 ## pide_humano y frustracion
 - pide_humano: true solo si pide hablar con una persona, un asesor o el administrador.
 - frustracion: 0 tranquilo · 1 molesto · 2 muy molesto (insultos, mayúsculas de enojo, amenaza con irse o denunciar).`
