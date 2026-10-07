@@ -60,6 +60,24 @@ export const REGLAS_RESERVA = [
   'Lunes a viernes de 12:00 a 20:30; sábados y domingos de 12:00 a 21:30 (hora de llegada).',
 ]
 
+/**
+ * "¿Puedo reservar para dentro de 3 meses?", "¿cuántas personas máximo?", "¿hasta qué
+ * hora?": la regla la dice el código, tal cual REGLAS_RESERVA. Con el modelo, la
+ * pregunta se perdía cuando el mensaje también soltaba la reserva o se leía como
+ * "consultar mis reservas" (G9, 2026-10-07). Solo si el mensaje PREGUNTA (lleva "?").
+ */
+const PREGUNTAS_REGLA: { re: RegExp; regla: number }[] = [
+  { re: /\b(anticipaci[oó]n|con cu[aá]nto tiempo|dentro de|mes(es)?|(?<!fin de )semanas?)\b/i, regla: 1 }, // "fin de semana" es un día, no anticipación
+  { re: /\b(m[aá]ximo|cu[aá]ntas)\s+personas|\bgrupos?\s+grandes?\b/i, regla: 0 },
+  { re: /\bhasta qu[eé] hora|\bhorarios? (de|para) reserv/i, regla: 3 },
+]
+
+export function reglasPreguntadas(texto: string): string | null {
+  if (!texto.includes('?')) return null
+  const reglas = PREGUNTAS_REGLA.filter((p) => p.re.test(texto)).map((p) => REGLAS_RESERVA[p.regla]!)
+  return reglas.length ? reglas.join('\n') : null
+}
+
 export function preguntaMotivo(motivos: MotivoReserva[]): string {
   const ocasiones = motivos.filter((m) => m.clave !== 'sin_ocasion').map((m) => m.nombre.toLowerCase())
   const lista = ocasiones.length > 1 ? `${ocasiones.slice(0, -1).join(', ')} y ${ocasiones.at(-1)}` : (ocasiones[0] ?? '')
@@ -124,8 +142,16 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
       return cierra(lista.length ? `${R.reservaNoEncontrada}\n\nTienes estas reservas:\n${lista.map(lineaReserva).join('\n')}` : R.reservaNoEncontrada)
     }
     // "Mejor olvídalo" con una reserva a medio armar y ninguna creada: es soltar el borrador.
+    // Si en el mismo mensaje pregunta algo ("otra cosa, ¿puedo reservar para dentro de 3
+    // meses?"), el modelo lo contesta con REGLAS_RESERVA encima del aviso: con el texto fijo
+    // solo, la pregunta se perdía (G9, 2026-10-07).
     if (!lista.length && e.conversacion.reserva && !e.efectos.errorReserva) {
       plan.reserva = null
+      if (!e.texto.includes('?')) return cierra(R.borradorDescartado)
+      const reglas = reglasPreguntadas(e.texto)
+      if (reglas) return cierra(`${R.borradorDescartado}\n\n${reglas}`)
+      plan.fijo = false
+      plan.hechos.push('Soltó la reserva que estaba armando (ya va debajo). Además hizo una pregunta: respóndela en una frase con REGLAS DE RESERVA u OCASIONES.')
       return cierra(R.borradorDescartado)
     }
     if (!lista.length) return cierra(e.efectos.errorReserva ? R.sinReservas : R.sinReservasCancelar)
@@ -138,6 +164,9 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
   if (c.intencion === 'reserva_consultar') {
     plan.fijo = true
     const lista = await repo.reservasDelCliente(tel)
+    // "¿Puedo reservar para dentro de 3 meses?" leído como consultar: sin reservas, es la regla.
+    const reglas = reglasPreguntadas(e.texto)
+    if (reglas && !lista.length) return cierra(reglas)
     for (const r of lista) plan.montos.push(r.costo_motivo)
     return cierra(lista.length ? `Tienes ${lista.length === 1 ? 'esta reserva' : 'estas reservas'}:\n${lista.map((r) => lineaReserva(r)).join('\n')}` : R.sinReservas)
   }

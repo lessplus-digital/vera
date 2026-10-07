@@ -14,6 +14,20 @@
 ```
 
 ---
+### 2026-10-07 — Bot Node: Reservas contesta la regla aunque el mensaje suelte la reserva (G9)
+
+**Contexto:** G9 fallaba de forma intermitente (5/5 antes de los cambios del día, 1/5 después):
+"mejor olvídalo. Otra cosa, ¿puedo reservar para dentro de 3 meses?" respondía solo "dejé esa reserva
+de lado", o "no tienes reservas" si se clasificaba como consultar. G5 fallaba por el escenario: el
+regex no aceptaba la negrita de WhatsApp ("*misma* masa").
+
+**Decisión:** las preguntas por las reglas de reserva las contesta el código con `REGLAS_RESERVA`
+(`reglasPreguntadas`); cualquier otra pregunta al soltar el borrador la contesta el modelo.
+
+**Impacto:** `server/src/handlers/reservas.ts`, 4 casos en `reservas.test.ts`,
+`f6-g5-mitad-y-mitad.yaml` (regex). G9 5/5 ×2, G5 5/5, reservas 5/5.
+
+---
 ### 2026-10-07 — Bot Node: solo atiende temas del restaurante
 
 **Contexto:** en una prueba real (573184821317) el cliente escribió "quiero hacer un pedido pero antes

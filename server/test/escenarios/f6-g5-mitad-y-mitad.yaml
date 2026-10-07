@@ -19,7 +19,8 @@ pasos:
       bd: { carrito_total: 47000 }
   - envia: otra mitad hawaiana masa tradicional y mitad pepperoni masa estofada, mediana
     debe:
-      coincide: 'misma masa|mismas? masas?|masa distinta|masas distintas'
+      # El modelo a veces pone la negrita de WhatsApp: "*misma* masa".
+      coincide: 'misma\*? masa|mismas?\*? masas?|masa distinta|masas distintas'
       bd: { carrito_total: 47000 }
   - envia: y una mitad hawaiana y mitad hawaiana, grande tradicional
     debe:

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EntornoSim } from '../../src/sim/entorno.js'
 import { FakeLLM } from '../../src/llm/llm.js'
 import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasificacion.js'
-import { R, REGLAS_RESERVA, confirmarCancelar, preguntaMotivo } from '../../src/handlers/reservas.js'
+import { R, REGLAS_RESERVA, confirmarCancelar, preguntaMotivo, reglasPreguntadas } from '../../src/handlers/reservas.js'
 import * as T from '../../src/textos.js'
 
 // El agente de Reservas dentro del simulador. Se prueba el CÓDIGO: una pregunta
@@ -215,6 +215,39 @@ describe('Fase 6: lo que destapó G9', () => {
     const t = await turno('mejor olvídalo', { intencion: 'reserva_cancelar' })
     expect(t.r).toBe(R.borradorDescartado)
     expect((await conv()).reserva ?? null).toBeNull()
+  })
+
+  it('"olvídalo, ¿puedo reservar dentro de 3 meses?": suelta el borrador Y el modelo contesta la pregunta', async () => {
+    const { sim, turno, conv } = montar('Se reserva con máximo 14 días de anticipación.')
+    await conNombre(sim)
+    await turno('quiero reservar para 4 el sábado', { intencion: 'reserva_nueva', personas: 4, fecha: SABADO })
+    const t = await turno('mejor olvídalo. Otra cosa, ¿puedo traer torta?', { intencion: 'reserva_cancelar' })
+    expect(t.r).toBe(`Se reserva con máximo 14 días de anticipación.\n\n${R.borradorDescartado}`)
+    expect((await conv()).reserva ?? null).toBeNull()
+  })
+
+  it('"olvídalo, ¿puedo reservar dentro de 3 meses?": la regla la dice el código, sin modelo', async () => {
+    const { sim, turno, conv } = montar('esto no debía salir')
+    await conNombre(sim)
+    await turno('quiero reservar para 4 el sábado', { intencion: 'reserva_nueva', personas: 4, fecha: SABADO })
+    const t = await turno('mejor olvídalo. Otra cosa, ¿puedo reservar para dentro de 3 meses?', { intencion: 'reserva_cancelar' })
+    expect(t.r).toBe(`${R.borradorDescartado}\n\n${REGLAS_RESERVA[1]}`)
+    expect((await conv()).reserva ?? null).toBeNull()
+  })
+
+  it('"¿puedo reservar para dentro de 3 meses?" leído como consultar, sin reservas → la regla, no "no tienes reservas"', async () => {
+    const { sim, turno } = montar('esto no debía salir')
+    await conNombre(sim)
+    const t = await turno('¿puedo reservar para dentro de 3 meses?', { intencion: 'reserva_consultar' })
+    expect(t.r).toBe(REGLAS_RESERVA[1])
+  })
+
+  it('reglasPreguntadas: solo preguntas, y cada una con su regla', () => {
+    expect(reglasPreguntadas('para el próximo mes')).toBeNull()
+    expect(reglasPreguntadas('¿con cuánta anticipación se reserva?')).toBe(REGLAS_RESERVA[1])
+    expect(reglasPreguntadas('¿cuántas personas máximo?')).toBe(REGLAS_RESERVA[0])
+    expect(reglasPreguntadas('¿hasta qué hora puedo reservar?')).toBe(REGLAS_RESERVA[3])
+    expect(reglasPreguntadas('¿tienen parqueadero?')).toBeNull()
   })
 
   it('consultar y cancelar los contesta el código, sin frase del modelo encima', async () => {

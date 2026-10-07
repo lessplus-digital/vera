@@ -307,6 +307,12 @@ del prompt de n8n `1d7f7d87`; el LLM **no tiene herramientas** y solo escribe la
   que no es suyo responde "no encontré esa reserva" sin mostrar nada ajeno. En la política, el
   "sí" a "¿te conecto con alguien?" solo cuenta si el mensaje no trae otra intención concreta
   (`RESPONDE_OFERTA`: "cancela la reserva RES-001" llegó con `confirma: si` y terminó en handoff).
+- **2026-10-07 (G9 intermitente):** "mejor olvídalo. Otra cosa, ¿puedo reservar para dentro de 3
+  meses?" se quedaba en "dejé esa reserva de lado" y la pregunta se perdía (o, leído como
+  `reserva_consultar`, salía "no tienes reservas"). Ahora una pregunta por las reglas
+  (`reglasPreguntadas`: anticipación, personas máximo, hasta qué hora; solo con "?") la contesta el
+  código con el texto de `REGLAS_RESERVA`, tanto al soltar el borrador como en consultar sin
+  reservas. Otra pregunta al soltar el borrador la contesta el modelo encima del aviso.
 
 **Arreglado de paso:** `repo-supabase` filtraba las preguntas guardadas con una lista escrita a mano
 que no tenía `nombre` ni `ofrecer_humano`: en producción el "sí" a "¿te conecto con alguien?" se
