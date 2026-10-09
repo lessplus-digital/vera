@@ -47,7 +47,7 @@ Tarda de minutos a un par de horas. Se comprueba con `nslookup bot.plateo.cloud`
 
 ### 3. Subir el código y la configuración
 ```bash
-git clone <URL del repo> plateo && cd plateo/server
+git clone <URL del repo> && cd vera/server   # en el VPS vive en ~/vera
 cp .env.example .env && nano .env      # llenar con la tabla de arriba
 ```
 Dejar `WA_MODO=graph`, `FEEDBACK_ACTIVO=false` y `DASHBOARD_ORIGENES=https://vera.plateo.cloud`

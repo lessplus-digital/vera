@@ -307,6 +307,26 @@ const casos: Caso[] = [
     acciones: [cobertura('niqia')],
   },
   {
+    nombre: 'barrio + pregunta ajena tras "¿en qué barrio?" → el barrio se guarda (2026-10-09, clima)',
+    c: { intencion: 'cobertura', barrio: 'la milagrosa de Bello', fuera_de_tema: true },
+    ctx: ctx('En la milagrosa de Bello, Que clima hace mañana?', {
+      estado: carrito({ tipo_pedido: 'domicilio' }),
+      ultima: { tipo: 'dato_pedido', dato: 'barrio' },
+    }),
+    handler: 'pedidos',
+    acciones: [cobertura('la milagrosa de Bello')],
+  },
+  {
+    nombre: 'tras "¿en qué barrio?", "¿llegan a la milagrosa?" sigue siendo pregunta: no se guarda',
+    c: { intencion: 'cobertura', barrio: 'la milagrosa' },
+    ctx: ctx('¿llegan a la milagrosa?', {
+      estado: carrito({ tipo_pedido: 'domicilio' }),
+      ultima: { tipo: 'dato_pedido', dato: 'barrio' },
+    }),
+    handler: 'pedidos',
+    acciones: [cobertura('la milagrosa', false)],
+  },
+  {
     nombre: '"por transferencia" tras "¿en qué barrio?" → es el pago, no un barrio (f5 corrida 5)',
     c: { intencion: 'datos_pedido', metodo_pago: 'Transferencia' },
     ctx: ctx('por transferencia', { estado: carrito({ tipo_pedido: 'domicilio' }), ultima: { tipo: 'dato_pedido', dato: 'barrio' } }),

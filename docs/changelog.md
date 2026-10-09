@@ -14,6 +14,20 @@
 ```
 
 ---
+### 2026-10-09 — Bot Node: el barrio se guarda aunque venga con una pregunta ajena
+
+**Contexto:** en WhatsApp real (573184821317), a "¿En qué barrio estás?" el cliente contestó "En la
+milagrosa de Bello, Que clima hace mañana?". El "?" del clima hizo que se leyera como pregunta de
+cobertura: se cantó la tarifa con `guardar:false` y el bot volvió a preguntar el barrio.
+
+**Decisión:** si el bot espera el barrio, el mensaje lo nombra y el resto es `fuera_de_tema`, el
+barrio es la respuesta y se guarda. "¿llegan a la milagrosa?" sin nada ajeno sigue siendo pregunta.
+
+**Impacto:** `server/src/decision/politica.ts` (`respondeBarrio`), 2 casos en `politica.test.ts`,
+escenario `f8-barrio-con-pregunta-ajena.yaml` (5/5). Regresión: fuera de tema 5/5, algo más 5/5,
+casos borde 5/5. `f5-pedidos-domicilio` queda 4/5 también sin el cambio (inestable desde antes).
+
+---
 ### 2026-10-07 — Bot Node: Reservas contesta la regla aunque el mensaje suelte la reserva (G9)
 
 **Contexto:** G9 fallaba de forma intermitente (5/5 antes de los cambios del día, 1/5 después):

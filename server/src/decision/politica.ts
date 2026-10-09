@@ -279,7 +279,11 @@ function decidirBase(c: Clasificacion, ctx: ContextoDecision): Decision {
   // Tras "¿en qué barrio estás?", un "niqia" suelto a veces llega clasificado
   // como pregunta de cobertura: sin "?" es la respuesta, y se guarda. Si no, la
   // cobertura se consultaba, el barrio no quedaba y se volvía a preguntar.
-  const respondeBarrio = esperado === 'barrio' && suelta && !ctx.texto.includes('?')
+  // Y si el "?" es de lo ajeno ("En La Milagrosa, ¿qué clima hace mañana?"), el
+  // barrio también es la respuesta: el clasificador leyó todo como pregunta de
+  // cobertura y se volvió a pedir el barrio (2026-10-09, 573184821317).
+  const respondeBarrio =
+    esperado === 'barrio' && ((suelta && !ctx.texto.includes('?')) || (!!barrio && c.fuera_de_tema))
   if (suelta) {
     // Salvo que ya sea OTRO dato: "por transferencia" no es un barrio.
     if (esperado === 'barrio' && !barrio && !c.direccion && !c.metodo_pago && !c.tipo_pedido) barrio = ctx.texto.trim()

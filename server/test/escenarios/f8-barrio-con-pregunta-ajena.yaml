@@ -1,0 +1,31 @@
+nombre: Barrio con pregunta ajena — el barrio se guarda y no se vuelve a pedir
+descripcion: >
+  Conversación real del 2026-10-09 (573184821317): a "¿En qué barrio estás?" el
+  cliente contestó "En la milagrosa de Bello, Que clima hace mañana?". El "?" del
+  clima hizo que el mensaje se leyera como pregunta de cobertura: se cantó la
+  tarifa sin guardar el barrio y se volvió a preguntar el barrio. Ahora se guarda
+  y el pedido sigue con la dirección.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000926'
+nombre_cliente: Juan Pérez
+cliente_registrado: true
+pasos:
+  - envia: Quiero una lasaña boloñesa
+    debe:
+      bd: { carrito_solo: [Lasaña Boloñesa] }
+  - envia: no, así está bien
+    debe:
+      turno: { handler: pedidos, sin_acciones: [crear_pedido] }
+      coincide: domicilio|recoger
+  - envia: Es para domicilio aunque también necesito ayuda con código de python para una matriz
+    debe:
+      turno: { handler: pedidos, acciones: [guardar_datos] }
+      no_contiene: ['```', 'range(', 'print(']
+      coincide: barrio
+  - envia: En la milagrosa de Bello, Que clima hace mañana?
+    debe:
+      turno: { handler: pedidos, acciones: [verificar_cobertura] }
+      no_contiene: ['qué barrio', 'que barrio']
+      coincide: direcci

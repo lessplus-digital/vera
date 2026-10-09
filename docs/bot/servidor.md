@@ -125,7 +125,8 @@ agente; aquí `ultima_pregunta` está en la BD, así que un "dale" se interpreta
    sea otro dato ("por transferencia" no es un barrio). Un barrio suelto sin "?" tras "¿en qué
    barrio?" es respuesta aunque el clasificador lo lea como pregunta de cobertura (visto con
    gpt-5.1: "niqia" se consultaba pero no se guardaba y el bot volvía a preguntar el barrio).
-   Todo barrio pasa por `consultar_cobertura` en código (BUG-061).
+   Lo mismo si el "?" es de algo ajeno (`fuera_de_tema`): "En La Milagrosa, ¿qué clima hace
+   mañana?" guarda el barrio (2026-10-09). Todo barrio pasa por `consultar_cobertura` en código (BUG-061).
 5. Productos → Menú (arma el carrito, como en n8n), aunque haya datos pendientes.
 6. Un dato con carrito → Pedidos; un barrio sin carrito → Soporte; lo demás sin carrito → Menú.
    **Nunca Pedidos sin carrito.**
