@@ -120,7 +120,10 @@ const CAMPO_DE_ERROR: Record<string, 'fecha' | 'hora' | 'personas'> = {
   SIN_CUPO: 'hora',
 }
 
-export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> {
+/** Elige la clave de motivos_reserva que describe el texto ('sin_ocasion' = normal), o null si no queda claro. */
+export type ElegirMotivo = (texto: string, motivos: MotivoReserva[]) => Promise<string | null>
+
+export async function planificar(repo: Repo, e: EntradaRedactor, elegirMotivo?: ElegirMotivo): Promise<Plan> {
   const tel = e.turno.telefono
   const c = e.clasificacion
   const ultima = e.conversacion.ultima_pregunta
@@ -197,7 +200,14 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
 
   // La ocasión: si la nombra (aunque no se le haya preguntado) se toma; "normal" solo cuenta como respuesta.
   const preguntado = ultima?.tipo === 'dato_reserva' && ultima.dato === 'motivo'
-  const m = emparejarMotivo(e.texto, motivos, preguntado)
+  let m = emparejarMotivo(e.texto, motivos, preguntado)
+  // "Meses con mi novia" no comparte palabra con "Aniversario": si se le preguntó la ocasión y
+  // por palabras no salió, el modelo elige entre las vigentes (elección cerrada; el costo sigue
+  // saliendo de motivos_reserva). Sin esto el bot repetía la pregunta para siempre.
+  if (!m && preguntado && c.confirma === 'na' && elegirMotivo) {
+    const clave = await elegirMotivo(e.texto, motivos)
+    m = clave === 'sin_ocasion' ? 'sin_ocasion' : (motivos.find((x) => x.clave === clave) ?? null)
+  }
   if (m) b.motivo = m === 'sin_ocasion' ? 'sin_ocasion' : m.clave
   const motivo = motivos.find((x) => x.clave === b.motivo)
   if (m && m !== 'sin_ocasion') plan.hechos.push(`Ocasión: ${m.nombre}${m.costo ? `, montaje de ${pesos(m.costo)} por la reserva (no por persona), se paga en el local` : ''}.`)
@@ -275,13 +285,39 @@ Reglas:
 
 const Salida = z.object({ texto: z.string() })
 
+const PROMPT_OCASION = `El cliente contestó a "¿es para alguna ocasión especial?" de una reserva en una pizzería.
+Elige de la lista la ocasión que describe, aunque no use la palabra ("meses con mi novia" = aniversario, "mi mamá cumple años" = cumpleaños).
+- "sin_ocasion" si dice que no es nada especial o que es normal.
+- null si no habla de una ocasión o no queda claro cuál es.
+Devuelve SOLO la clave.`
+
 export function crearRedactorReservas(d: { repo: Repo; llm: LLM }): Redactor {
   const planes = new WeakMap<Turno, Plan>()
+
+  const elegirMotivo: ElegirMotivo = async (texto, motivos) => {
+    const validas = new Set(motivos.map((m) => m.clave))
+    try {
+      const r = await d.llm.estructurado({
+        nombre: 'ocasion_reserva',
+        esquema: z.object({ clave: z.string().nullable() }),
+        mensajes: [
+          { rol: 'system', texto: PROMPT_OCASION },
+          {
+            rol: 'user',
+            texto: `OCASIONES:\n${motivos.map((m) => `- ${m.clave}: ${m.nombre}${m.descripcion ? ` (${m.descripcion})` : ''}`).join('\n')}\n\nMENSAJE DEL CLIENTE:\n${texto}`,
+          },
+        ],
+      })
+      return r.datos.clave && validas.has(r.datos.clave) ? r.datos.clave : null
+    } catch {
+      return null
+    }
+  }
 
   return async (e: EntradaRedactor): Promise<Redaccion> => {
     let plan = planes.get(e.turno)
     if (!plan) {
-      plan = await planificar(d.repo, e)
+      plan = await planificar(d.repo, e, elegirMotivo)
       planes.set(e.turno, plan)
     }
     const debajo = [...plan.avisos, plan.cierre].filter(Boolean).join('\n\n')

@@ -14,6 +14,25 @@
 ```
 
 ---
+### 2026-10-10 — Bot Node: la ocasión de la reserva se entiende aunque no use la palabra
+
+**Contexto:** en WhatsApp real, a "¿Es para alguna ocasión especial?" el cliente contestó "Meses con
+mi novia" y luego "Sí porfa" a la propuesta de aniversario: el bot repitió la pregunta de ocasión
+tres veces. `emparejarMotivo` solo compara palabras con los nombres de `motivos_reserva`
+("aniversario", "cumpleaños"…); "meses con mi novia" no comparte ninguna, el borrador nunca recibió
+`motivo` y `faltaReserva` volvía a pedirlo. El modelo de enlace además "proponía" aniversario con
+precio, pero esa propuesta no quedaba en ningún estado.
+
+**Decisión:** si se acaba de preguntar la ocasión y por palabras no sale, el modelo hace una
+elección cerrada entre las ocasiones vigentes (`ocasion_reserva`: clave de `motivos_reserva`,
+`sin_ocasion` o null). El código valida la clave y el costo sigue saliendo de la BD; el resumen
+muestra el montaje y el cliente confirma con "¿Te la reservo?". Sin ocasión clara se vuelve a
+preguntar. No corre con un "sí/no" (`confirma` ≠ `na`).
+
+**Impacto:** `server/src/handlers/reservas.ts` (`ElegirMotivo`, `crearRedactorReservas`),
+`server/test/unit/reservas.test.ts`.
+
+---
 ### 2026-10-09 — Bot Node: el barrio se guarda aunque venga con una pregunta ajena
 
 **Contexto:** en WhatsApp real (573184821317), a "¿En qué barrio estás?" el cliente contestó "En la

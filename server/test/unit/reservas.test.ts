@@ -80,6 +80,33 @@ describe('reserva nueva de punta a punta', () => {
     expect(t.r).not.toContain('🎉')
   })
 
+  it('"Meses con mi novia" (sin la palabra aniversario): el modelo elige la ocasión y no se repite la pregunta', async () => {
+    let cl: Partial<Clasificacion> = {}
+    let clave: string | null = 'aniversario'
+    const llm = new FakeLLM((nombre) => (nombre === 'clasificacion' ? clasificacionVacia(cl) : nombre === 'ocasion_reserva' ? { clave } : { texto: '' }))
+    const sim = new EntornoSim({ llm, redactores: 'agentes' })
+    sim.repo.ahora = () => AHORA
+    await conNombre(sim)
+    const turno = async (texto: string, c: Partial<Clasificacion>) => {
+      cl = c
+      const antes = sim.wa.textosPara(TEL).length
+      await sim.enviarTexto(TEL, texto)
+      await sim.esperar()
+      return sim.wa.textosPara(TEL).slice(antes).join('\n')
+    }
+    await turno('reserva para 5 mañana a las 4', { intencion: 'reserva_nueva', personas: 5, fecha: SABADO, hora: '16:00' })
+
+    // Sin ocasión clara: se vuelve a preguntar (y no se inventa una).
+    clave = null
+    expect(await turno('pues algo bonito', { intencion: 'otro' })).toBe(preguntaMotivo(sim.repo.motivos))
+
+    clave = 'aniversario'
+    const r = await turno('Meses con mi novia', { intencion: 'otro' })
+    expect(r).toContain('🎉 Aniversario — $120.000')
+    expect(r).toContain('¿Te la reservo?')
+    expect(r).not.toContain('¿Es para alguna ocasión')
+  })
+
   it('"sí, pero a las 8" al resumen NO crea: vuelve a consultar y resume con la hora nueva', async () => {
     const { sim, turno } = montar()
     await conNombre(sim)
