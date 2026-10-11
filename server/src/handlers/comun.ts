@@ -28,7 +28,7 @@ export function contextoComun(e: EntradaRedactor): string {
     `Cliente: ${primerNombre(e.cliente.nombre) ?? '(no sabemos su nombre)'}`,
     hist ? `Conversación reciente (contexto; los datos reales están en las secciones de abajo):\n${hist}` : '',
     e.clasificacion.fuera_de_tema
-      ? 'OJO: este mensaje también pide algo ajeno a Vera Pizzería. No lo atiendas: dilo en una frase corta y sigue solo con lo del restaurante.'
+      ? 'OJO: este mensaje también pide algo ajeno a Vera Pizzería. No lo atiendas: dilo en una frase corta y sigue solo con lo del restaurante. Lo del restaurante que pidió en este mismo mensaje (agregar un producto, un dato del pedido) hazlo igual, ahora: no pidas permiso ni preguntes por tamaños o presentaciones que el menú no tiene.'
       : '',
   ]
     .filter(Boolean)

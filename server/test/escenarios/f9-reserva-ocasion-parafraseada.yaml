@@ -1,0 +1,23 @@
+nombre: Reserva — la ocasión dicha con otras palabras
+descripcion: >
+  Bug real del 2026-10-10 (WhatsApp): a "¿es para alguna ocasión especial?" el
+  cliente contestó "Meses con mi novia" y el bot repitió la pregunta tres veces,
+  incluso tras un "sí porfa", porque la ocasión solo se emparejaba por palabras.
+  Ahora el modelo elige entre las ocasiones vigentes y el costo sale de la BD.
+critico: true
+bot: decision
+telefono: '573000000926'
+pasos:
+  - envia: quiero reservar una mesa para 5 pasado mañana a las 4 pm
+    debe:
+      contiene: ['ocasión especial']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: Meses con mi novia
+    debe:
+      contiene: ['Aniversario — $120.000', '5 personas', '¿Te la reservo?']
+      no_contiene: ['¿Es para alguna ocasión']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: sí, porfa
+    debe:
+      contiene: ['Reserva confirmada', 'Aniversario']
+      turno: { regla: 'reserva:si', acciones: [crear_reserva] }

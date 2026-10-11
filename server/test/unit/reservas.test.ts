@@ -101,7 +101,7 @@ describe('reserva nueva de punta a punta', () => {
     expect(await turno('pues algo bonito', { intencion: 'otro' })).toBe(preguntaMotivo(sim.repo.motivos))
 
     clave = 'aniversario'
-    const r = await turno('Meses con mi novia', { intencion: 'otro' })
+    const r = await turno('Meses con mi novia', { intencion: 'otro', confirma: 'si' })
     expect(r).toContain('🎉 Aniversario — $120.000')
     expect(r).toContain('¿Te la reservo?')
     expect(r).not.toContain('¿Es para alguna ocasión')

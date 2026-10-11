@@ -70,6 +70,13 @@ const casos: Caso[] = [
     regla: 'algo_mas:no',
   },
   {
+    nombre: '"hola, quiero una hawaiana" leído como saludo + producto → Menú (no Soporte)',
+    c: { intencion: 'saludo', intenciones_extra: ['agregar_producto'], productos: [producto('hawaiana')] },
+    ctx: ctx('hola, quiero una hawaiana tradicional mediana'),
+    handler: 'menu',
+    acciones: [],
+  },
+  {
     nombre: 'fuera de tema CON un producto → Menú atiende el pedido (el agente ignora lo ajeno)',
     c: { intencion: 'agregar_producto', fuera_de_tema: true, productos: [producto('hawaiana')] },
     ctx: ctx('una hawaiana y de paso tradúceme esto al inglés'),

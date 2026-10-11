@@ -14,6 +14,32 @@
 ```
 
 ---
+### 2026-10-10 — Bot Node: barrido del simulador antes de salir (4 rojos → 4 arreglos)
+
+**Contexto:** el simulador completo (27 escenarios × 5) dejó 4 críticos en rojo. El primer arreglo de
+la ocasión de reserva (entrada de abajo) además no funcionaba con el modelo real: el clasificador
+marca `confirma:'si'` a "Meses con mi novia" (contesta la pregunta) y la guarda pedía `'na'`; la
+prueba unitaria usaba `'na'` y no lo vio. El escenario nuevo con el modelo real sí.
+
+**Decisión / arreglos:**
+- **Saludo + producto → Soporte** (`f5-pedidos-domicilio`, 1/5): el modelo lee "hola, quiero una
+  hawaiana" como `saludo` principal con el producto en extras (2 de 10); `HANDLER_DE.saludo` es
+  Soporte. Con un producto nombrado el saludo va a Menú (`politica.ts`, `saludoConPedido`).
+- **Ocasión parafraseada**: la guarda de `confirma` se cambió por un descarte de "sí/ok" sueltos
+  (`SOLO_AFIRMA`); nuevo escenario `f9-reserva-ocasion-parafraseada` (5/5).
+- **Cuenta de transferencia** (`f6-g7`, 3/5): "¿me pasas los datos para transferir?" se leía a veces
+  como `metodo_pago=Transferencia` (acción `guardar_datos`) y el código dejaba de dar la cuenta;
+  ahora esa acción sola no lo impide (`conversador.ts`).
+- **Fuera de tema + pedido** (`f8-fuera-de-tema`, 0/5): con lo ajeno en el mensaje, Menú a veces
+  no agregaba la lasaña y preguntaba una presentación inventada ("¿individual o para compartir?");
+  el contexto común le dice ahora que haga lo del restaurante igual y no pida permiso (`comun.ts`).
+- **`f5-reservas-nueva`** dependía del día en que se corría ("el sábado" = hoy → 5 h de
+  anticipación); ahora usa "pasado mañana".
+
+**Impacto:** `server/src/decision/{politica,conversador}.ts`, `server/src/handlers/{comun,reservas}.ts`,
+escenarios `f5-reservas-nueva` y `f9-*`, pruebas unitarias. Requiere redesplegar en el VPS.
+
+---
 ### 2026-10-10 — Bot Node: la ocasión de la reserva se entiende aunque no use la palabra
 
 **Contexto:** en WhatsApp real, a "¿Es para alguna ocasión especial?" el cliente contestó "Meses con

@@ -146,7 +146,10 @@ export function crearConversadorDecision(d: DepsConversador): Conversador {
     // La cuenta para transferir es un dato crítico: la da el código, tal cual sale de la BD, lo
     // atienda quien lo atienda (con el modelo, 1 de 5 veces prometió "te van a compartir los
     // datos en un momento"). La conversación no se toca: la pregunta que estaba abierta sigue.
-    if (pideCuenta(texto) && !decision.acciones.length) {
+    // "¿Me pasas los datos para transferir?" a veces se lee como metodo_pago=Transferencia: esa
+    // acción sola no impide darle la cuenta (2 de 5 corridas en G7, 2026-10-10).
+    const soloMetodoPago = decision.acciones.every((a) => a.tipo === 'guardar_datos' && Object.keys(a.datos).every((k) => k === 'metodo_pago'))
+    if (pideCuenta(texto) && soloMetodoPago) {
       const cuenta = await d.repo.infoNegocio('datos_transferencia').catch(() => null)
       if (cuenta) return [S.cuenta(cuenta)]
     }

@@ -120,6 +120,9 @@ const CAMPO_DE_ERROR: Record<string, 'fecha' | 'hora' | 'personas'> = {
   SIN_CUPO: 'hora',
 }
 
+/** "sí", "dale", "ok porfa": no dicen ninguna ocasión (el modelo ni se consulta). */
+const SOLO_AFIRMA = /^(s[ií]|dale|ok(ey)?|listo|claro|bueno|de una)[s,.!¡]*(porfa|por favor|gracias)?[s.!]*$/i
+
 /** Elige la clave de motivos_reserva que describe el texto ('sin_ocasion' = normal), o null si no queda claro. */
 export type ElegirMotivo = (texto: string, motivos: MotivoReserva[]) => Promise<string | null>
 
@@ -204,7 +207,7 @@ export async function planificar(repo: Repo, e: EntradaRedactor, elegirMotivo?: 
   // "Meses con mi novia" no comparte palabra con "Aniversario": si se le preguntó la ocasión y
   // por palabras no salió, el modelo elige entre las vigentes (elección cerrada; el costo sigue
   // saliendo de motivos_reserva). Sin esto el bot repetía la pregunta para siempre.
-  if (!m && preguntado && c.confirma === 'na' && elegirMotivo) {
+  if (!m && preguntado && !SOLO_AFIRMA.test(e.texto.trim()) && elegirMotivo) {
     const clave = await elegirMotivo(e.texto, motivos)
     m = clave === 'sin_ocasion' ? 'sin_ocasion' : (motivos.find((x) => x.clave === clave) ?? null)
   }

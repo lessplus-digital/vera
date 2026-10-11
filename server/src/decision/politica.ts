@@ -320,7 +320,10 @@ function decidirBase(c: Clasificacion, ctx: ContextoDecision): Decision {
   // Salvo BUG-062: una "pregunta de producto" que no nombra ningún producto y
   // resultó ser un barrio ("pardo") no es de Menú, que no tiene cobertura.
   const barrioDisfrazado = c.intencion === 'pregunta_producto' && !c.productos.length && !!barrio
-  const handlerIntencion = barrioDisfrazado ? null : HANDLER_DE[c.intencion]
+  // "Hola, quiero una hawaiana": el modelo a veces pone `saludo` de principal y el producto de
+  // extra (2 de 10 corridas, 2026-10-10); con un producto nombrado el saludo es solo cortesía.
+  const saludoConPedido = c.intencion === 'saludo' && c.productos.length > 0
+  const handlerIntencion = barrioDisfrazado ? null : saludoConPedido ? 'menu' : HANDLER_DE[c.intencion]
   if (handlerIntencion === 'menu') return conDatos({ handler: 'menu', regla: `intencion:${c.intencion}` })
 
   // 7 · Un dato del pedido: con carrito, a Pedidos. Sin carrito, un barrio es

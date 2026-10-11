@@ -16,7 +16,7 @@ pasos:
     debe:
       contiene: ['¿Para qué día']
       turno: { handler: reservas, sin_acciones: [crear_reserva] }
-  - envia: el sábado
+  - envia: pasado mañana
     debe:
       contiene: ['¿A qué hora']
       turno: { handler: reservas, sin_acciones: [crear_reserva] }
