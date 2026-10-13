@@ -1,8 +1,7 @@
 # En el VPS: copiar .env.example → .env, completar, y `docker compose up -d --build`.
-# HTTPS: lo pone el Traefik que ya publica n8n (/docker/n8n). El bot se une a la red de ese
-# proyecto (`n8n_default`) y le dice a Traefik, por etiquetas, que atienda bot.plateo.cloud
-# con el mismo certificado automático (resolvedor `mytlschallenge`). Requiere el registro DNS
-# `bot` (tipo A) apuntando a la IP del VPS. Si la red no se llama n8n_default: `docker network ls`.
+# HTTPS: lo pone el Traefik del VPS (server/traefik/docker-compose.yml). El bot se une a su red
+# (`n8n_default`, nombre heredado) y le dice a Traefik, por etiquetas, que atienda bot.plateo.cloud;
+# el DNS necesita un registro A `bot` apuntando a la IP del VPS.
 services:
   bot:
     build: .

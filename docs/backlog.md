@@ -40,20 +40,23 @@ Lo que tiene que estar hecho **antes** de abrir al público. Se hace una sola ve
 
 ## 3. Apagar n8n del todo (VPS y cuentas)
 
-n8n ya está apagado y **ningún workflow corre**, pero sigue instalado. Orden recomendado; lo
-irreversible va al final, después de dos semanas sin incidentes:
+**n8n ya no existe en el VPS** (2026-10-13): contenedor, volumen e imagen borrados, y Traefik
+quedó propio y versionado en `server/traefik/`. Lo que falta es solo de cuentas:
 
-| # | Qué | Reversible | Esfuerzo |
+| # | Qué | Quién | Esfuerzo |
 |---|---|---|---|
-| 3.1 | ✅ **Hecho 2026-10-13: el contenedor de n8n se retiró** (servicio quitado de `/docker/n8n/docker-compose.yml`; respaldo en `docker-compose.yml.bak-con-n8n`). Liberó ~0,5 GB de RAM. El volumen `n8n_data` y la imagen siguen en disco | Sí | — |
-| 3.2 | **Sacar Traefik de la carpeta `/docker/n8n`** (hoy es lo único que queda ahí; el bot cuelga de su red `n8n_default`) y dejarlo en `~/vera` junto al bot, con nombre propio. Implica recrear Traefik (unos segundos sin HTTPS) y conservar el volumen `traefik_data` con los certificados | Sí | `[M]` |
-| 3.3 | **Revocar lo que n8n usaba:** la secret key de Supabase de n8n (el bot usa `bot-node`), la API key de OpenAI de n8n y el token de Meta guardado como credencial de n8n | No | `[S]` |
-| 3.4 | **Borrar el volumen `n8n_data` y la imagen de n8n** (2,5 GB; el volumen contiene el historial de workflows y **sus credenciales**) con `docker volume rm n8n_data && docker image rm docker.n8n.io/n8nio/n8n`; borrar `docker-compose.yml.bak-con-n8n` y el DNS `n8n.srv1467456.hstgr.cloud` | **No** | `[S]` |
-| 3.5 | **Quitar el servidor MCP `n8n-native` de `.mcp.json`** local de cada persona que lo tenga | Sí | `[S]` |
-| 3.6 | **Renombrar la tabla `n8n_chat_histories`** a algo propio (`chat_historial`): migración + `server/src/bd/repo-supabase.ts` + RPC `registrar_contexto_handoff` + baterías 07/08. Cosmético; hacerlo con una batería a mano | Sí | `[M]` |
+| 3.1 | ✅ **Hecho:** n8n borrado del VPS (contenedor, volumen `n8n_data`, imagen) | — | — |
+| 3.2 | ✅ **Hecho:** Traefik propio en `server/traefik/docker-compose.yml` (ver §Incidente abajo) | — | — |
+| 3.3 | **Revocar lo que n8n usaba:** la secret key de Supabase de n8n (el bot usa `bot-node`) y la API key de OpenAI de n8n. El token de Meta se rota en §1.2 | Dueño | `[S]` |
+| 3.4 | **Quitar el servidor MCP `n8n-native` de `.mcp.json`** local de cada persona que lo tenga | Dueño | `[S]` |
+| 3.5 | **Renombrar la red `n8n_default`** (la comparten Traefik y el bot) a `proxy`: tocar `server/docker-compose.yml` y `server/traefik/docker-compose.yml` y recrear ambos (unos segundos sin servicio) | Claude | `[S]` |
+| 3.6 | **Renombrar la tabla `n8n_chat_histories`** a algo propio (`chat_historial`): migración + `server/src/bd/repo-supabase.ts` + RPC `registrar_contexto_handoff` + baterías 07/08. Cosmético | Claude | `[M]` |
 
-> Ya hecho el 2026-10-13: workflows apagados desde el corte, contenedor de n8n retirado del VPS, tabla `n8n_mensajes_pendientes` y su
-> cron eliminados, docs y skills de n8n retirados del repo (siguen en el tag `pre-migracion-node`).
+> **Incidente del 2026-10-13 (lección):** al borrar "n8n" desde el administrador de Docker de
+> Hostinger se borró el *proyecto* completo, y Traefik (el proxy HTTPS del bot) vivía dentro de ese
+> proyecto: `bot.plateo.cloud` quedó sin responder desde afuera hasta que se recreó Traefik
+> (el certificado sobrevivió en el volumen `traefik_data`). Desde entonces Traefik tiene su propio
+> compose; **no borrar el volumen `traefik_data` ni los proyectos `server` y `traefik`** desde el panel.
 
 ## 4. Dashboard
 

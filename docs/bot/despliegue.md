@@ -61,11 +61,13 @@ docker compose up -d --build
 docker logs plateo-bot --tail 50       # debe decir que escucha en el 3000, sin errores de config
 curl http://127.0.0.1:3000/salud       # → ok
 ```
-El proxy es **Traefik** (visto el 2026-10-05, carpeta `/docker/n8n`, resolvedor
-`mytlschallenge`, entradas `web,websecure`). `server/docker-compose.yml` ya trae las etiquetas y
-se une a la red `n8n_default` del proyecto de n8n; antes de levantar, comprobar el nombre con
-`docker network ls`. El certificado HTTPS lo pide Traefik solo, una vez el DNS resuelva.
-Prueba desde fuera: `curl https://bot.plateo.cloud/salud` → ok (con candado válido).
+El proxy es **Traefik**, con su propio compose en `server/traefik/docker-compose.yml` (desde el
+2026-10-13; antes vivía dentro del proyecto de n8n). Se levanta una vez:
+`cd ~/vera/server/traefik && echo "SSL_EMAIL=<correo>" > .env && docker compose up -d`.
+`server/docker-compose.yml` ya trae las etiquetas del bot y se une a la red `n8n_default`
+(nombre heredado, la crea Traefik); antes de levantar, comprobar con `docker network ls`. El
+certificado HTTPS lo pide Traefik solo, una vez el DNS resuelva y **vive en el volumen
+`traefik_data`: no borrarlo**. Prueba desde fuera: `curl https://bot.plateo.cloud/salud` → ok (con candado válido).
 
 ### 5. Prueba sin cortar a n8n
 Con el servidor ya público, probar con el **número de pruebas de Plateo** (322 681 7466, sin

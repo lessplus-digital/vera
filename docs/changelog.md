@@ -35,6 +35,13 @@ buffer de mensajes en la BD que nadie usaba.
 - **Se conserva a propósito:** la tabla `n8n_chat_histories` (el servidor la usa; renombrarla está
   en el backlog) y la red/Traefik de n8n en el VPS (el bot cuelga de ellos; ver backlog §3).
 
+**Incidente en el mismo día:** el dueño borró "n8n" desde el administrador de Docker de
+Hostinger; eso eliminó el *proyecto* completo y Traefik (el proxy HTTPS del bot) vivía dentro,
+así que `bot.plateo.cloud` dejó de responder desde afuera. Se recreó con un compose propio y
+versionado (`server/traefik/docker-compose.yml`) reutilizando el certificado, que sobrevivió en
+el volumen `traefik_data`. Sin pérdida de datos. Lección: Traefik ya no comparte proyecto con nada
+que se vaya a borrar.
+
 **Impacto:** ~20 archivos de docs y configuración;
 `supabase/migrations/20261013120000_quitar_buffer_n8n.sql`.
 
