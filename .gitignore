@@ -11,3 +11,7 @@ dist/
 # las Edge Functions —supabase/functions/— SÍ va a git.
 supabase/.temp/
 supabase/.branches/
+
+# Capturas de pantalla con paneles de infraestructura (IP, VPS): repo público, nunca a git
+server/*.png
+docs/*.jfif

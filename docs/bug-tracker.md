@@ -20,6 +20,13 @@
 
 ## Abiertos
 
+> **Nota (2026-10-13): las fichas de n8n de abajo están obsoletas desde el corte (2026-10-05).** El
+> bot corre en el servidor Node y los 7 workflows de n8n están desactivados. Afecta a BUG-029, 034,
+> 049 (capa n8n), 056–060 y 061–063: sus comportamientos se reimplementaron en código y los cubren
+> los escenarios `f6-g3-cobertura` (061), `f6-g10-ruteo` (062), `f6-g11-*` (056–060) y
+> `f6-g9-reservas-limites` (049), todos verdes en el simulador. Se conservan como histórico hasta
+> hacer el cierre formal ficha por ficha (BUG-031 es de datos y no depende de n8n).
+
 ### BUG-063 · 🔴 Alta · 🔴 Abierto — los últimos parches de prompt y código de `Pizzeria Vera` están en una clave anidada que n8n NO ejecuta
 
 - **Componente:** n8n `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`), versión publicada `1d7f7d87…`.

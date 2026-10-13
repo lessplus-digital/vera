@@ -1,8 +1,10 @@
 # Despliegue y corte del bot Node (Fase 8)
 
-> Estado (2026-10-05): **nada de esto se ha hecho.** El servidor no está en el VPS, `bot.plateo.cloud`
-> no existe en el DNS y el webhook de Meta no apunta a ningún lado vivo (por eso hoy el bot no
-> contesta). Esta guía es el orden exacto para dejarlo andando. Contexto: `docs/bot/servidor.md`.
+> Estado (2026-10-13): **el corte está hecho** (2026-10-05) y el bot corre en el VPS en
+> `bot.plateo.cloud`. Esta guía queda como referencia del orden y de las trampas. **Para
+> actualizar con código nuevo** basta, en el VPS: `cd ~/vera && git pull --ff-only && cd server &&
+> docker compose up -d --build`, y comprobar `docker ps` (healthy) y `curl https://bot.plateo.cloud/salud`.
+> Contexto: `docs/bot/servidor.md`.
 > **El repo es público:** ningún token, clave ni IP va en este archivo.
 
 ## Cómo encajan las piezas (en simple)
