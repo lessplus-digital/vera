@@ -45,14 +45,14 @@ irreversible va al final, después de dos semanas sin incidentes:
 
 | # | Qué | Reversible | Esfuerzo |
 |---|---|---|---|
-| 3.1 | **Parar el contenedor de n8n** (`n8n-n8n-1`) sin borrarlo ni su volumen. Libera memoria. **Ojo:** el bot comparte con n8n el proxy **Traefik** (`n8n-traefik-1`) y la red `n8n_default`; no se toca | Sí | `[S]` |
-| 3.2 | **Sacar Traefik del proyecto de n8n** y dejarlo en su propio compose junto al bot (`~/vera`), para que borrar n8n nunca pueda tumbar el bot | Sí | `[M]` |
+| 3.1 | ✅ **Hecho 2026-10-13: el contenedor de n8n se retiró** (servicio quitado de `/docker/n8n/docker-compose.yml`; respaldo en `docker-compose.yml.bak-con-n8n`). Liberó ~0,5 GB de RAM. El volumen `n8n_data` y la imagen siguen en disco | Sí | — |
+| 3.2 | **Sacar Traefik de la carpeta `/docker/n8n`** (hoy es lo único que queda ahí; el bot cuelga de su red `n8n_default`) y dejarlo en `~/vera` junto al bot, con nombre propio. Implica recrear Traefik (unos segundos sin HTTPS) y conservar el volumen `traefik_data` con los certificados | Sí | `[M]` |
 | 3.3 | **Revocar lo que n8n usaba:** la secret key de Supabase de n8n (el bot usa `bot-node`), la API key de OpenAI de n8n y el token de Meta guardado como credencial de n8n | No | `[S]` |
-| 3.4 | **Borrar el volumen y la imagen de n8n** (contiene el historial de workflows y sus credenciales) y el DNS `n8n.srv1467456.hstgr.cloud` | **No** | `[S]` |
+| 3.4 | **Borrar el volumen `n8n_data` y la imagen de n8n** (2,5 GB; el volumen contiene el historial de workflows y **sus credenciales**) con `docker volume rm n8n_data && docker image rm docker.n8n.io/n8nio/n8n`; borrar `docker-compose.yml.bak-con-n8n` y el DNS `n8n.srv1467456.hstgr.cloud` | **No** | `[S]` |
 | 3.5 | **Quitar el servidor MCP `n8n-native` de `.mcp.json`** local de cada persona que lo tenga | Sí | `[S]` |
 | 3.6 | **Renombrar la tabla `n8n_chat_histories`** a algo propio (`chat_historial`): migración + `server/src/bd/repo-supabase.ts` + RPC `registrar_contexto_handoff` + baterías 07/08. Cosmético; hacerlo con una batería a mano | Sí | `[M]` |
 
-> Ya hecho el 2026-10-13: workflows apagados desde el corte, tabla `n8n_mensajes_pendientes` y su
+> Ya hecho el 2026-10-13: workflows apagados desde el corte, contenedor de n8n retirado del VPS, tabla `n8n_mensajes_pendientes` y su
 > cron eliminados, docs y skills de n8n retirados del repo (siguen en el tag `pre-migracion-node`).
 
 ## 4. Dashboard
