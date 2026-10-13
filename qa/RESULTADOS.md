@@ -153,6 +153,28 @@ prueba contra la segunda**. De ahí sale la mitad cara de BUG-061.
 
 ---
 
+## 2026-10-13 · Regresión completa antes de salir a producción
+
+**Resultado: sin rojos.** Las 12 baterías corrieron contra la BD viva (01–05 y 06–12), sin dejar
+residuo (reservas 16, pedidos 119, clientes 35, igual que antes). 02 T2 sigue en los 19 empates
+legítimos de siempre.
+
+- **06 T5** ya no espera `80000` fijo: lee `motivos_reserva` (el 2026-10-13 los precios pasaron a
+  Cumpleaños 60.000 · Aniversario 70.000 · Declaración 90.000 · Grado 60.000 · Empresarial 100.000).
+- **Línea base nueva:** `detalle_pedidos` 222 (antes 214), `pedidos` 119 (antes 116), 23 tablas
+  (+ `wa_eventos`, `bot_turnos`, `conversaciones`).
+- **Textos desactualizados, no fallos:** 09 T6 espera `23514` pero la función ya devuelve
+  `PASO_FLUJO_INVALIDO` (corregido, falta el texto); 09 T2 pasa la misma mitad a las dos y solo
+  ejercita `MITADES_IGUALES`.
+- **Verdes por vacío:** 10 T6/T7/T15 (la cola de feedback está vacía en vivo); la parte con carga la
+  cubren T9 y T13.
+- **Sin guardarraíl, ya documentado:** teléfono de 10k caracteres, `fecha_pedido` del año 3000 y
+  `nombre_cliente` de 10k se aceptan (09 T5/T9).
+- **Ojo al correrlas:** 08 T6 y 09 T4/T10b escriben fuera de transacción en el fichero original
+  (08 T6 deja un carrito vivo del `573000000998`); envolverlas en `BEGIN … ROLLBACK`.
+
+---
+
 ## 2026-09-22 · Regresión completa + barrido de estado vivo + 2 bugs cerrados
 
 **Por qué:** el 16-09 se desplegaron dos RPC nuevas (`procesar_respuesta_feedback`,
