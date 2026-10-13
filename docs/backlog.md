@@ -40,13 +40,13 @@ Lo que tiene que estar hecho **antes** de abrir al público. Se hace una sola ve
 
 ## 3. Apagar n8n del todo (VPS y cuentas)
 
-**n8n ya no corre en el VPS** (2026-10-13): el proyecto se borró y Traefik quedó propio y
-versionado en `server/traefik/`. Sigue en disco el volumen `n8n_data` y la imagen (2,5 GB), y
-falta revocar sus claves:
+**n8n ya no existe en el VPS** (2026-10-13): proyecto, volumen e imagen borrados (verificado),
+y Traefik quedó propio y versionado en `server/traefik/`. Falta solo revocar sus claves y
+limpiar nombres heredados:
 
 | # | Qué | Quién | Esfuerzo |
 |---|---|---|---|
-| 3.1 | **Borrar el volumen y la imagen de n8n** (irreversible; contiene sus credenciales): `docker volume rm n8n_data && docker image rm docker.n8n.io/n8nio/n8n:latest` en la Web console. ✅ Ya hecho: contenedor y proyecto | Dueño | `[S]` |
+| 3.1 | ✅ **Hecho:** n8n borrado del VPS (contenedor, volumen `n8n_data` e imagen; disco de 6,1 GB a 3,4 GB usados) | — | — |
 | 3.2 | ✅ **Hecho:** Traefik propio en `server/traefik/docker-compose.yml` (ver §Incidente abajo) | — | — |
 | 3.3 | **Revocar lo que n8n usaba:** la secret key de Supabase de n8n (el bot usa `bot-node`) y la API key de OpenAI de n8n. El token de Meta se rota en §1.2 | Dueño | `[S]` |
 | 3.4 | **Quitar el servidor MCP `n8n-native` de `.mcp.json`** local de cada persona que lo tenga | Dueño | `[S]` |
