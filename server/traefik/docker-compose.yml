@@ -1,0 +1,43 @@
+# Proxy HTTPS del VPS (Traefik): lo único que escucha en los puertos 80 y 443. Pide y renueva
+# solo el certificado de Let's Encrypt y reparte el tráfico por etiquetas de cada contenedor
+# (el del bot está en ../docker-compose.yml).
+#
+# Uso en el VPS (una vez):
+#   cd ~/vera/server/traefik
+#   echo "SSL_EMAIL=correo-del-dueño@ejemplo.com" > .env     # el .env NO va a git
+#   docker compose up -d
+#
+# El volumen `traefik_data` guarda los certificados (acme.json): no se borra. La red se sigue
+# llamando `n8n_default` por herencia, para no tocar el compose del bot; renombrarla está en
+# docs/backlog.md §3.
+services:
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: always
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
+      - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - n8n_default
+
+networks:
+  n8n_default:
+    external: true
+
+volumes:
+  traefik_data:
+    external: true
