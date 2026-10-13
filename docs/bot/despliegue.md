@@ -19,9 +19,9 @@ Cliente (WhatsApp) → Meta → https://bot.plateo.cloud/webhook/whatsapp
                        contenedor `plateo-bot` (server/) → Supabase + OpenAI
 ```
 
-n8n hoy se publica en `n8n.srv1467456.hstgr.cloud` (nombre que da Hostinger al VPS). El bot
-necesita **su propio nombre** porque Meta y el dashboard lo van a llamar por ahí; el más limpio
-es `bot.plateo.cloud`.
+El **nombre del servidor** (hostname, hoy `vps`) es solo una etiqueta de la máquina: nadie lo usa
+para llegar al bot. Meta y el dashboard lo llaman por **su propio nombre**, `bot.plateo.cloud`,
+un registro DNS que apunta a la IP del VPS.
 
 ## Antes de empezar: lo que se necesita tener a mano
 
@@ -44,7 +44,7 @@ el bot necesita ~300 MB) — tarea f8-1 del tablero.
 
 ### 2. DNS
 En el proveedor del dominio, crear un registro **A**: nombre `bot`, valor = la IP pública del
-VPS (Hostinger → VPS → la IP; es la misma a la que resuelve `n8n.srv1467456.hstgr.cloud`).
+VPS (Hostinger → VPS → la IP, en la fila "IPv4").
 Tarda de minutos a un par de horas. Se comprueba con `nslookup bot.plateo.cloud`.
 
 ### 3. Subir el código y la configuración
