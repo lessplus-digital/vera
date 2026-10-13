@@ -10,6 +10,19 @@ comprobaron ese día, no son suposiciones heredadas.
 
 ---
 
+## Pendiente para la instalación en el cliente real (decidido 2026-10-13)
+
+Se deja para cuando se instale todo en el restaurante real; mientras tanto se conservan los datos
+de prueba tal cual están.
+
+- **Limpiar los datos de prueba** — borrar los pedidos/clientes/reservas de prueba (~80 pedidos
+  semilla, 4 de `PRUEBA ROLES`, `domiciliario_id` sembrado en 67) **antes** de enseñar estadísticas
+  o de abrir al público. Es SQL ya escrito: ver [Datos de prueba de roles](#datos-de-prueba-de-roles-en-producción).
+- **Precios y FAQ reales** — el 2026-10-13 `motivos_reserva` quedó con una propuesta (Cumpleaños
+  $60.000 · Aniversario $70.000 · Declaración $90.000 · Grado $60.000 · Empresarial $100.000) y la
+  `faq` con 5 filas derivadas de `info_negocio`. El restaurante debe confirmarlos o cambiarlos, y
+  sumar sus preguntas propias (wifi, mascotas, tarjeta…).
+
 ## Si vas a coger algo hoy
 
 Ordenado por *valor recibido ÷ esfuerzo*, no por importancia teórica.
