@@ -21,21 +21,22 @@ workflows y prompts (170 KB), un subagente, un skill, un hook, 10 fichas de bugs
 buffer de mensajes en la BD que nadie usaba.
 
 **Decisión:** retirar todo lo que describía o operaba n8n. El historial queda en git (tag
-); no hay vuelta atrás (decisión del 2026-09-30).
+`pre-migracion-node`); no hay vuelta atrás (decisión del 2026-09-30).
 
 **Hecho:**
-- **Repo:** borrados , el subagente
-  , el skill , el hook , el script de rollback de la Fase 2
-  y el servidor MCP  de . Reescritos , ,
-  , ,  (reseteado: solo BUG-029/031/064),
-   (una sola lista por orden) y los skills , , ,
-  .  pierde 9 lecciones que solo eran de n8n.
-- **BD:** migración  — elimina la tabla  (0 filas, sin
-  funciones ni vistas que la usaran) y su cron .
-- **Se conserva a propósito:** la tabla  (el servidor la usa; renombrarla está
+- **Repo:** borrados `docs/bot/{n8n-workflow,subworkflows,agent-prompts,ai-agents}.md`, el subagente
+  `n8n-inspector`, el skill `debug-n8n`, el hook `n8n-publicar`, el script de rollback de la Fase 2
+  y el servidor MCP `n8n-native` de `.mcp.json.example`. Reescritos `README.md`, `CLAUDE.md`,
+  `docs/README.md`, `docs/architecture.md`, `bug-tracker.md` (reseteado: solo BUG-029/031/064),
+  `backlog.md` (una sola lista, por orden) y los skills `new-tool`, `audit`, `fix-bug` y
+  `verify-against-live`. `edge-cases.md` pierde 9 lecciones que solo eran de n8n.
+- **BD:** migración `quitar_buffer_n8n` — elimina la tabla `n8n_mensajes_pendientes` (0 filas, sin
+  funciones ni vistas que la usaran) y su cron `limpiar-mensajes-pendientes`.
+- **Se conserva a propósito:** la tabla `n8n_chat_histories` (el servidor la usa; renombrarla está
   en el backlog) y la red/Traefik de n8n en el VPS (el bot cuelga de ellos; ver backlog §3).
 
-**Impacto:** ~20 archivos de docs y configuración; .
+**Impacto:** ~20 archivos de docs y configuración;
+`supabase/migrations/20261013120000_quitar_buffer_n8n.sql`.
 
 ---
 ### 2026-10-13 — Salida a producción: lote adversarial, precios de ocasiones y FAQ iniciales
