@@ -103,6 +103,14 @@ const cambiaElPedido = (c: Clasificacion, e: EstadoPedido | null, texto: string)
  * intenciones_extra: ['quitar_producto'], se tomó como cambio y el pedido
  * quedó en Menú sin avanzar (2026-10-06, 573184821317).
  */
+/**
+ * "Ya no quiero nada" / "cancela todo" a "¿algo más?" es soltar el pedido, no "no, nada más":
+ * seguía a "¿domicilio o recoger?" con el carrito lleno (2026-10-13). "No quiero nada más" y
+ * "no, nada" siguen siendo "ya está todo".
+ */
+const cancelaTodo = (texto: string) =>
+  /\b(cancel\w*\s+(todo|el pedido|mi pedido|la orden)|ya no quiero (nada|el pedido|pedir|ordenar)(?!\s+mas)|olvid\w*\s+(todo|el pedido))/.test(norm(texto))
+
 const pideQuitar = (texto: string) =>
   /\b(quit|saca|sacar|sacal|elimin|borr|ya no|no quiero|menos|cambi)/.test(norm(texto))
 
@@ -400,6 +408,7 @@ function responderPregunta(
       // producto a "¿algo más?" es pedir más aunque el clasificador diga "no"
       // (visto con gpt-5.1 el 2026-09-30).
       // Lo mismo con cualquier cosa del menú ("¿y la pizza m&m?"): va a Menú, no a cerrar.
+      if (!si && hayCarrito(estado) && cancelaTodo(texto)) return { handler: 'menu', acciones: [{ tipo: 'vaciar_carrito' }], regla: 'cancelar_carrito' }
       if (si || cambiaElPedido(c, estado, texto) || HANDLER_DE[c.intencion] === 'menu') return null
       return hayCarrito(estado)
         ? { handler: 'pedidos', acciones: [], regla: 'algo_mas:no', nota: 'seguir con lo que falte del pedido' }

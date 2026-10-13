@@ -98,7 +98,7 @@ end $$;
 insert into reservas(reserva_id, telefono, nombre_cliente, fecha, hora, personas, estado, origen, motivo, costo_motivo)
  values ('RES-QAM', '573000000901', 'QA', (select d from t) + 1, '13:00', 4, 'confirmada', 'whatsapp', 'cumpleanos', 999);
 insert into qa_out(paso, esperado, valor)
-select 'T5 costo_motivo ignora el 999 del LLM', '80000', costo_motivo::text
+select 'T5 costo_motivo ignora el 999 del LLM', (select costo::text from motivos_reserva where clave = 'cumpleanos'), costo_motivo::text
 from reservas where reserva_id = 'RES-QAM';
 
 insert into reservas(reserva_id, telefono, nombre_cliente, fecha, hora, personas, estado, origen, motivo)

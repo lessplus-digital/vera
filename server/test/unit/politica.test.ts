@@ -70,6 +70,22 @@ const casos: Caso[] = [
     regla: 'algo_mas:no',
   },
   {
+    nombre: '"ya no quiero nada" a "¿algo más?" con carrito → vacía el carrito (no sigue a domicilio)',
+    c: { intencion: 'respuesta_corta', confirma: 'no' },
+    ctx: ctx('ya no quiero nada', { estado: carrito(), ultima: { tipo: 'algo_mas' }, handler: 'menu' }),
+    handler: 'menu',
+    acciones: [{ tipo: 'vaciar_carrito' }],
+    regla: 'cancelar_carrito',
+  },
+  {
+    nombre: '"no quiero nada más" a "¿algo más?" → sigue con el pedido',
+    c: { intencion: 'respuesta_corta', confirma: 'no' },
+    ctx: ctx('no quiero nada más', { estado: carrito(), ultima: { tipo: 'algo_mas' }, handler: 'menu' }),
+    handler: 'pedidos',
+    acciones: [],
+    regla: 'algo_mas:no',
+  },
+  {
     nombre: '"hola, quiero una hawaiana" leído como saludo + producto → Menú (no Soporte)',
     c: { intencion: 'saludo', intenciones_extra: ['agregar_producto'], productos: [producto('hawaiana')] },
     ctx: ctx('hola, quiero una hawaiana tradicional mediana'),

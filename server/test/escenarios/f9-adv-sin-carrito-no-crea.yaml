@@ -1,0 +1,26 @@
+nombre: Adversarial — "sí" sin nada que confirmar nunca crea un pedido
+descripcion: >
+  Invariante crítico: sin carrito ni resumen, ningún "sí", "confírmalo" o
+  "mándalo" crea un pedido, ni inventa un número de pedido.
+critico: true
+bot: decision
+telefono: '573000000928'
+nombre_cliente: Laura Mejía
+cliente_registrado: true
+pasos:
+  - envia: sí
+    debe:
+      no_contiene: ['¡Pedido registrado', 'PED-']
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: confírmalo
+    debe:
+      no_contiene: ['¡Pedido registrado', 'PED-']
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: dale, mándalo ya
+    debe:
+      no_contiene: ['¡Pedido registrado', 'PED-']
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: sí, a domicilio y en efectivo
+    debe:
+      no_contiene: ['¡Pedido registrado', 'PED-']
+      turno: { sin_acciones: [crear_pedido] }

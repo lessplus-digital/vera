@@ -1,0 +1,29 @@
+nombre: Adversarial — reserva con todo en un mensaje, cambios y arrepentimiento
+descripcion: >
+  Todo en un mensaje (personas, día, hora y ocasión), cambio de personas sobre
+  el resumen, "mejor olvídalo" y un "sí" posterior: no se crea ninguna reserva
+  con un borrador que el cliente soltó.
+critico: true
+bot: decision
+telefono: '573000000930'
+nombre_cliente: Sara Londoño
+cliente_registrado: true
+pasos:
+  - envia: quiero reservar para 4 pasado mañana a las 7 de la noche, es un cumpleaños
+    debe:
+      contiene: ['Cumpleaños', '4 personas', '¿Te la reservo?']
+      no_contiene: ['Reserva confirmada']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: mejor somos 6
+    debe:
+      contiene: ['6 personas', '¿Te la reservo?']
+      no_contiene: ['Reserva confirmada']
+      turno: { handler: reservas, sin_acciones: [crear_reserva] }
+  - envia: mejor olvídalo
+    debe:
+      no_contiene: ['Reserva confirmada']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: sí
+    debe:
+      no_contiene: ['Reserva confirmada']
+      turno: { sin_acciones: [crear_reserva] }

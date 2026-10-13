@@ -1,0 +1,19 @@
+nombre: Adversarial — producto agotado y mensajes seguidos
+descripcion: >
+  Un producto agotado (Pizza M&M en el catálogo simulado) no entra al carrito;
+  tres mensajes seguidos se juntan en un solo turno y se arma el pedido.
+critico: true
+bot: decision
+telefono: '573000000932'
+nombre_cliente: Paula Ríos
+cliente_registrado: true
+pasos:
+  - envia: quiero una pizza M&M mediana
+    debe:
+      bd: { carrito: [] }
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: ['quiero una pepperoni', 'mediana', 'a domicilio']
+    debe:
+      respuestas: 1
+      contiene: ['Subtotal: $39.000']
+      turno: { sin_acciones: [crear_pedido] }

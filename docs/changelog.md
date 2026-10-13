@@ -14,6 +14,32 @@
 ```
 
 ---
+### 2026-10-13 — Salida a producción: lote adversarial, precios de ocasiones y FAQ iniciales
+
+**Contexto:** barrido final antes de salir. Se agregaron 6 escenarios adversariales
+(`f9-adv-*`: prompt injection y secretos, "sí" sin carrito, ruido y cambios en el carrito,
+reserva con todo en un mensaje + arrepentimiento, personas/horas fuera de regla, agotado + buffer).
+
+**Hallazgo real:** "ya no quiero nada" a "¿quieres algo más?" se leía como "no, nada más" y seguía a
+"¿domicilio o recoger?" con el carrito lleno (2 de 5). Ahora `cancelaTodo` (`politica.ts`) lo trata
+como soltar el pedido (vacía el carrito); "no quiero nada más" sigue siendo "ya está todo".
+Los demás rojos del lote eran expectativas mal escritas del escenario (el precio simulado de la
+pepperoni mediana es $39.000; "registrado" aparece en "pedidos ya registrados").
+
+**Datos (BD viva):**
+- `motivos_reserva`: precios propuestos por Claude por delegación del dueño — Cumpleaños $60.000,
+  Aniversario $70.000, Declaración/propuesta $90.000, Grado $60.000, Evento empresarial $100.000
+  (antes los placeholders 80/120/150/90/200 mil). **Siguen siendo una propuesta: el restaurante
+  los ajusta con un `UPDATE`.** Las reservas ya creadas conservan su `costo_motivo`.
+- `faq`: 5 filas nuevas (FAQ-002…006: dirección, horario, medios de pago, tiempo del domicilio,
+  reservas por WhatsApp), solo con datos que ya estaban en `info_negocio` y en las reglas de
+  reserva. **Las debe revisar y ampliar el restaurante** (wifi, mascotas, tarjeta, etc.); si cambia
+  `info_negocio`, estas filas hay que actualizarlas también.
+- `qa/sql/06-reservas.sql` T5: el costo esperado se lee de `motivos_reserva` (ya no `80000`).
+
+**Impacto:** `server/src/decision/politica.ts`, escenarios `f9-adv-*`, `qa/sql/06-reservas.sql`.
+
+---
 ### 2026-10-10 — Bot Node: barrido del simulador antes de salir (4 rojos → 4 arreglos)
 
 **Contexto:** el simulador completo (27 escenarios × 5) dejó 4 críticos en rojo. El primer arreglo de

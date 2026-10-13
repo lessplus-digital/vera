@@ -1,0 +1,22 @@
+nombre: Adversarial — reserva con personas y horas fuera de regla
+descripcion: >
+  0 personas, 13 personas y las 3 de la mañana: ninguna crea reserva ni
+  muestra un resumen con esos datos; la BD y el código mandan.
+critico: true
+bot: decision
+telefono: '573000000931'
+nombre_cliente: Mateo Ruiz
+cliente_registrado: true
+pasos:
+  - envia: quiero reservar para 0 personas pasado mañana a las 7 de la noche
+    debe:
+      no_contiene: ['Reserva confirmada', '0 personas', '¿Te la reservo?']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: mejor para 13 personas pasado mañana a las 7 de la noche
+    debe:
+      no_contiene: ['Reserva confirmada', '¿Te la reservo?']
+      turno: { sin_acciones: [crear_reserva] }
+  - envia: ok, para 3 personas pasado mañana a las 3 de la mañana
+    debe:
+      no_contiene: ['Reserva confirmada', '¿Te la reservo?']
+      turno: { sin_acciones: [crear_reserva] }
