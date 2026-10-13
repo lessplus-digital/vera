@@ -1,12 +1,5 @@
 {
   "mcpServers": {
-    "n8n-native": {
-      "type": "http",
-      "url": "https://TU-INSTANCIA-n8n.com/mcp-server/http",
-      "headers": {
-        "Authorization": "Bearer TU_ACCESS_TOKEN_DEL_MCP_DE_N8N"
-      }
-    },
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=TU_PROJECT_REF&read_only=true&features=database,docs"

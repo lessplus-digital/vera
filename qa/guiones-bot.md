@@ -60,7 +60,6 @@ guion usa `:tel` — sustitúyelo por el número que usaste.
 ```sql
 delete from carritos                where telefono = :tel;
 delete from feedback_pendiente      where telefono = :tel;
-delete from n8n_mensajes_pendientes where telefono = :tel;  -- BUG-053: un turno muerto deja la fila y se pega al siguiente mensaje
 delete from n8n_chat_histories      where session_id in (:tel, 'orq:' || :tel);
 update clientes set modo = 'bot'    where telefono = :tel;
 ```

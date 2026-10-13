@@ -2,6 +2,9 @@
 
 > Cada entrada es un bug real encontrado en producción o testing. Agrega nuevos al final con fecha.
 
+> **Retiradas el 2026-10-13:** las lecciones que solo aplicaban a n8n (§3, 4, 12, 18, 19, 30, 36, 37 y 40) se
+> quitaron tras la migración al servidor Node. Siguen en el historial de git (tag `pre-migracion-node`).
+
 ## 1. El LLM inventaba producto_ids
 
 **Síntoma:** El agente construía IDs como `PIZZA-DULCE-JUMB-PQ` en lugar de usar los reales (`PROD-001`).
@@ -13,18 +16,6 @@
 **Síntoma:** Buscar "hawaiana premium" no encontraba "Premium Hawaiana".
 **Causa:** Supabase `ilike` busca la frase exacta, no palabras individuales.
 **Solución:** Dividir en palabras. Primera palabra → filtro Supabase. Resto → `.filter()` en Code node post-proceso.
-
-## 3. n8n Code nodes no tienen APIs de browser
-
-**Síntoma:** `URLSearchParams`, `fetch`, `$helpers.httpRequest` dan error.
-**Causa:** El sandbox de n8n Code node es limitado.
-**Solución:** Usar nodo HTTP Request separado con "Send Query Parameters" → "Fields Below".
-
-## 4. n8n envía `undefined` como string
-
-**Síntoma:** Supabase recibe `"undefined"` como valor de texto, causando errores de parseo.
-**Causa:** Si un campo del JSON no existe, n8n lo serializa como `"undefined"`.
-**Solución:** No incluir campos opcionales en el objeto si no tienen valor. No usar `null` tampoco — simplemente omitir el campo.
 
 ## 5. El LLM se saltaba consultar_menu
 
@@ -62,7 +53,7 @@
 **Causa:** El cliente respondía con algo que no es un nombre real.
 **Solución:** Regla en prompt: si el nombre parece raro, religioso, emoji o no real → saludar sin nombre y no registrarlo.
 
-## 11. RLS bloquea writes de n8n en silencio (pedidos sin líneas)
+## 11. RLS bloquea writes del bot en silencio (pedidos sin líneas)
 
 **Síntoma:** Pedidos con `total` pero 0 filas en `detalle_pedidos` (8 casos en producción, BUG-007).
 **Causa:** Un nodo HTTP de n8n escribía con la **anon key hardcodeada** contra una tabla con RLS
@@ -74,24 +65,6 @@ la credencial `Supabase account` (service_role) — nunca keys pegadas en header
 verificar el rol decodificando el JWT del header (`"role":"anon"` vs `"service_role"`), y validar
 sobre la **versión publicada** del workflow, no el borrador.
 **Fecha:** 2026-07-22
-
-## 12. Keys con espacio invisible al final en inputs de n8n
-
-**Síntoma:** Validaciones que nunca se disparan: un Code node lee `input.telefono` /
-`input.cliente_id` y recibe `undefined`, aunque el dato "sí llega" (BUG-004 y BUG-009 — mordió
-dos veces con el mismo patrón).
-**Causa:** Al escribir los inputs de un subworkflow (o el schema de una tool) en la UI de n8n se
-coló un espacio al final del nombre (`'telefono '`, `'cliente_id '`). n8n lo acepta y lo propaga
-tal cual, así que los nodos que leen la key "bien escrita" (sin espacio) ven `undefined` — y un
-`if (input.x && ...)` se salta en silencio, incluso checks de seguridad.
-**Solución:** Renombrar la key sin espacio en **todo** el camino (schema de la tool en el main +
-trigger del subworkflow + cada nodo que la lea). Al auditar, comparar las keys del trigger
-carácter a carácter contra lo que leen los Code nodes. Y escribir los checks de seguridad
-**fail-closed** (`!input.x || ...`), para que un input ausente falle ruidoso en vez de saltarse
-la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el rename.
-**Fecha:** 2026-07-23
-
----
 
 ## Plantilla para nuevos casos
 
@@ -134,23 +107,6 @@ la validación. Ojo: el pinData conserva las keys viejas — re-pinnear tras el 
 **Causa:** `Sub — Consultar_menu` llamaba al RPC `buscar_menu` con `solo_disponibles: true`. El agotado no venía en el resultado, y para el LLM **ausencia = inexistencia**: no tiene forma de distinguir "no está en la carta" de "está pero hoy no hay".
 **Solución:** No filtrar en la consulta — filtrar en la **forma de la respuesta**. El sub pide todo (`solo_disponibles: false`) y devuelve dos listas: `productos_por_categoria` (solo disponibles) y `agotados`. El agente sigue sin poder ofrecer ni agregar un agotado (no está en la lista con la que construye los items del carrito) pero **sabe que existe** y responde "sí lo tenemos, hoy se agotó" + alternativa.
 **Lección general:** cuando una tool oculta filas por un flag de estado, el LLM no ve un estado — ve un vacío, y el vacío lo interpreta como negación total. Si el estado importa para la respuesta al cliente, **devuélvelo en un campo aparte** en vez de filtrarlo. Aplica igual a pedidos cancelados, reservas vencidas o clientes bloqueados.
-
-## 18. `.first()` sobre un query sin `order` escribe en la fila equivocada — y el workflow queda verde (2026-07-29)
-
-**Síntoma:** El cliente manda el comprobante, el bot responde "✅ ¡Recibimos tu comprobante!", el archivo aparece en Storage… y el dashboard sigue mostrando *"Esperando comprobante de transferencia"*. Debuggear n8n no revelaba nada: **todos los nodos en verde, ejecución `success`**.
-**Causa:** `Buscar pedido activo` filtraba solo por `telefono` + `estado = 'pendiente'` y devolvía **2 filas** (el cliente tenía un pedido viejo sin cerrar de 4 semanas antes, en Efectivo). `Preparar Upload` tomaba `$('Buscar pedido activo').first()`, y Postgres sin `ORDER BY` no garantiza orden: ganó el viejo. El comprobante se subió como `PED-109.jpg` y `comprobante_url` se escribió en `PED-109` (¡un pedido en **Efectivo**!) en vez de `PED-223`. El nodo Supabase **no tiene opciones de sort/limit** (0 de 27 propiedades), así que el orden nunca estuvo definido.
-**Solución:** estrechar el filtro (`metodo_pago = 'Transferencia'`, `estado_pago = 'pendiente'`) **y** decidir el orden explícitamente en el Code node (`sort` por `fecha_pedido` desc, descartando los que ya tienen `comprobante_url`) en vez de `.first()`. Además, `Update a row` ahora referencia `$('Preparar Upload').first().json.pedidoId` — el pedido que realmente se subió — y no el `.item` del IF anterior, que con varios items podía resolver a otra fila.
-**Lección general:** un workflow "verde" solo prueba que cada nodo no lanzó excepción, **no** que escribió en la fila correcta. Cuando un nodo puede devolver N filas y el siguiente asume 1, `.first()` es un bug latente que solo se manifiesta cuando aparece la segunda fila — y se manifiesta como *dato silenciosamente mal escrito*, no como error. Si el consumidor asume una sola fila, hace falta un criterio de desempate explícito. Corolario: los datos viejos sin cerrar (pedidos `pendiente` de semanas atrás) son la munición que activa estos bugs.
-
-## 19. Un Switch sin fallback descarta en silencio los tipos de mensaje que no enumeraste (2026-07-29)
-
-**Síntoma:** La promo (`reactivacion_cliente`) llegaba perfecto al cliente, pero al tapear el botón **"Quiero pedir"** el bot no hacía **nada**. Ni respuesta, ni error, ni pista en n8n.
-**Causa:** El `Switch` inicial del workflow principal tenía **2 reglas** (existe `messages[0].text.body` → texto; `type` contiene `image` → imagen) y **ningún fallback output**. Un tap de Quick Reply de plantilla llega como `messages[0].type = 'button'` con `button: { text, payload }` y **no trae `text.body`** → no matcheaba ninguna regla → n8n descartaba el item y terminaba la ejecución como `success`. Buscar el bug en el prompt del ORQUESTADOR era la pista falsa obvia: el mensaje **nunca entró al flujo**.
-**Solución:** tercera salida en el Switch (`type` ∈ `button` | `interactive`) → Code node `Normalizar tap` que inyecta el texto del botón en `messages[0].text.body` y reenvía el payload al mismo `Extraer datos del mensaje` del camino de texto. Así el resto del flujo no cambia.
-**Dos trampas que vale la pena recordar:**
-- Los taps de **plantilla** son `type: 'button'` (`button.text`). Los `type: 'interactive'` (`interactive.button_reply.title`) son solo para botones enviados por mensaje interactivo. Son payloads **distintos** y es fácil cablear el equivocado.
-- El texto de un botón suelto puede ser ambiguo para el orquestador porque **la plantilla la manda el dashboard, no el agente**: el historial de chat no tiene contexto. `Confirmar` (de `recordatorio_reserva`) caía en la regla de *pedidos* (`"confírmalo"`). Hay que **reescribir el tap a una frase autoexplicativa** ("Confirmar mi reserva") antes de que lo vea el LLM.
-**Lección general:** en un Switch de entrada que clasifica payloads de terceros, la ausencia de fallback convierte "tipo no contemplado" en **silencio absoluto**, que es el síntoma más caro de debuggear. Cuando algo "no hace nada" (en vez de fallar), sospecha primero del enrutado de entrada y **mira el payload crudo del trigger en una ejecución real** antes de tocar prompts o lógica de negocio. Y no confíes en los docs para los labels de botones: la fuente de verdad es `GET /{waba_id}/message_templates?fields=components` (el backlog listaba un botón `Sí, les cuento` que no existe en ninguna plantilla).
 
 ## 20. Un paso borrado de un prompt numerado deja al LLM rellenando el hueco (2026-07-29)
 
@@ -322,39 +278,6 @@ vencimiento invisible**. Si escribes una, escribe también la condición que la 
 `barrios` tenga filas, borrar este párrafo») y déjala en el backlog — o revísala cuando cambie el
 dato del que dependía. El bug no fue una línea mal escrita: fue una línea que dejó de ser cierta.
 
-
-## 30. Aislar la memoria del orquestador lo dejó ciego (2026-09-01)
-
-**Síntoma:** tras darle al ORQUESTADOR su propio `sessionKey` (`orq:<telefono>`) para sacarlo de
-la ventana compartida, empezó a clasificar mal las respuestas cortas. El Agente Pedidos preguntaba
-*"¿en qué barrio estás?"*, el cliente escribía **"La milagrosa"**, y el orquestador lo mandaba a
-**menu** con la razón *"menciona posible producto sin contexto claro"*. El Agente Menú se apropiaba
-del flujo y llegaba a preguntar *"¿efectivo o tarjeta?"* — **tarjeta ni siquiera es un método de
-pago del negocio**. En otra prueba, "así está bien" con el carrito lleno también cayó en menu, el
-agente respondió *"un compañero te va a pedir los datos"* y **la conversación se murió ahí**: nadie
-los pidió nunca.
-
-**Causa:** al separar la sesión, el historial del orquestador pasó a contener **solo los mensajes
-del cliente y sus propios JSON de clasificación** — dejó de ver las respuestas de los agentes. Y
-media docena de sus reglas dependían justo de eso: *"mira QUÉ se preguntó justo antes"*, *"si el
-agente de pedidos hizo una pregunta → pedidos"*, *"NUNCA clasifiques pedidos sin evidencia en el
-historial de que existe un carrito"*. Se cambió **ruido por ceguera**.
-
-**Solución:** no revertir el aislamiento, sino **darle evidencia dura en vez de historial**. Un
-nodo lee `estado_pedido` ANTES de clasificar y le inyecta una línea con `n_items` y `faltantes`.
-Con *"productos en el carrito: 1 | falta por preguntar: barrio"*, "La milagrosa" deja de ser
-ambiguo. Las reglas que decían *"busca evidencia de carrito en el historial"* pasaron a decir
-*"la evidencia de carrito la tienes en el ESTADO REAL, no la busques en el historial"*.
-
-**Lección.** Cuando le quitas contexto a un componente para limpiarlo, **audita primero qué
-decisiones tomaba con ese contexto**. Aquí el ruido y la señal viajaban por el mismo canal: al
-cortar el canal se fueron los dos. La forma correcta de sacar a un componente de un historial
-compartido es reemplazar lo que leía de ahí por un dato explícito — y si ese dato es determinista
-(una fila de la BD) el componente además queda **mejor** que antes, no solo igual. Corolario: un
-agente sin guardarraíl sobre un tema **improvisa** en vez de callarse — el prompt del Agente Menú
-no menciona "pago" ni una vez, y aun así se inventó un método de pago que no existe.
-
----
 
 ## 31. Una escritura bloqueada por RLS no falla: afecta cero filas y devuelve éxito (2026-09-09)
 
@@ -534,58 +457,6 @@ es la banda: **¿algún producto que no pidieron llega a ≥0.5?** (`02-menu.sql
 una función que alimenta a un LLM, lee cómo la consume el workflow: el mismo arreglo diseñado para
 un top-5 no habría servido.
 
-## 36. `$json` no atraviesa un nodo: un campo calculado en un Code node muere en el siguiente INSERT (2026-09-15)
-
-**Síntoma.** Un cliente califica su pedido con **5** y el bot le contesta *"Lamento que no fuera lo
-esperado 🙏 ¿Nos cuentas qué pasó?"*. El siguiente mensaje del cliente (*"Dije 5"*) queda guardado
-como comentario de queja. La nota se guardó bien (5); lo que estaba mal era el camino.
-
-**Causa.** En `Sub — Feedback Pendiente` la cadena es
-`Parsear calificación` → `Guardar calificación` (INSERT Supabase) → `¿Nota > 3?` (Switch).
-El parser emite `es_positiva: true`, pero el switch evalúa `={{ $json.es_positiva }}`, y su `$json`
-es la salida del nodo **inmediatamente anterior**: la fila insertada en `feedback`
-(`feedback_id, cliente_id, pedido_id, fecha, calificacion_general, comentario, resuelta_at`). Ahí
-`es_positiva` es `undefined`. Con eso, la regla `is true` no matchea y la regla `is false` sí:
-**todas** las notas —1 a 5— salían por la ruta negativa. Verificado en la ejecución `15674`.
-
-**Por qué es difícil de ver.** El switch no falla: enruta. La ejecución queda en verde, el INSERT
-es correcto, la nota en la BD es correcta, y en `qa/sql/` no hay nada que detectarlo porque el
-defecto no está en SQL. Solo se ve leyendo la conversación o abriendo la ejecución nodo por nodo.
-Escondía además un segundo defecto en la rama que nunca corría: `Eliminar feedback pendiente`
-filtraba por `$json.telefono` sobre esa misma fila de `feedback`, que no tiene esa columna.
-
-**Lección.** Un campo calculado en un Code node **no sobrevive** a un nodo Supabase/HTTP intermedio.
-Si un nodo posterior lo necesita, referencia el origen explícitamente —
-`$('Parsear calificación').item.json.es_positiva` — o decide con un campo que **sí** venga en el
-item que llega (`calificacion_general > 3`). Y cuando muevas un nodo de decisión detrás de una
-escritura, revisa **todo** lo que ese nodo y sus descendientes leen de `$json`: el resto de la rama
-suele estar leyendo el item viejo también.
-
-## 37. Reordenar una cadena en n8n no es mover cajas: es cambiar el `$json` de todo lo que quedó detrás (2026-09-16)
-
-**Síntoma.** El job de feedback vuelve a preguntar por un pedido que ya preguntó. `PED-246` recibió
-la misma pregunta dos veces en 75 minutos y, un día después, sigue con `feedback_solicitado = false`
-pese a dos ejecuciones verdes que dicen haberlo marcado.
-
-**Causa.** El fix de BUG-050 reordenó la cadena para que el WhatsApp saliera antes de marcar el
-pedido. El nuevo orden es correcto; lo que nadie revisó es que `Marcar pedido como solicitado`
-seguía filtrando por `={{ $json.pedido_id }}`. Tras el reorden su `$json` ya no es el payload del
-Code node sino **la respuesta de la API de WhatsApp**, que no tiene `pedido_id`. La query sale como
-`pedido_id=eq.undefined`, PostgREST hace match de 0 filas y responde **204 sin cuerpo** — que para
-n8n es un éxito. Sus tres nodos hermanos sí se habían migrado a
-`$('Code — Preparar payload').item.json.…`; ese quedó solo.
-
-**Por qué es difícil de ver.** Es el mismo fallo silencioso del caso 31, pero sin RLS de por medio:
-**cualquier** filtro de PostgREST que no matchea nada devuelve éxito con 0 filas. Con
-`Prefer: return=minimal` el output del nodo es `{}` tanto si actualizó como si no. La única forma de
-notarlo es ir a la BD a mirar si la columna cambió.
-
-**Lección.** Mover un nodo en n8n es un cambio de datos, no de layout: después de reordenar, audita
-**cada** `$json` de los nodos que quedaron detrás del punto de corte — y si el fix migró unos a
-`$('Nodo')…`, migra **todos**, no los que rompían ese día. Para escrituras de idempotencia
-(`feedback_solicitado`, `procesado`, `notificado`) usa `Prefer: return=representation`: un match de
-0 filas debe verse distinto de un éxito.
-
 ## 38. Cuando el fallo deja al cliente atrapado, el bug no es el error: es que nadie lo saca de ahí (2026-09-16)
 
 **Síntoma.** Un cliente en `modo = 'esperando_feedback'` responde `5`. Silencio. Responde `5` otra
@@ -641,26 +512,6 @@ se explica en un comentario SQL encima. Y el `esperado` afirma el **comportamien
 actual: un caso que documenta un bug abierto debe estar rojo *porque el bug está abierto*, y pasar a
 verde solo por el fix. Si arreglas un `esperado` de este tipo, **búscalos todos a la vez** — en
 07-housekeeping se corrigió T1 y se dejó T5b, y el rojo huérfano sobrevivió una corrida entera.
-
-## 40. "Publicado" no es "vigente": verifica el valor en la ruta que el motor lee (2026-09-29)
-
-Durante semanas se aplicaron por MCP parches de prompt y de código a `Pizzeria Vera` (BUG-061,
-BUG-062), cada uno **publicado** y con `versionId == activeVersionId`. Los reintentos por WhatsApp
-siguieron rojos y se concluyó que "el LLM no respeta la excepción". La causa real (BUG-063): el texto
-nuevo quedó en `parameters.parameters.…`, una clave que n8n ignora. El motor seguía ejecutando la
-versión vieja; la ejecución 17030 citaba "la regla vieja" porque **era** la regla vigente.
-
-Tres lecciones:
-
-1. **Un paso de despliegue que sale verde no prueba que el cambio esté activo.** El hook
-   `n8n-publicar.mjs` comprobaba que se publicara; nada comprobaba que el valor estuviera donde n8n
-   lo lee. Tras un `update_workflow`, releer el nodo publicado y buscar el texto nuevo en la ruta
-   efectiva.
-2. **Antes de culpar al LLM, confirma que corrió lo que crees.** "El modelo ignora mi regla" y "mi
-   regla no está en el prompt" producen exactamente el mismo síntoma. La segunda es más barata de
-   descartar y se descarta primero.
-3. **Es un argumento a favor de mover la lógica a código versionado:** en `server/` el código que
-   corre es el del commit, y una prueba unitaria que falla lo dice en segundos.
 
 ## 41. Un escenario en verde no prueba que la respuesta sea buena: hay que leerla (2026-10-02)
 

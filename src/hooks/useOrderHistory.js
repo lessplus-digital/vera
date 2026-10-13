@@ -163,7 +163,7 @@ export function useOrderHistory({
 
   // ── Correcciones de estado desde el historial (pedidos que quedaron colgados
   // en un estado intermedio). OJO: el trigger de BD `notificar-estado-pedido`
-  // dispara el webhook de n8n en CADA update → el cliente SIEMPRE recibe el
+  // avisa al servidor del bot en CADA update → el cliente SIEMPRE recibe el
   // WhatsApp del nuevo estado (entregado/cancelado); la UI lo advierte antes.
   async function applyUpdate(pedido_id, updates) {
     const { error: updateError } = await supabase
@@ -187,7 +187,7 @@ export function useOrderHistory({
 
   function cancelarPedido(pedido_id, motivo) {
     // Misma semántica que el rechazo del kanban (OrderCard.handleReject); el
-    // motivo es obligatorio porque n8n lo interpola en el mensaje al cliente.
+    // motivo es obligatorio porque el servidor lo interpola en el mensaje al cliente.
     return applyUpdate(pedido_id, {
       estado: 'cancelado',
       estado_pago: 'rechazado',

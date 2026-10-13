@@ -3,64 +3,63 @@
 ## Visión general
 
 ```
-┌────────────┐    ┌───────────────────────────────────────────────┐    ┌────────────────┐
-│  WhatsApp  │───▶│  n8n (Motor de Automatización)                │───▶│  Supabase      │
-│  Business  │◀───│                                               │◀───│  PostgreSQL    │
-│  Cloud API │    │  Acumular mensajes → Router de modo →          │    │  menu·clientes │
-└────────────┘    │  ORQUESTADOR (gpt-5.1) → 4 agentes + P. Memory:│    │  pedidos·detalle│
-                  │    · Menú (carrito)     · Pedidos             │    │  carritos·reservas│
-                  │    · Soporte (handoff)  · Reservas            │    │  feedback·info… │
-                  │  + Job programado: pide feedback tras entrega  │    └────────────────┘
-                  └───────────────────────────────────────────────┘           │ Realtime
-                                                                               ▼
-                                              ┌──────────────────────────────────────┐
-                                              │  Dashboard React + Vite               │
-                                              │  Pedidos · Soporte · Estadísticas ·   │
-                                              │  Clientes · Reservas                  │
-                                              └──────────────────────────────────────┘
+┌────────────┐    ┌────────────────────────────────────────┐    ┌──────────────────┐
+│  WhatsApp  │───▶│  Servidor del bot (Node, server/)      │───▶│  Supabase        │
+│  Business  │◀───│  clasifica (LLM) → decide (código) →   │◀───│  PostgreSQL      │
+│  Cloud API │    │  ejecuta → redacta (LLM) → guardia      │    │  menú·clientes   │
+└────────────┘    │  + job que pide la calificación         │    │  pedidos·reservas│
+      ▲           └────────────────────────────────────────┘    │  feedback·info…  │
+      │  /api/wa (JWT de sesión)         ▲                       └──────────────────┘
+      │                                  │ POST /hooks/estado-pedido     │ Realtime
+┌─────┴──────────────────────────────────┴───┐                           ▼
+│  Dashboard React + Vite (este repo)        │◀──────────────────────────┘
+│  Pedidos · Soporte · Estadísticas ·        │
+│  Clientes · Reservas · Menú · Usuarios     │
+└────────────────────────────────────────────┘
 ```
 
-> **Documentación detallada por capa:** el flujo completo de n8n está en
-> [`bot/n8n-workflow.md`](bot/n8n-workflow.md), los agentes y tools en
-> [`bot/ai-agents.md`](bot/ai-agents.md), el feedback en [`bot/feedback.md`](bot/feedback.md),
-> el esquema en [`database.md`](database.md) y el frontend en
-> [`dashboard/components.md`](dashboard/components.md).
+> **Documentación detallada por capa:** el servidor del bot en
+> [`bot/servidor.md`](bot/servidor.md), el feedback en [`bot/feedback.md`](bot/feedback.md), el
+> despliegue en [`bot/despliegue.md`](bot/despliegue.md), el esquema en [`database.md`](database.md)
+> y el frontend en [`dashboard/components.md`](dashboard/components.md).
 
 ## Flujo de datos de extremo a extremo
 
-### 1. Cliente envía mensaje por WhatsApp
+### 1. El cliente escribe por WhatsApp
 
 ```
-Cliente → WhatsApp → Meta Webhook → n8n (Webhook Trigger)
+Cliente → WhatsApp → Meta → POST https://bot.plateo.cloud/webhook/whatsapp (firma verificada)
 ```
 
-### 2. n8n procesa el mensaje
+### 2. El servidor procesa el turno
 
 ```
-WhatsApp Trigger
+Webhook → dedupe por wamid → buffer por teléfono (junta mensajes seguidos)
   │
-  ├─ Switch por tipo: texto | imagen (comprobante/soporte) | otro
+  ├─ Resolver cliente (por teléfono; si no existe se crea 'Pendiente', modo 'bot')
   │
-  ├─ Acumular mensajes pendientes (Wait + dedup: procesa solo el último)
-  │
-  ├─ Resolver cliente (SELECT por telefono; si no existe → crear 'Pendiente', modo 'bot')
-  │
-  └─ Router de modo (Switch por clientes.modo)
-       ├─ 'humano'              → guarda en mensajes_soporte (no pasa al agente)
-       ├─ 'esperando_feedback'  → subworkflow "Retener feedback"
-       └─ 'bot' → ORQUESTADOR (clasifica) → Decision → 1 de 4 agentes:
-                    Menú · Pedidos · Soporte · Reservas → Send message
+  └─ Por clientes.modo y tipo de mensaje (sin LLM):
+       ├─ 'humano'              → mensajes_soporte (el bot calla)
+       ├─ 'esperando_feedback'  → RPC procesar_respuesta_feedback
+       ├─ foto                  → comprobante de transferencia
+       └─ 'bot' + texto → CLASIFICA (LLM, JSON estricto) → DECIDE (política en código)
+                          → EJECUTA acciones críticas → REDACTA (Menú · Pedidos · Soporte ·
+                            Reservas) → GUARDIA de salida → responde y registra en bot_turnos
 ```
 
-> Detalle nodo por nodo en [`bot/n8n-workflow.md`](bot/n8n-workflow.md).
+> Detalle y reglas en [`bot/servidor.md`](bot/servidor.md).
 
-### 3. Respuesta vuelve al cliente
+### 3. La respuesta vuelve al cliente
 
 ```
-Agente IA → n8n (HTTP Request) → WhatsApp API → Cliente
+Servidor → WhatsApp Cloud API (Graph) → Cliente
 ```
 
-### 4. Dashboard consume en tiempo real
+Los mensajes que manda el **dashboard** (resolver un chat, confirmar una reserva) también salen
+por el servidor: `POST /api/wa` con la sesión del usuario; el servidor revisa su rol y guarda el
+token de Meta.
+
+### 4. El dashboard consume en tiempo real
 
 ```
 Supabase Realtime (postgres_changes)
@@ -70,23 +69,31 @@ Supabase Realtime (postgres_changes)
   └─ tabla: mensajes_soporte → Chat de soporte se actualiza
 ```
 
+Cuando un pedido cambia de estado, un trigger de la BD llama a `POST /hooks/estado-pedido` del
+servidor, que le avisa al cliente por WhatsApp.
+
 ## Principios de arquitectura
+
+**La IA conversa, el código decide.** Las acciones críticas (crear pedido, crear o cancelar
+reserva, pasar a humano, verificar cobertura) las ejecuta código probado; el LLM solo clasifica
+el mensaje y escribe la frase.
 
 ### Separación de responsabilidades
 
 | Componente | Responsabilidad | NO hace |
 |---|---|---|
-| n8n | Orquestación, routing, llamadas a APIs | Cálculos de negocio |
-| OpenAI Agent | Conversación natural, decidir qué tool usar | Calcular totales, inventar IDs |
-| Supabase | Persistencia, triggers, cálculos de negocio | Lógica conversacional |
+| Servidor del bot (código) | Decidir, ejecutar, validar, registrar | Conversar libremente |
+| LLM (OpenAI) | Clasificar el mensaje, redactar la frase | Calcular totales, inventar IDs, crear pedidos |
+| Supabase | Persistencia, triggers, cálculos de negocio, RLS | Lógica conversacional |
 | React Dashboard | Visualización, acciones manuales del staff | Lógica de pedidos |
 
 ### Fuente de verdad
 
 - **Precios** → tabla `menu` (nunca el LLM)
-- **Totales** → trigger `actualizar_total_pedido` (nunca el LLM)
+- **Totales** → trigger `actualizar_total_pedido` (nunca el LLM ni JS)
 - **producto_id** → resultado de `consultar_menu` / RPC `buscar_menu` (nunca inventado)
-- **Estado del pedido** → tabla `pedidos` (solo se actualiza via Supabase)
+- **Estado del pedido** → tabla `pedidos`
+- **Costo de una ocasión de reserva** → tabla `motivos_reserva` (nunca el LLM)
 
 ### Flujo de estados del pedido
 
@@ -94,7 +101,7 @@ Supabase Realtime (postgres_changes)
 pendiente → en_cocina → en_camino → entregado
     │                       │
     └──→ cancelado     (solo para domicilios)
-    
+
 pendiente → en_cocina → recoger → entregado
                             │
                        (cliente pasa a recoger)
@@ -102,37 +109,36 @@ pendiente → en_cocina → recoger → entregado
 
 ### Flujo de modo del cliente
 
-`clientes.modo` ∈ { `bot`, `humano`, `esperando_feedback` } — lo evalúa el Router de modo.
+`clientes.modo` ∈ { `bot`, `humano`, `esperando_feedback` } — lo evalúa el procesador de turno.
 
 ```
 bot (default)
   │
-  ├─ Cliente/agente pide humano (solicitar_handoff) → modo = 'humano'
-  │   └─ trigger_contexto_handoff vuelca la conversación reciente del bot
+  ├─ Cliente pide una persona (o frustración alta) → modo = 'humano'
+  │   └─ trigger_contexto_handoff vuelca la conversación reciente
   │      (n8n_chat_histories) a mensajes_soporte → el admin ve el contexto
-  │   └─ Mensajes van a mensajes_soporte; el admin responde desde el dashboard
+  │   └─ Los mensajes van a mensajes_soporte; el admin responde desde el dashboard
   │       └─ Admin resuelve → modo = 'bot'
   │
   └─ Job de feedback (tras entrega) → modo = 'esperando_feedback'
-      └─ La respuesta del cliente va al subworkflow "Retener feedback"
+      └─ La respuesta del cliente la procesa la RPC procesar_respuesta_feedback
           └─ Al terminar (o si es huérfano) → modo = 'bot'
 ```
 
 ## Confiabilidad
 
-### ¿Por qué este diseño es confiable?
-
-1. **Totales calculados por trigger** — Imposible que el LLM mande un total incorrecto
-2. **producto_id validado** — El agente DEBE consultar el menú antes de agregar items
-3. **Memoria conversacional en Postgres** — No se pierde si n8n se reinicia
-4. **Realtime nativo de Supabase** — El dashboard siempre refleja el estado actual
-5. **Escalamiento a humano** — Si el bot no puede resolver, hay fallback humano
+1. **Totales calculados por trigger** — imposible que el LLM mande un total incorrecto.
+2. **Pedido y reserva solo con el "sí" del cliente** — el código los crea contra el resumen que vio.
+3. **El cliente nunca queda en silencio** — si el modelo falla sale un texto seguro y el turno
+   queda registrado con su error en `bot_turnos`.
+4. **Realtime nativo de Supabase** — el dashboard siempre refleja el estado actual.
+5. **Escalamiento a humano** — si el bot no puede resolver, hay un fallback humano.
 
 ### Puntos únicos de fallo
 
 | Componente | Impacto si cae | Mitigación |
 |---|---|---|
-| n8n | Bot no responde | Monitoreo + auto-restart |
-| OpenAI API | Bot no responde | Timeout + mensaje de fallback |
+| Servidor del bot (VPS) | Bot no responde | Docker `restart`, healthcheck en `/salud` |
+| OpenAI API | Bot sin respuesta inteligente | Timeout + texto seguro al cliente |
 | Supabase | Todo cae | Es managed, SLA de Supabase |
-| WhatsApp API | No se envían/reciben mensajes | Retry en n8n |
+| WhatsApp API | No se envían/reciben mensajes | Meta reintenta el webhook; el dedupe evita duplicados |

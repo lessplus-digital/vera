@@ -1,33 +1,32 @@
 # Sistema de Feedback de Pedidos
 
-> **Rediseñado el 2026-09-16 (BUG-057/058/059/060).** La máquina de estados ya **no vive en n8n**:
-> vive en dos RPCs transaccionales de Supabase. n8n solo decide *cuándo* llamarlas y *qué texto*
-> enviar. Verificado vía MCP tras publicar: `Sub — Feedback Pendiente` `05b3415f…`,
-> `Pizzeria Vera` `1f351a3b…`. Historia del cambio al final.
+> **Rediseñado el 2026-09-16 (BUG-057/058/059/060).** La máquina de estados no vive en el bot: vive
+> en dos RPCs transaccionales de Supabase. El servidor Node (`server/`) solo decide *cuándo*
+> llamarlas y *qué texto* enviar. Historia del cambio al final.
 
-El feedback tiene **dos mitades**, las dos dentro de n8n pero con toda la lógica en la BD:
+El feedback tiene **dos mitades**, las dos en el servidor del bot pero con toda la lógica en la BD:
 
-| Mitad | Dónde corre en n8n | RPC que hace el trabajo |
+| Mitad | Dónde corre | RPC que hace el trabajo |
 |---|---|---|
-| **Preguntar** | rama `trigger_feedback` del workflow principal `Pizzeria Vera` (`8LI3J7PLi35zf4EJ`) | `solicitar_feedback_lote(p_limite)` |
-| **Responder** | subworkflow `Sub — Feedback Pendiente` (`xGsKJf2u3bFmL6mA`), invocado por el `Router de modo` cuando el cliente está en `esperando_feedback` | `procesar_respuesta_feedback(p_telefono, p_mensaje)` |
+| **Preguntar** | job `server/src/cron/feedback.ts`, cada 15 min (`FEEDBACK_ACTIVO=true`) | `solicitar_feedback_lote(p_limite)` |
+| **Responder** | procesador de turno (`server/src/turno/procesador.ts`), cuando el cliente está en `esperando_feedback` | `procesar_respuesta_feedback(p_telefono, p_mensaje)` |
 
 Contrato completo de las dos funciones: [`../database.md`](../database.md) §Funciones.
 Pruebas: `qa/sql/10-resenas.sql` T10–T15.
 
 ---
 
-## Por qué está en la BD y no en n8n
+## Por qué está en la BD y no en el bot
 
-Hasta el 2026-09-16 las dos mitades eran ~20 nodos de n8n que escribían en tres tablas **sin
-transacción**. Cada paso podía fallar en silencio — un filtro PostgREST que no matchea ninguna fila
-responde **204**, y n8n lo marca como éxito — y dejar al cliente a medias. En el incidente que lo
+Hasta el 2026-09-16 las dos mitades eran ~20 pasos del flujo anterior que escribían en tres tablas
+**sin transacción**. Cada paso podía fallar en silencio — un filtro PostgREST que no matchea ninguna
+fila responde **204**, y se marca como éxito — y dejar al cliente a medias. En el incidente que lo
 destapó, tres defectos así se encadenaron: un DELETE que no borró, un PATCH que no marcó y un INSERT
 que chocó con 409. Resultado: un cliente respondió `5` dos veces, no recibió nada y quedó **fuera del
 bot** con cada mensaje muriendo igual.
 
-La regla desde entonces: **ninguna transición de estado del feedback se escribe desde n8n.** Si hace
-falta una nueva, va a la RPC, con su caso en `10-resenas.sql`.
+La regla desde entonces: **ninguna transición de estado del feedback se escribe desde el servidor
+con consultas sueltas.** Si hace falta una nueva, va a la RPC, con su caso en `10-resenas.sql`.
 
 ---
 
@@ -131,8 +130,8 @@ sin cola, nadie con cola y en `'bot'`, ninguna cola sobre un pedido ya calificad
   la escribe la RPC).
 - **`pedidos.feedback_solicitado`** · **`clientes.modo`** ∈ {`bot`, `humano`, `esperando_feedback`}.
 
-Las dos RPCs son `SECURITY DEFINER` con `EXECUTE` solo para `service_role`: n8n las llama con la
-credencial `Supabase account`; el dashboard no puede.
+Las dos RPCs son `SECURITY DEFINER` con `EXECUTE` solo para la secret key: el servidor las llama;
+el dashboard no puede.
 
 ---
 
@@ -149,4 +148,4 @@ credencial `Supabase account`; el dashboard no puede.
   BUG-050 dejó el PATCH de idempotencia leyendo `$json` de la respuesta de WhatsApp (nunca marcaba),
   el DELETE de la Fase B filtraba por una columna inexistente (nunca borraba) y el INSERT chocaba con
   409 al repreguntar. Además `fecha` se guardaba 2 h adelantada. **Se movió toda la lógica a RPCs.**
-  Detalle en `docs/bug-tracker.md` y lecciones en `edge-cases.md` §37–38.
+  Lecciones en `edge-cases.md` §38.

@@ -14,6 +14,30 @@
 ```
 
 ---
+### 2026-10-13 — Limpieza posterior a la migración: n8n sale del repo y de la BD
+
+**Contexto:** con el bot Node en producción y n8n apagado, el repo seguía lleno de n8n: docs de
+workflows y prompts (170 KB), un subagente, un skill, un hook, 10 fichas de bugs muertas y un
+buffer de mensajes en la BD que nadie usaba.
+
+**Decisión:** retirar todo lo que describía o operaba n8n. El historial queda en git (tag
+); no hay vuelta atrás (decisión del 2026-09-30).
+
+**Hecho:**
+- **Repo:** borrados , el subagente
+  , el skill , el hook , el script de rollback de la Fase 2
+  y el servidor MCP  de . Reescritos , ,
+  , ,  (reseteado: solo BUG-029/031/064),
+   (una sola lista por orden) y los skills , , ,
+  .  pierde 9 lecciones que solo eran de n8n.
+- **BD:** migración  — elimina la tabla  (0 filas, sin
+  funciones ni vistas que la usaran) y su cron .
+- **Se conserva a propósito:** la tabla  (el servidor la usa; renombrarla está
+  en el backlog) y la red/Traefik de n8n en el VPS (el bot cuelga de ellos; ver backlog §3).
+
+**Impacto:** ~20 archivos de docs y configuración; .
+
+---
 ### 2026-10-13 — Salida a producción: lote adversarial, precios de ocasiones y FAQ iniciales
 
 **Contexto:** barrido final antes de salir. Se agregaron 6 escenarios adversariales

@@ -2,7 +2,7 @@
   "name": "plateo-bot",
   "version": "0.1.0",
   "private": true,
-  "description": "Servidor del bot de WhatsApp de Plateo (reemplaza el workflow de n8n)",
+  "description": "Servidor del bot de WhatsApp de Plateo (la IA conversa, el código decide)",
   "type": "module",
   "engines": {
     "node": ">=22"

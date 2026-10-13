@@ -8,19 +8,15 @@ tiempo real.
 
 | Capa | Qué es | Dónde vive |
 |---|---|---|
-| **Bot** | Workflow n8n + agentes OpenAI que atienden WhatsApp | n8n self-hosted (fuera de este repo) |
-| **Base de datos** | PostgreSQL — esquema compartido, triggers, RPCs | Supabase (fuera de este repo) |
-| **Dashboard** | SPA React + Vite para gestionar pedidos/soporte/reservas/estadísticas | **Este repositorio** |
-
-> Solo el **dashboard** vive en este repo; el bot y la base de datos viven fuera pero comparten
-> el mismo esquema PostgreSQL.
+| **Bot** | Servidor Node: la IA conversa, el código decide | [`server/`](server/) en este repo · corre en un VPS (Docker) |
+| **Base de datos** | PostgreSQL — esquema compartido, triggers, RPCs | Supabase ([`supabase/`](supabase/) guarda las migraciones) |
+| **Dashboard** | SPA React + Vite para gestionar pedidos/soporte/reservas/estadísticas | `src/` (este repositorio) · Vercel |
 
 ## Stack
 
 | | |
 |---|---|
-| Automatización | n8n (self-hosted) |
-| IA | OpenAI `gpt-5.1` — **orquestador + 4 agentes** (Menú, Pedidos, Soporte, Reservas) con memoria Postgres |
+| Bot | Node + TypeScript · clasificador y redactor con OpenAI · política y acciones en código |
 | Base de datos | Supabase (PostgreSQL) + extensiones `pg_trgm` / `unaccent` |
 | Canal | WhatsApp Business Cloud API (Meta) |
 | Frontend | React + Vite · Supabase JS (datos + realtime) · Recharts · react-big-calendar |
@@ -28,19 +24,18 @@ tiempo real.
 ## Arquitectura
 
 ```
-┌────────────┐    ┌───────────────────────────────────────────────┐    ┌────────────────┐
-│  WhatsApp  │───▶│  n8n (Motor de Automatización)                │───▶│  Supabase      │
-│  Business  │◀───│  Acumular mensajes → Router de modo →          │◀───│  PostgreSQL    │
-│  Cloud API │    │  ORQUESTADOR (gpt-5.1) → 4 agentes:            │    │  (esquema      │
-└────────────┘    │    Menú · Pedidos · Soporte · Reservas         │    │   compartido)  │
-                  │  + Job programado: pide feedback tras entrega  │    └────────────────┘
-                  └───────────────────────────────────────────────┘           │ Realtime
-                                                                               ▼
-                                              ┌──────────────────────────────────────┐
-                                              │  Dashboard React + Vite (este repo)    │
-                                              │  Pedidos · Soporte · Estadísticas ·    │
-                                              │  Clientes · Reservas                   │
-                                              └──────────────────────────────────────┘
+┌────────────┐    ┌────────────────────────────────────────┐    ┌──────────────────┐
+│  WhatsApp  │───▶│  Servidor del bot (Node, server/)      │───▶│  Supabase        │
+│  Business  │◀───│  clasifica → decide → ejecuta →        │◀───│  PostgreSQL      │
+│  Cloud API │    │  redacta → guardia                      │    │  (esquema        │
+└────────────┘    └────────────────────────────────────────┘    │   compartido)    │
+      ▲                                                          └──────────────────┘
+      │ /api/wa                                                          │ Realtime
+┌─────┴────────────────────────────────────┐                             ▼
+│  Dashboard React + Vite (este repo)      │◀────────────────────────────┘
+│  Pedidos · Soporte · Estadísticas ·      │
+│  Clientes · Reservas · Menú · Usuarios   │
+└──────────────────────────────────────────┘
 ```
 
 ## Quick start (dashboard)
@@ -53,15 +48,27 @@ npm run build                 # build de producción
 npm run preview               # servir el build
 ```
 
-`src/lib/supabase.js` lanza al arrancar si faltan las `VITE_SUPABASE_*`. No hay test runner ni
-linter configurados. Toda variable es `VITE_`-prefijada (van al bundle del cliente).
+`src/lib/supabase.js` lanza al arrancar si faltan las `VITE_SUPABASE_*`. El dashboard no tiene test
+runner ni linter; el bot (`server/`) sí: `npm test`, `npm run typecheck`, `npm run sim`.
+Toda variable del dashboard es `VITE_`-prefijada (va al bundle del cliente: **nunca un secreto**).
+
+## Bot (`server/`)
+
+```bash
+cd server
+cp .env.example .env     # ver las variables dentro
+npm test                 # pruebas unitarias (sin red)
+npm run sim              # simulador de WhatsApp: escenarios con el modelo real (gasta OpenAI)
+npm run chat             # hablar con el bot desde la terminal
+```
+
+Despliegue en el VPS: [`docs/bot/despliegue.md`](docs/bot/despliegue.md).
 
 ### Edge Functions
 
-`supabase/functions/` es el único código de servidor del repo, y **no** entra en `npm run build`:
-se despliega aparte con la CLI de Supabase. Hoy hay una, `admin-password`, que es la que permite a
-un admin cambiar la contraseña de otro usuario desde la tab Usuarios — existe precisamente porque
-la `service_role` que eso exige no puede viajar en el bundle.
+`supabase/functions/` no entra en `npm run build`: se despliega aparte con la CLI de Supabase. Hoy
+hay una, `admin-password`, que permite a un admin cambiar la contraseña de otro usuario desde la tab
+Usuarios — existe porque la `service_role` que eso exige no puede viajar en el bundle.
 
 ```bash
 npx supabase login                                    # una vez, abre el navegador
@@ -70,21 +77,20 @@ npx supabase functions deploy admin-password
 ```
 
 Sin desplegarla, la tab Usuarios funciona entera salvo el botón de contraseña, que devuelve error.
-`SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase sola: no
-hay secretos que configurar. Detalle en `docs/database.md` §Edge Functions.
+Detalle en `docs/database.md` §Edge Functions.
 
 ## Documentación
 
-La documentación completa —verificada contra n8n y Supabase reales vía MCP— vive en
-**[`docs/`](docs/README.md)**:
+La documentación completa vive en **[`docs/`](docs/README.md)**:
 
 | Tema | Doc |
 |---|---|
 | Visión global del sistema | [`docs/architecture.md`](docs/architecture.md) |
-| **Bot** (n8n) | [`docs/bot/`](docs/bot/) — workflow, agentes, prompts, feedback, subworkflows |
+| **Bot** | [`docs/bot/servidor.md`](docs/bot/servidor.md) · [`despliegue`](docs/bot/despliegue.md) · [`feedback`](docs/bot/feedback.md) |
 | **Base de datos** | [`docs/database.md`](docs/database.md) |
 | **Dashboard** | [`docs/dashboard/components.md`](docs/dashboard/components.md) |
-| Bugs por corregir · lecciones · decisiones | [`bug-tracker`](docs/bug-tracker.md) · [`edge-cases`](docs/edge-cases.md) · [`changelog`](docs/changelog.md) |
+| Qué sigue | [`docs/backlog.md`](docs/backlog.md) |
+| Bugs · lecciones · decisiones | [`bug-tracker`](docs/bug-tracker.md) · [`edge-cases`](docs/edge-cases.md) · [`changelog`](docs/changelog.md) |
 | Seguridad / RLS | [`docs/database.md`](docs/database.md) — sección «Modelo de permisos» |
 
 Contexto e instrucciones para Claude Code: [`CLAUDE.md`](CLAUDE.md).

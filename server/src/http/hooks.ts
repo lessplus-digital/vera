@@ -8,7 +8,7 @@ import { avisoEstadoPedido } from '../textos.js'
 // POST /hooks/estado-pedido — lo llama el trigger `notificar-estado-pedido` de la
 // BD (supabase_functions.http_request, AFTER UPDATE ON pedidos) con el payload de
 // Database Webhooks: {type, table, schema, record, old_record}. Se autentica con
-// la cabecera `x-webhook-token`, la misma que hoy usa el webhook de n8n.
+// la cabecera `x-webhook-token` (HOOK_TOKEN).
 //
 // El trigger salta en CADA update (también al asignar domiciliario o subir el
 // comprobante): solo se avisa si cambió el `estado`.

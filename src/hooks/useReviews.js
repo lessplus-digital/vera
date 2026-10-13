@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 // Reseñas de la tab Reseñas. La tabla `feedback` la escribe el bot
-// (workflow n8n "Sub — Feedback Pendiente"): tras un pedido entregado pide
+// (servidor del bot, RPC `procesar_respuesta_feedback`): tras un pedido entregado pide
 // una nota 1–5 y, SOLO si la nota es ≤3, pide además un comentario (las de
 // 4–5 se invitan a dejar reseña en Google). Por eso los comentarios que
 // llegan aquí son casi siempre negativos/neutros → esta tab es la cola de

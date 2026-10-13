@@ -1,12 +1,12 @@
 # Servidor del bot (Node) — reemplazo de n8n
 
-> **Estado (2026-10-05): el corte se hizo.** El servidor corre en el VPS de Hostinger (`/root/vera/server`,
-> `bot.plateo.cloud` por el Traefik de n8n; guía en `despliegue.md`), Meta le manda los mensajes del número
-> de pruebas (322 681 7466; aún no hay clientes reales), el trigger `notificar-estado-pedido` apunta aquí,
-> `FEEDBACK_ACTIVO=true` y los 7 workflows de n8n están **desactivados (no borrados)**. Desde el 2026-10-13 el dashboard envía por `/api/wa` y su bundle ya no lleva el token de
-> Meta (verificado); **rotar ese token quedó como riesgo aceptado hasta el cliente real**
-> (`docs/backlog.md` § Seguridad). Falta la prueba manual de Reservas por WhatsApp real. `n8n-*.md` pasan a histórico. Plan completo y fases:
-> `docs/changelog.md` § 2026-09-29. Punto de vuelta atrás: tag git `pre-migracion-node`.
+> **Estado (2026-10-13): en producción.** El servidor corre en el VPS de Hostinger
+> (`/root/vera/server`, `bot.plateo.cloud` por Traefik; guía en [`despliegue.md`](despliegue.md)).
+> Meta le manda los mensajes del número de pruebas (322 681 7466; aún no hay clientes reales), el
+> trigger `notificar-estado-pedido` apunta aquí, `FEEDBACK_ACTIVO=true`, el dashboard envía por
+> `/api/wa` y el bot anterior (n8n) está apagado. Qué sigue: [`../backlog.md`](../backlog.md).
+> La historia del plan y de las fases está en [`../changelog.md`](../changelog.md) § 2026-09-29
+> (el bot anterior, en el tag git `pre-migracion-node`).
 
 ## Por qué
 

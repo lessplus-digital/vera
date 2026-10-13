@@ -442,7 +442,7 @@ más de una página** a memoria.
   pendiente/en_cocina/en_camino/recoger y no se movieron a tiempo): "Marcar entregado"
   (primary) y "Cancelar pedido" (danger, motivo obligatorio). Confirmación inline en el
   footer (patrón de ClientModal) que **advierte la notificación automática**: el trigger de
-  BD `notificar-estado-pedido` dispara el webhook de n8n en cada UPDATE de `pedidos` → el
+  BD `notificar-estado-pedido` avisa al servidor del bot (`/hooks/estado-pedido`) en cada UPDATE de `pedidos` → el
   cliente SIEMPRE recibe el WhatsApp del nuevo estado (y el motivo se interpola en el
   mensaje de cancelación — por eso es obligatorio). `fecha_entrega` NO se escribe desde el
   cliente: la fija el trigger `set_fecha_entrega`. Estados finales (entregado/cancelado) no
@@ -605,7 +605,7 @@ superior es el único punto que todos los roles comparten.
 **Datos:** `useReviews` hook — fetch de `feedback` con `clientes(nombre,telefono)` y `pedidos(total,tipo_pedido)` embebidos + realtime `*` (canal `feedback-rt`)
 **Archivos:** `src/pages/reviews/` + `src/hooks/useReviews.js` + `src/styles/reviews.less`
 
-**Propósito (doble):** la tabla `feedback` la escribe el bot (workflow n8n **Sub — Feedback Pendiente**):
+**Propósito (doble):** la tabla `feedback` la escribe el bot (RPC `procesar_respuesta_feedback`, ver `docs/bot/feedback.md`):
 tras un pedido entregado pide nota 1–5 y **solo si es ≤3 pide comentario** (las de 4–5 se invitan
 a dejar reseña en Google, nodo `¿Nota > 3?`). Por eso los comentarios que llegan son casi siempre
 negativos/neutros → esta tab **no es un muro de elogios, es la cola de clientes a recuperar**.
@@ -625,7 +625,7 @@ según el tono).
   negativas/neutras traen botón Responder** (abre `ReplyModal`); las **positivas** muestran "Invitado
   a Google" (el bot ya las manda a la reseña pública, no se contactan desde aquí)
 - **Las positivas nunca muestran comentario:** el bot solo pide comentario para nota ≤3 (las ≥4 van a
-  Google sin comentario — verificado en n8n `Sub — Feedback Pendiente`). La tarjeta de una positiva
+  Google sin comentario — regla de la RPC `procesar_respuesta_feedback`). La tarjeta de una positiva
   omite el cuerpo del comentario y deja solo el label "Invitado a Google". (Datos viejos de prueba con
   comentario en positivas se limpiaron en BD el 2026-07-23.)
 - **Estado resuelta:** al contactar al cliente se marca `feedback.resuelta_at` (`marcarResuelta`); la

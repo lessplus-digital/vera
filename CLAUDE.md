@@ -4,24 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-This repo is **only the admin dashboard** (React + Vite SPA) for Vera Pizzería. It is
-one of three layers of a larger system — the other two (the n8n WhatsApp bot and the
-Supabase database) live outside this repo but share the same PostgreSQL schema:
+This repo holds **the admin dashboard** (React + Vite SPA, `src/`) **and the WhatsApp bot server**
+(Node, `server/`) for Vera Pizzería. They are two of the three layers of the system; the third, the
+Supabase database, lives outside this repo (its migrations are in `supabase/migrations/`) and all
+three share the same PostgreSQL schema:
 
-- **Bot WhatsApp** — n8n workflow + OpenAI agent that takes orders over WhatsApp. Its
-  design, system prompt, and tools are documented in `docs/bot/` — the workflow itself
-  is not in this repo.
-- **Supabase (PostgreSQL)** — shared database. This dashboard reads/writes it directly
-  via `@supabase/supabase-js`.
+- **Bot WhatsApp** — Node server in `server/`, deployed with Docker on a VPS (`bot.plateo.cloud`).
+  Principle: *the AI talks, the code decides* — critical actions (create order, create/cancel
+  reservation, handoff, coverage) live in tested code; the LLM only classifies and writes. How it
+  works: `docs/bot/servidor.md`; how it is deployed: `docs/bot/despliegue.md`.
+- **Supabase (PostgreSQL)** — shared database. The dashboard reads/writes it directly via
+  `@supabase/supabase-js`; the bot server uses a secret key.
 - **This dashboard** — real-time admin panel to manage orders, support chat, clients,
   reservations, and statistics.
 
-> **Migration in progress (2026-09-29): the bot is moving from n8n to a Node server in
-> `server/` (this repo).** Principle: *the AI talks, the code decides* — critical actions live in
-> tested code, the LLM only classifies and writes. n8n stays the live bot until the cutover
-> (Phase 8); until then `docs/bot/n8n-*.md` describe production and `docs/bot/servidor.md`
-> describes the new server and its phase status. Rollback point: git tag `pre-migracion-node`.
-> **The GitHub repo is public** — never commit n8n exports, DB dumps or operational data.
+> **The GitHub repo is public** — never commit DB dumps, tokens, server screenshots or operational
+> data. The old n8n bot was retired on 2026-10-05; its history is in git (tag `pre-migracion-node`).
 
 ## Commands
 
@@ -58,22 +56,20 @@ that already bit (snapshot-in-subquery, the `touch_updated_at` trigger defeating
 
 ### MCP servers, skills and subagents
 
-**Two MCP servers** reach the live system: **`supabase`** and **`n8n-native`**. The community
-`n8n-mcp` (npx) was removed on 2026-09-21 — writes had already moved to `n8n-native` (BUG-030)
-and it stopped connecting. Nothing should reference `mcp__n8n-mcp__*` any more.
+**One MCP server** reaches the live system: **`supabase`**. The bot server is reached over SSH
+(`root@` the VPS, `~/vera/server`) only when the user asks for a deploy or a check.
 
 **Skills (`.claude/skills/`)** carry the project's workflows. They are written to fire on their own
 when the situation matches, not only when typed as `/name`:
 
 | Skill | Fires when |
 |---|---|
-| `verify-against-live` | documenting or reasoning about a workflow, table, RLS policy, trigger or RPC |
+| `verify-against-live` | documenting or reasoning about a table, RLS policy, trigger, RPC or a bot rule |
 | `fix-bug` | a `BUG-NNN` is named, or a tracked defect is being fixed or closed |
 | `qa-regresion` | a DB function, trigger, RPC, constraint or policy changed — picks the battery that covers it |
-| `debug-n8n` | the bot misbehaves and the cause may be in n8n (production until the cutover) |
 | `debug-bot` | the **Node** bot (`server/`) misbehaves or a simulator scenario fails — reads `bot_turnos`, reproduces with `npm run sim -- --ver` |
 | `audit` | a security / RLS / secrets sweep is asked for |
-| `new-tool` | a tool of the WhatsApp agent is added or changed |
+| `new-tool` | an action or tool of the WhatsApp bot is added or changed |
 
 **Subagents (`.claude/agents/`)** keep huge tool output out of the main context — prefer them over
 calling the MCPs directly when the dump would be large:
@@ -81,16 +77,12 @@ calling the MCPs directly when the dump would be large:
 - **`qa-battery`** — runs one `qa/sql/` battery and returns only the verdict and the failing rows.
 - **`bot-sim`** — runs the Node bot's WhatsApp simulator (`server/`) and returns only the verdict
   and the failing steps, classified as real / scenario / infrastructure failures.
-- **`n8n-inspector`** — read-only n8n reader (nodes, wiring, failed executions, `versionId` vs
-  `activeVersionId`). It cannot write or publish; applying a fix stays in the main thread.
 
 **Hooks (`.claude/settings.json` + `.claude/hooks/`)** run on their own; you don't call them:
 
 - after every Write/Edit → `tidy-file.mjs`: **blocks** if a `.json` was left unparseable, and strips
   trailing whitespace / adds the final newline on code files. It preserves CRLF and skips `.md`
   (`docs/architecture.md` uses Markdown's two-space hard break).
-- after `update_workflow` → `n8n-publicar.mjs`: reminds you that the change is still a **draft**
-  until `publish_workflow` runs and `versionId == activeVersionId`.
 - on Stop → blocks if `src/` changed without `docs/`, and flags untracked junk (`*.bak`, `*.tmp`, …).
 
 ### Environment (`.env.local`, git-ignored)
@@ -117,7 +109,7 @@ mounts. It still doesn't query anything while there's no session.
 (mounted in `main.jsx`). Supabase persists the session in localStorage and attaches the
 JWT to every REST/Realtime call. Every table has **RLS enabled**, so the public anon key
 alone returns nothing — a logged-in session is required. The secret `service_role` key is
-meant to be used **only in n8n**, never here.
+meant to be used **only by the bot server**, never here.
 
 **Roles (2026-08-12): `admin` / `mesero` / `domiciliario`.** The role lives in `perfiles.rol`
 and RLS policies read it via `public.mi_rol()`. Three rules you cannot get wrong:
@@ -130,7 +122,7 @@ and RLS policies read it via `public.mi_rol()`. Three rules you cannot get wrong
    `pedidos.domiciliario_id` (admin only), `perfiles.rol`/`activo` (admin only), and the
    delivery transition (RPC `marcar_entregado`, since the courier has no UPDATE policy).
 3. **A `SECURITY DEFINER` function bypasses RLS**, so it must authorize itself. They all use
-   the `auth.uid() IS NULL → allow` pattern so n8n/service_role keeps working.
+   the `auth.uid() IS NULL → allow` pattern so the bot server (secret key) keeps working.
 
 Full matrix and the verification runs in `docs/database.md` §Modelo de permisos.
 
@@ -147,11 +139,10 @@ twice — `verify_jwt` at the gateway, then `mi_rol()` called **with the caller'
 (never read from the JWT). Any new function must do the same: the gateway only proves
 *someone* is logged in, not *who*.
 
-> ✅ **Update (2026-07-22, verified via Supabase MCP):** RLS is now enabled on **every** table
-> (BUG-012 fixed), all n8n nodes use credentials instead of hardcoded keys (BUG-003/007 fixed),
-> and the project migrated to Supabase's new API keys: the dashboard uses the `sb_publishable_`
-> key, n8n uses an `sb_secret_` key, and the leaked legacy JWT keys were disabled. See
-> `docs/database.md` (permissions) and `docs/changelog.md`.
+> ✅ **Update (2026-07-22, verified via Supabase MCP):** RLS is enabled on **every** table
+> (BUG-012 fixed) and the project uses Supabase's new API keys: the dashboard uses the
+> `sb_publishable_` key, the bot server uses an `sb_secret_` key, and the leaked legacy JWT keys
+> were disabled. See `docs/database.md` (permissions) and `docs/changelog.md`.
 
 **Per-domain hooks own their data + realtime.** Each tab's data lives in one hook that
 does the fetch, subscribes to a Supabase realtime channel, and exposes mutators:
@@ -224,7 +215,7 @@ making a significant change — don't re-derive what's already written:
 | Layer | Docs |
 |---|---|
 | System-wide | `docs/architecture.md` |
-| **Bot** (n8n + WhatsApp) | `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md` |
+| **Bot** (Node server + WhatsApp) | `docs/bot/servidor.md`, `docs/bot/despliegue.md`, `docs/bot/feedback.md` |
 | **Database** (Supabase) | `docs/database.md` |
 | **Dashboard** (this repo) | `docs/dashboard/components.md`, `docs/dashboard/design-system.md` |
 | Cross-layer | `docs/bug-tracker.md` (open bugs), `docs/backlog.md` (pending features), `docs/changelog.md` (done), `docs/edge-cases.md` (lessons) |
@@ -233,7 +224,7 @@ making a significant change — don't re-derive what's already written:
 When you make a significant change, update the matching doc:
 
 - DB change → `docs/database.md`
-- New workflow/tool → `docs/bot/n8n-workflow.md`, `docs/bot/ai-agents.md`
+- Bot rule/handler/tool → `docs/bot/servidor.md` · deploy change → `docs/bot/despliegue.md`
 - New React component → `docs/dashboard/components.md`
 - Bug found → `docs/bug-tracker.md` · bug resolved → remove it there + condensed
   entry in `docs/changelog.md` · lesson learned → `docs/edge-cases.md`
@@ -247,8 +238,8 @@ These hold system-wide (the dashboard shares the same schema the bot writes):
 
 - **DB identifiers: Spanish, lowercase** (`pedido_id`, `tipo_pedido`).
 - **Order `total` is computed by a Postgres trigger** — never by JS and never by the LLM.
-- **The LLM never invents a `producto_id`** — it must call `consultar_menu` first.
-- **The bot never mentions internals** ("el sistema", "herramientas", n8n, Supabase).
+- **The LLM never invents a `producto_id`** — the code resolves it with `consultar_menu` first.
+- **The bot never mentions internals** ("el sistema", "herramientas", Supabase, OpenAI).
 - **Prices are always exact from the DB**, never approximated.
 
-See `docs/bot/ai-agents.md` for the full agent rules.
+See `docs/bot/servidor.md` for the full rules (policy, agents, guard).

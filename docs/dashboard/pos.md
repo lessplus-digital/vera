@@ -104,7 +104,7 @@ salón» (PLATEO-52).
 ### Facturación electrónica DIAN `[L — legal]`
 
 Descartada por ahora. Si algún día se necesita: **integrar un proveedor autorizado por API desde
-n8n**, jamás implementar la firma XML/UBL ni el CUFE en casa, y jamás desde el navegador — mismo
+el servidor del bot**, jamás implementar la firma XML/UBL ni el CUFE en casa, y jamás desde el navegador — mismo
 motivo que el token de WhatsApp: las credenciales no pueden viajar en el bundle.
 
 ### Operación offline `[L]`

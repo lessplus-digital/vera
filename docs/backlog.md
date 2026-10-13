@@ -1,93 +1,194 @@
-# Backlog — features y mejoras pendientes
+# Backlog — qué sigue
 
-> Lo que **queremos construir**. Los bugs van en [`bug-tracker.md`](bug-tracker.md); lo hecho, en
-> [`changelog.md`](changelog.md). Al completar un ítem: **quítalo de aquí** y registra la decisión
-> en el changelog.
+> **Una sola lista, en el orden en que se hace.** Lo que ya se hizo está en
+> [`changelog.md`](changelog.md); los defectos, en [`bug-tracker.md`](bug-tracker.md).
+> Estimaciones: `[S]` horas · `[M]` un día · `[L]` varios días. 🔒 = bloqueado por algo externo.
+>
+> **Estado al 2026-10-13:** el bot Node está en producción con el número de pruebas
+> (322 681 7466), n8n está apagado y el dashboard ya envía por el servidor. Falta instalar todo en
+> el cliente real.
 
-**Esfuerzo:** `[S]` cabe en una sesión · `[M]` varios días · `[L]` semanas o rediseño.
-**Estado verificado el 2026-09-21** contra la BD viva y el código — las líneas marcadas ✅ ya se
-comprobaron ese día, no son suposiciones heredadas.
+## 1. Lanzamiento — instalar en el cliente real
 
----
+Lo que tiene que estar hecho **antes** de abrir al público. Se hace una sola vez, en este orden.
 
-## Pendiente para la instalación en el cliente real (decidido 2026-10-13)
+| # | Qué | Quién | Esfuerzo |
+|---|---|---|---|
+| 1.1 | **Número de WhatsApp y token propios del cliente**; apuntar el webhook de Meta a `https://bot.plateo.cloud/webhook/whatsapp` y poner `WA_ACCESS_TOKEN` y `WA_PHONE_NUMBER_ID` nuevos en `~/vera/server/.env` del VPS (`docker compose up -d --force-recreate`) | Dueño + Claude | `[S]` |
+| 1.2 | **Rotar el token que estuvo expuesto** en el bundle público (riesgo aceptado hasta aquí: [ver §Seguridad](#seguridad)). Si el número es nuevo, el token viejo muere solo; revocarlo igual en Meta | Dueño | `[S]` |
+| 1.3 | **Plantillas de WhatsApp aprobadas** en el WABA del cliente (`recordatorio_reserva`, `reactivacion_cliente`, la de estado de pedido): sin ellas los envíos fuera de la ventana de 24 h fallan (captura de las actuales: `images/plantillas meta.png`) | Dueño | `[S]` · 🔒 Meta |
+| 1.4 | **Limpiar los datos de prueba** (ver [§Housekeeping](#housekeeping)): ~80 pedidos semilla, 4 de `PRUEBA ROLES`, 67 con `domiciliario_id` sembrado, BUG-031 | Claude | `[S]` |
+| 1.5 | **Precios reales de `motivos_reserva`** — hoy es una propuesta (Cumpleaños $60.000 · Aniversario $70.000 · Declaración $90.000 · Grado $60.000 · Empresarial $100.000); `UPDATE` o pantalla de §4 | Dueño | `[S]` |
+| 1.6 | **FAQ e `info_negocio` reales**: la `faq` tiene 5 filas derivadas de `info_negocio` (dirección, horario, pagos, domicilio, reservas); el restaurante suma las suyas (wifi, mascotas, tarjeta…) desde la tab Configuración y confirma dirección, horarios y cuenta bancaria | Dueño | `[S]` |
+| 1.7 | **Kanban: columna de cerrados + navegación por día** (§4) — sin ella el pedido pagado que ya no se autocancela desaparece de la vista al día siguiente | Claude | `[S-M]` |
+| 1.8 | **Dump de Supabase** (estructura + datos) guardado fuera del repo (público), y backups del VPS (hoy semanales en Hostinger; el diario cuesta ~US$3/mes) | Dueño | `[S]` |
+| 1.9 | **Verificar que el VPS está vigente y con renovación automática** | Dueño | `[S]` |
+| 1.10 | **Pruebas reales por WhatsApp** de lo que el simulador no puede cubrir: una reserva completa, un pedido con foto de comprobante, tocar un botón de plantilla, un audio y una ubicación (lista en [`bot/despliegue.md`](bot/despliegue.md)) | Dueño | `[S]` |
 
-Se deja para cuando se instale todo en el restaurante real; mientras tanto se conservan los datos
-de prueba tal cual están.
+## 2. Vigilancia — primeras 48 horas y 2 semanas
 
-- **Limpiar los datos de prueba** — borrar los pedidos/clientes/reservas de prueba (~80 pedidos
-  semilla, 4 de `PRUEBA ROLES`, `domiciliario_id` sembrado en 67) **antes** de enseñar estadísticas
-  o de abrir al público. Es SQL ya escrito: ver [Datos de prueba de roles](#datos-de-prueba-de-roles-en-producción).
-- **Precios y FAQ reales** — el 2026-10-13 `motivos_reserva` quedó con una propuesta (Cumpleaños
-  $60.000 · Aniversario $70.000 · Declaración $90.000 · Grado $60.000 · Empresarial $100.000) y la
-  `faq` con 5 filas derivadas de `info_negocio`. El restaurante debe confirmarlos o cambiarlos, y
-  sumar sus preguntas propias (wifi, mascotas, tarjeta…).
+- **Cada día, `bot_turnos`:** filas con `error` no nulo o con `guardia` activada. Es la ventana a lo
+  que el cliente realmente escribe; cada hallazgo se vuelve un escenario en `server/test/escenarios/`.
+- **Costo de OpenAI por conversación:** `bot_turnos.costo` ya guarda el turno completo; con una
+  semana de tráfico sale cuánto cuesta atender un cliente (insumo para el precio del SaaS).
+- **Unificar la versión de la API de Meta** `[S]` — el webhook llega en v25/v26 y los envíos salen
+  en v25.0; dejarlas en la misma.
+- **Reservas y calificaciones reales:** confirmar que una reserva real y una calificación real
+  cierran bien (ver "En observación" en [`bug-tracker.md`](bug-tracker.md)).
+- **Antes de cambiar de modelo de OpenAI:** correr el simulador completo (×5). Casi todos los bugs
+  de la migración aparecieron con el modelo real, no con las unitarias.
 
-## Si vas a coger algo hoy
+## 3. Apagar n8n del todo (VPS y cuentas)
 
-Ordenado por *valor recibido ÷ esfuerzo*, no por importancia teórica.
+n8n ya está apagado y **ningún workflow corre**, pero sigue instalado. Orden recomendado; lo
+irreversible va al final, después de dos semanas sin incidentes:
 
-| # | Ítem | Capa | Esfuerzo | Bloqueo |
-|---|---|---|---|---|
-| 1 | [Borrar los datos de prueba de roles](#datos-de-prueba-de-roles-en-producción) | BD | `[S]` | ninguno — es SQL ya escrito |
-| 2 | [Kanban: columna de cerrados + navegación por día](#kanban-cuarta-columna-de-cerrados--navegación-por-día-s-m) | Dashboard | `[S-M]` | ninguno — **es la otra mitad del fix de BUG-052** |
-| 2b | [`useOrders`: mostrar el error en el UI](#dashboard) | Dashboard | `[S]` | ninguno |
-| 3 | [Precios reales de `motivos_reserva`](#reservas) | BD | `[S]` | **necesita los 6 precios del cliente** |
-| 4 | [Resumen diario por WhatsApp al dueño](#features-nuevas) | Bot | `[S]` | ninguno — solo n8n |
-| 5 | [Modo TV para cocina (KDS)](#features-nuevas) | Dashboard | `[S-M]` | ninguno — alto valor en demos |
-| 6 | [Una sola tool de escritura del carrito](#bot) | Bot | `[M]` | ninguno — reduce superficie de error |
-| 7 | [Revalidar `disponible` al cerrar el pedido](#bot) | Bot + BD | `[M]` | ninguno — hoy entra un pedido con agotados |
-| 8 | [Migrar pedidos/reservas/soporte al design system](#dashboard) | Dashboard | `[M]` | ninguno |
-| 9 | [Proxy para los envíos de WhatsApp](#seguridad) | Cross | `[M]` | ninguno — **es el único secreto expuesto** |
-| 10 | [Editar una reserva ya creada](#reservas) | Dashboard | `[M]` | ninguno |
+| # | Qué | Reversible | Esfuerzo |
+|---|---|---|---|
+| 3.1 | **Parar el contenedor de n8n** (`n8n-n8n-1`) sin borrarlo ni su volumen. Libera memoria. **Ojo:** el bot comparte con n8n el proxy **Traefik** (`n8n-traefik-1`) y la red `n8n_default`; no se toca | Sí | `[S]` |
+| 3.2 | **Sacar Traefik del proyecto de n8n** y dejarlo en su propio compose junto al bot (`~/vera`), para que borrar n8n nunca pueda tumbar el bot | Sí | `[M]` |
+| 3.3 | **Revocar lo que n8n usaba:** la secret key de Supabase de n8n (el bot usa `bot-node`), la API key de OpenAI de n8n y el token de Meta guardado como credencial de n8n | No | `[S]` |
+| 3.4 | **Borrar el volumen y la imagen de n8n** (contiene el historial de workflows y sus credenciales) y el DNS `n8n.srv1467456.hstgr.cloud` | **No** | `[S]` |
+| 3.5 | **Quitar el servidor MCP `n8n-native` de `.mcp.json`** local de cada persona que lo tenga | Sí | `[S]` |
+| 3.6 | **Renombrar la tabla `n8n_chat_histories`** a algo propio (`chat_historial`): migración + `server/src/bd/repo-supabase.ts` + RPC `registrar_contexto_handoff` + baterías 07/08. Cosmético; hacerlo con una batería a mano | Sí | `[M]` |
 
-**Bloqueados por algo externo** (no los cojas sin resolver antes el bloqueo): plantilla de
-WhatsApp con el costo del montaje (aprobación de Meta) · rol mesero / salón y venta en mostrador
-(PLATEO-52 + CHECK de `tipo_pedido`) · POS (faltan 3 datos del local) · facturación DIAN
-(descartada).
+> Ya hecho el 2026-10-13: workflows apagados desde el corte, tabla `n8n_mensajes_pendientes` y su
+> cron eliminados, docs y skills de n8n retirados del repo (siguen en el tag `pre-migracion-node`).
 
----
+## 4. Dashboard
+
+### Kanban: cuarta columna de cerrados + navegación por día `[S-M]`
+
+**No es cosmético: es la otra mitad del fix de BUG-052.** El job de expiración ya no cancela los
+pedidos con comprobante: se quedan vivos en `pendiente` a propósito, para que los atienda una
+persona. Pero el kanban solo muestra **el día actual** y **cuatro estados activos**
+(`useOrders.js`), así que al día siguiente ese pedido pagado desaparece de la vista.
+
+Lo que pidió el dueño: ver *"los pedidos entregados, los que ya no tienen nada para hacer por
+nuestro lado"* y poder *"devolverme a los pedidos de ayer, de antier… como si fuese un calendario"*.
+
+1. **Columna "Cerrados"** (`entregado` + `cancelado`) debajo de las tres actuales, a lo ancho.
+   `COLUMNS` (`src/utils/constants.js`) ya admite `key` como array. **Un cancelado con
+   `comprobante_url` debe cantarse en la tarjeta**: es dinero recibido por un pedido que no existe.
+2. **Navegación por día** (`‹ ›` + "Hoy"). `colombiaDayStart(date)` ya acepta una fecha. Dos
+   cuidados: el realtime y el sonido solo actúan cuando el día elegido es hoy, y las `stats` de la
+   cabecera deben seguir al día elegido.
+3. Actualizar `docs/dashboard/components.md` en el mismo commit y respetar `design-system.md`.
+
+### Otras mejoras del dashboard
+
+- **`useOrders`: mostrar el error en el UI** `[S]` — hoy solo hace `console.error`; falta un banner
+  o toast para que el admin se entere sin abrir la consola.
+- **Migrar pedidos, reservas y soporte al design system** `[M]` — llevar los CTA a `.btn primary`
+  (uno por pantalla), los formularios al patrón `.field` y purgar el `--font-mono` restante
+  (`orders.less` tiene ~10 usos). Ver [`dashboard/design-system.md`](dashboard/design-system.md).
+- **`SalesChart`: eliminar el eje dual** `[S]` — pedidos (barras) e ingresos (línea) comparten
+  gráfica con dos escalas Y; separarlos en dos charts.
+- **Rol mesero: parte de salón** `[M]` · 🔒 PLATEO-52 — le faltan **mesas**, que exige ampliar el
+  CHECK de `tipo_pedido`. Mismo riesgo que «venta en mostrador» ([`dashboard/pos.md`](dashboard/pos.md)).
+- **Invitar usuarios desde la UI** `[M]` — hoy se crean a mano en Supabase porque la admin API exige
+  `service_role`. Si se quiere: Edge Function, **nunca desde React**.
+- **POS — impresión de tickets y cajón** `[L]` — analizado, sin código: hardware ya en el local
+  (Epson TM-T88 + cajón). Plan y datos pendientes en [`dashboard/pos.md`](dashboard/pos.md).
+
+## 5. Bot
+
+- **Notas en la reserva** `[S-M]` — BUG-029: la petición especial del cliente se pierde. Ver
+  [`bug-tracker.md`](bug-tracker.md).
+- **Soporte no debe decir "no puedo crear pedidos"** `[S]` — BUG-064.
+- **Recordatorio de reserva el día anterior** `[M]` — job en `server/src/cron/` que busque las
+  reservas de mañana (pendiente/confirmada) y envíe la plantilla `recordatorio_reserva`. Reduce
+  no-shows; los taps `Confirmar`/`Cancelar` ya están enrutados.
+- **Resumen diario por WhatsApp al dueño** `[S]` — job a las ~23:00 (Colombia): pedidos, ingresos,
+  producto top, cancelados. Misma agregación que `historial_resumen`.
+- **Revalidar `disponible` al cerrar el pedido** `[M]` — un producto puede agotarse mientras ya
+  está en el carrito; verificar que `crear_orden_desde_carrito` lo rechaza y que el bot avisa y
+  devuelve al cliente a elegir.
+- **Reja dura de cobertura en la BD** `[M]` — la cobertura ya la decide el código, pero la BD
+  aceptaría un domicilio con un barrio que no resuelve. Rechazarlo solo en el camino del bot
+  (`auth.uid() IS NULL`), nunca desde el dashboard. Riesgo: una errata sin resolver sería una venta
+  perdida, así que solo después de medir con tráfico real.
+- **Probar los taps de botón en real** `[S]` — verificación pendiente, no desarrollo (§1.10).
+- **Pasar el simulador a un modelo más barato donde se pueda** `[S]` — el costo de cada corrida
+  completa es relevante; medir con `bot_turnos.costo` qué agente admite un modelo menor.
+- **Piloto de Jev** `[M]` — comparar con los mismos escenarios un decisor alternativo.
+- **Bloqueo de reservas duplicadas** — ❌ **decidido que NO** (2026-07-23): una persona puede
+  reservar almuerzo y cena el mismo día. Aquí solo para que nadie lo vuelva a proponer.
+
+## 6. Reservas
+
+- **Ocasiones editables desde la tab Configuración** `[M]` — que `motivos_reserva` (nombre, costo,
+  activo) se edite desde el dashboard en vez de por SQL.
+- **Editar una reserva ya creada** `[M]` — hoy `ReservationDetail` solo permite eliminar; cambiar la
+  ocasión obliga a borrar y recrear, **lo que dispara dos WhatsApps al cliente**. El trigger
+  `trigger_costo_motivo` ya soporta el UPDATE.
+- **Plantilla de WhatsApp con el costo del montaje** `[M]` · 🔒 Meta — la confirmación que manda el
+  **dashboard** usa `recordatorio_reserva` (4 params) y no incluye la ocasión ni su costo. Crear y
+  aprobar una de 6 params y agregarla a `WA_TEMPLATES`.
+
+## 7. Producto — features nuevas
+
+> Para vender el SaaS: **Resumen diario + Modo TV** (wow inmediato, esfuerzo bajo). **Métricas del
+> bot** es la carta de ROI para nuevos clientes. **Campañas de reactivación** genera ingresos directos.
+
+- **Modo TV para cocina (KDS)** `[S-M]` — kanban a pantalla completa (sin sidebar, tarjetas
+  grandes, cronómetro por pedido con color según demora, sonido fuerte). **Alto valor en demos.**
+- **Metas y racha del mes** `[S]` — meta mensual en `info_negocio`; progreso vs. meta y vs. mes anterior.
+- **Insights automáticos** `[M]` — 2–3 frases por reglas sobre agregaciones que ya se calculan
+  («los viernes vendes 40% más», «5 clientes frecuentes no piden hace un mes»).
+- **Métricas del bot** `[M]` — conversaciones resueltas solo por el bot vs. handoffs, conversión
+  chat→pedido, horas pico. Datos: `bot_turnos` + `mensajes_soporte` + `pedidos.origen`.
+- **Campañas de reactivación en lote** `[M-L]` — el envío individual ya existe (`RiskClients` +
+  `PromoModal`); falta el masivo (segmento de inactivos 30+ días) respetando los límites de tier
+  de Meta y con opt-in.
+
+## 8. Marca y visión SaaS
+
+> **Plateo** es el software (el SaaS); **Vera** es el primer cliente. Hoy la UI dice «Vera
+> Pizzería» en todas partes y se pierde el concepto de producto.
+
+- **Branding Plateo en la plataforma** `[M]` — el operador ve **su** marca en el contenido
+  (`info_negocio`); Plateo aparece como producto en el chrome (login, footer, favicon, título).
+  El nombre del cliente sale de datos, nunca hardcodeado.
+- **Repo modular por cliente / multi-cliente por silo** `[L]` — un proyecto Supabase + un servidor
+  del bot por cliente (aislamiento físico, migraciones como código) y **una sola app React**
+  desplegada una vez que resuelve el tenant por subdominio (`vera.plateo.cloud`).
+- **Volver privado el repo de GitHub** `[S]` — hoy es público; antes hay que confirmar que no quedan
+  secretos en el historial.
+- **Landing / sitio de marketing** `[M-L]` — página pública que vende Plateo, con demo y leads.
+- **Programa de referidos** `[M]` — beneficio cuando un restaurante referido se activa.
+- **Control plane con cobro tipo SaaS (Stripe)** — futuro.
+- ❌ **Facturación electrónica DIAN** — descartada por ahora (la clienta decidió no hacerla). Si
+  algún día: integrar un proveedor autorizado por API desde el servidor, nunca en casa ni en el navegador.
 
 ## Seguridad
 
-Un solo ítem, y es el riesgo diferido más antiguo del sistema.
-
-> **Estado (2026-10-13):** el proxy está en producción — el dashboard ya envía por
-> `bot.plateo.cloud/api/wa` y el bundle publicado **ya no contiene el token** (verificado
-> descargando el bundle de `vera.plateo.cloud`). **Rotar el token quedó como riesgo aceptado por el
-> dueño:** el token que estuvo expuesto sigue vigente. Rotarlo cuesta ~20 min (guía en la
-> conversación del 2026-10-13: usuario del sistema en Meta → token permanente → `WA_ACCESS_TOKEN` en
-> el `.env` del VPS → `docker compose up -d --force-recreate` → revocar el viejo). **Hacerlo, sin
-> excepción, al instalar en el cliente real** (número y token propios).
-
-- **Proxy para los envíos de WhatsApp** `[M]` — `VITE_WA_ACCESS_TOKEN` viaja en el bundle del
-  dashboard (y además quedó en el historial de versiones de n8n). El fix real: enrutar los sends
-  del dashboard por n8n o por una edge function, y **rotar el token** (actualizar la credencial de
-  n8n + `.env.local`). Mientras tanto es **el único secreto expuesto conocido del sistema**.
+- **Token de WhatsApp expuesto — riesgo aceptado por el dueño (2026-10-13).** El proxy ya está en
+  producción (`/api/wa`) y el bundle público **ya no contiene el token** (verificado descargando
+  `vera.plateo.cloud`), pero el token que estuvo ahí sigue vigente. Se rota al instalar en el
+  cliente real (§1.2). Pasos: usuario del sistema en Meta → token permanente → `WA_ACCESS_TOKEN`
+  en `~/vera/server/.env` → `docker compose up -d --force-recreate` → revocar el viejo.
+- **Repo público:** nunca subir dumps, capturas del panel del VPS, tokens ni datos operativos
+  (`server/*.png` y `docs/*.jfif` ya están en `.gitignore`).
 
 ## Housekeeping
 
-### Datos de prueba de roles en producción
+### Datos de prueba de roles en producción `[S]`
 
-`[S]` · Sembrados el **2026-08-12** para validar los tres roles en el navegador. Se dejaron a
-propósito hasta terminar las pruebas; **siguen ahí**.
-
-✅ **Verificado el 2026-09-21** — la cifra de pedidos asignados subió de 61 a 67 desde que se
-escribió esta entrada:
+Sembrados el **2026-08-12** para validar los tres roles; **siguen ahí** y se dejan hasta el §1.4.
 
 | Qué | Cuánto | Identificador |
 |---|---|---|
 | Usuarios de Auth + su perfil | 3 | `mesero.prueba@vera.test` · `domi.prueba@vera.test` · `domi2.prueba@vera.test` |
 | Pedidos ficticios | 4 | `PED-234`…`PED-237` (`notas = 'PRUEBA ROLES — borrar'`) |
 | Cliente ficticio | 1 | `ZZ Cliente Prueba Roles` (`573000000099`) |
-| Pedidos con `domiciliario_id` puesto | **67** | pedidos reales/sembrados a los que se asignó repartidor para poblar el historial |
+| Pedidos con `domiciliario_id` puesto | **67** | pedidos reales/sembrados con repartidor asignado |
 
 ⚠️ **Los 4 pedidos ficticios cuentan en las estadísticas de su día** mientras existan.
 
 ⚠️ El teléfono `573000000099` es falso **a propósito**: marcar entregado dispara
-`notificar-estado-pedido`, que hace POST a n8n y este le escribe por WhatsApp al número del
-pedido. Con un cliente real le llegaría un mensaje sobre un pedido que nunca hizo. **No reasignes
-esos pedidos a un cliente real para probar.**
+`notificar-estado-pedido` y el servidor le escribe por WhatsApp al número del pedido. **No
+reasignes esos pedidos a un cliente real para probar.**
 
 ```sql
 -- el primer UPDATE deshace la asignación de los 67 históricos
@@ -97,238 +198,20 @@ delete from public.pedidos where notas = 'PRUEBA ROLES — borrar';
 delete from public.clientes where telefono = '573000000099';
 ```
 
-Si para entonces se hubieran subido fotos de perfil, además
-`delete from storage.objects where bucket_id='avatares';` **y** borrar los archivos desde el panel
-de Supabase: quitar solo la fila deja el objeto colgado en S3 (misma trampa que el blob de abajo).
+Si se subieron fotos de perfil, además `delete from storage.objects where bucket_id='avatares';`
+**y** borrar los archivos desde el panel de Supabase (quitar solo la fila deja el objeto en S3).
 
 ### Blobs y columnas muertas
 
-- **Borrar `comprobantes/PED-109.jpg` de Storage** `[S]` — huérfano del bug del `.first()` (una
-  copia del comprobante de `PED-223` guardada con el nombre equivocado). Desde el fix de BUG-028
-  **no hay ninguna referencia en la BD** (`PED-109.comprobante_url` es `NULL`), así que es
-  inofensivo. **No se puede borrar por SQL**: quitar la fila de `storage.objects` dejaría el
-  archivo colgado en S3. Hazlo desde el panel de Supabase (Storage → comprobantes) o con la
-  Storage API usando `service_role`.
-- **Re-pinnear los `pinData` viejos de n8n** `[S]` · *cosmético* — `Sub — Crear Reserva` y
-  `Sub — Cancelar Reserva` conservan pins con las keys viejas (`cliente_id `/`telefono ` con
-  espacio al final) y `Sub — Consultar_menu` los query params del `ilike`. Solo afecta a las
-  pruebas manuales en el editor de n8n: el flujo real no los usa. Re-pinnear al abrirlos.
-  *(Estaba en el bug-tracker; no es un defecto del sistema, así que vive aquí.)*
-- **Limpiar `pedidos.repartidor`** `[S]` — columna muerta sustituida por `domiciliario_id`.
-  ✅ **Verificado el 2026-09-21:** la columna existe y está **NULL en los 117 pedidos**. Se lee en
-  **dos** sitios (la entrada vieja decía uno): el `select` de `useOrderHistory.js:20` y el render
-  de `OrderDetailModal.jsx:133`. Eliminarla exige tocar ambos.
-- **Avatares huérfanos en Storage** `[S]` — al cambiar de foto se borra la anterior en
-  best-effort; si ese borrado falla queda el archivo suelto (se prefirió eso a arriesgar que un
-  usuario se quede sin foto). Si el bucket crece, un barrido que compare `storage.objects` contra
-  `perfiles.avatar_url` lo limpia.
-
-## Bot
-
-- **Una sola tool de escritura del carrito** `[M]` — desde BUG-032 (2026-08-21) `crear_carrito` es
-  un upsert (`Prefer: resolution=merge-duplicates`), así que hace **exactamente lo mismo** que
-  `actualizar_carrito`: ambas mandan `items` y `total` completos y la PK es el teléfono. La
-  decisión *«¿creo o actualizo?»* que el Agente Menú todavía tiene que tomar ya no significa nada
-  — y es justo donde vivía el bug. Fundirlas borra esa bifurcación del prompt y reduce la
-  superficie de error del agente. No se hizo con el fix porque es un cambio de comportamiento, no
-  un header: merece su propia pasada y su propia prueba.
-- **Revalidar `disponible` al cerrar el pedido** `[M]` — desde el fix del 2026-07-28 el bot no
-  ofrece ni agrega productos agotados, pero un item puede agotarse **mientras** ya está en el
-  carrito (el admin lo marca desde la pestaña Menú entre que el cliente arma el pedido y lo
-  confirma). `crear_orden_completa` no revisa `menu.disponible` al insertar, así que ese pedido
-  entra igual y **el problema aparece en cocina**. Fix: validar en el sub `Crear_orden_completa` y
-  devolver `{ ok: false, error: 'agotado', items: [...] }` para que el Agente Pedidos avise y
-  devuelva al cliente al Agente Menú a sustituir.
-- **Reja dura de cobertura en la BD** `[M]` — tras BUG-033 (2026-08-25) el bot ya no promete
-  domicilios fuera de Bello, pero **la garantía vive en los prompts**: si un agente futuro vuelve
-  a torcerse, `trigger_tarifa_domicilio` acepta el pedido igual y le cobra la tarifa base. La reja
-  dura sería **rechazar** en la BD un `pedidos` de `tipo_pedido='domicilio'` cuyo barrio no
-  resuelve — solo en el camino del bot (`auth.uid() IS NULL`), nunca en el del dashboard, donde un
-  admin sí necesita escribir un barrio que aún no está en el catálogo.
-  **Por qué no se hizo con el fix:** el riesgo se invierte — una errata que el matcher no alcance
-  dejaría de ser un cobro raro y pasaría a ser **una venta perdida en seco**. Medido el
-  2026-08-25: de 89 domicilios históricos, 88 tienen `zona IS NULL`, pero todos son anteriores a
-  las zonas (2026-08-18) y ni siquiera guardaron `barrio`; el único posterior (PED-240, La
-  Milagrosa) resolvió bien.
-  🔴 **Ya hay evidencia, y cambia el cálculo (2026-09-22, BUG-061).** No es que el matcher falle:
-  es que **hay dos matchers y no emparejan igual**. `consultar_cobertura` resuelve de forma difusa
-  y devuelve `sugerencias`; **`resolver_barrio` —la que usa `trigger_tarifa_domicilio`— solo
-  resuelve el nombre canónico**. En G3, el bot guardó en el carrito el texto crudo del cliente
-  (`niqia`), que la segunda no resuelve: de convertirse en pedido, el trigger habría aplicado
-  `tarifa_base()` = $5.000 en vez de los $7.500 de Niquía. O sea que **la fuga que este ítem temía
-  ya existe, y por el lado contrario al que se vigilaba**: no un rechazo en seco, sino un cobro
-  silenciosamente barato. Antes de la reja dura, lo barato y urgente es **unificar los dos
-  matchers** (o guardar siempre el nombre canónico que devolvió la tool).
-- **Probar los 4 taps de botón en real** `[S]` — el enrutado de taps de plantilla se hizo el
-  2026-07-29 (nodo `Normalizar tap`) y se verificó contra el payload de una ejecución real y los
-  labels de Graph API, **pero nadie ha tapeado un botón desde WhatsApp desde entonces**. Es
-  verificación pendiente, no desarrollo.
-- **Bloqueo de reservas duplicadas** — ❌ **decidido que NO** (2026-07-23, BUG-008). Una misma
-  persona puede reservar dos veces el mismo día (almuerzo y cena) y el agente lo maneja
-  conversacionalmente. Si algún día se quiere: extender `trigger_validar_cupo` o hacer una query
-  previa al INSERT en `Sub — Crear Reserva`. *Aquí solo para que nadie lo vuelva a proponer.*
-
-## Reservas
-
-- **Precios reales de `motivos_reserva`** `[S]` — ✅ **verificado el 2026-09-21: 6 motivos activos,
-  con los precios placeholder sembrados el 2026-08-10.** Hay que cambiarlos por los reales. Es un
-  `UPDATE` a mano hasta que exista la pantalla de abajo. **Bloquea el guion G9 de la Capa B.**
-- **Ocasiones editables desde la tab Configuración** `[M]` — que `motivos_reserva` (nombre, costo,
-  activo) se edite desde el dashboard en vez de por SQL.
-- **Editar una reserva ya creada** `[M]` — hoy `ReservationDetail` solo permite eliminar. Con los
-  motivos, cambiar la ocasión obliga a borrar y recrear, **lo que dispara dos WhatsApps al
-  cliente**. El trigger `trigger_costo_motivo` ya soporta el UPDATE.
-- **Plantilla de WhatsApp con el costo del montaje** `[M]` · 🔒 **bloqueado por Meta** — la
-  confirmación que manda el **dashboard** usa `recordatorio_reserva` (4 params: nombre, fecha,
-  hora, personas), así que **no incluye la ocasión ni su costo**: el cliente recibe la
-  confirmación sin ver los $80.000 del cumpleaños. El bot sí se lo dice, porque su respuesta es
-  texto libre dentro de la ventana de 24 h. Fix: crear y **aprobar en WhatsApp Manager** una
-  plantilla de 6 params (+ ocasión, + costo) y agregarla a `WA_TEMPLATES`. No se resuelve desde el
-  código.
-- **Recordatorio del día previo (cron en n8n)** `[M]` — la plantilla `recordatorio_reserva` ya se
-  usa como **confirmación al crear** (2026-07-28); falta el cron diario que busque las reservas de
-  mañana (pendiente/confirmada) y envíe la plantilla. Reduce no-shows. Los taps `Confirmar` /
-  `Cancelar` **ya están enrutados** (2026-07-29) y el Agente Reservas ya tiene
-  `consultar_reservas_cliente` y `cancelar_reserva`: **lo único que falta aquí es el cron.**
-
-## Dashboard
-
-### Kanban: cuarta columna de cerrados + navegación por día `[S-M]`
-
-**No es cosmético: es la otra mitad del fix de BUG-052.** Desde el 2026-09-22 el job de expiración
-ya no cancela los pedidos con comprobante — se quedan vivos en `pendiente` a propósito, para que
-los atienda una persona. Pero el kanban solo muestra **el día actual** y **cuatro estados activos**
-(`useOrders.js:19` y `:51`), así que mañana ese pedido pagado desaparece de la vista igual que
-antes. El fix de BD se sostiene sobre esta pieza; hasta que exista, el riesgo de BUG-052 está
-mitigado a medias.
-
-Pedido explícitamente por Juan el 2026-09-22, en estos términos: poder ver *"los pedidos entregados,
-los que ya no tienen nada para hacer por nuestro lado"*, y poder *"devolverme a los pedidos de ayer,
-de antier… como si fuese un calendario"*.
-
-**1 · Cuarta columna "Cerrados"** (`entregado` + `cancelado`), debajo de las tres actuales.
-
-- `COLUMNS` (`src/utils/constants.js:1`) **ya admite `key` como array** — lo usa la tercera columna
-  (`['en_camino','recoger']`) y lo resuelve `getColumnOrders` en
-  `src/pages/dashboard/DashboardPage.jsx:32`. Es una entrada más, no un caso nuevo.
-- La rejilla `.kanban` (`src/styles/orders.less:55`) está fijada a `repeat(3, 1fr)`, con saltos a 2
-  y 1 columna por breakpoint. La cuarta va **debajo y a lo ancho**, no como cuarta columna estrecha:
-  es una lista de consulta, no una bandeja de trabajo.
-- **Un pedido cancelado con `comprobante_url` tiene que cantarse en la tarjeta.** Es dinero recibido
-  por un pedido que no existe: es exactamente el caso que nadie vio durante tres semanas con
-  PED-240 y PED-242 ($130.500).
-
-**2 · Navegación por día.** Controles `‹ ›` + "Hoy" en la cabecera del kanban.
-
-- El cambio es pequeño porque **`colombiaDayStart(date)` (`src/utils/dateRanges.js`) ya acepta una
-  fecha**: se guarda el día elegido en estado, se consulta el rango `[inicio, inicio+1d)` y se
-  amplía el `.in('estado', …)` de `useOrders` para incluir `entregado`/`cancelado`.
-- **Dos cuidados que no son obvios:**
-  - El **realtime y el sonido de pedido nuevo solo deben actuar cuando el día elegido es hoy.**
-    `useOrders` diffea contra un `knownIds` ref para detectar llegadas; navegando al pasado, todo
-    un día "llega" de golpe y sonaría como si hubieran entrado 20 pedidos.
-  - Las `stats` de cabecera se calculan con el mismo `today` (`useOrders.js:86`) y deben seguir al
-    día elegido, o la cabecera dirá una cosa y el tablero otra.
-
-**3 · Actualizar `docs/dashboard/components.md`** en el mismo commit — el hook de Stop bloquea si
-`src/` cambia sin `docs/` — y respetar `docs/dashboard/design-system.md` (un solo `.btn primary`
-por pantalla; el de "Crear pedido" ya ocupa ese sitio).
-
-
-- **`useOrders`: exponer el estado `error` en el UI** `[S]` — ✅ **verificado el 2026-09-21: sigue
-  solo con `console.error`** (`useOrders.js:54` y `:89`). El spinner infinito ya se arregló en
-  BUG-013, pero falta un banner o toast para que el admin se entere sin abrir la consola.
-- **Migrar pedidos, reservas y soporte al design system** `[M]` — clientes y estadísticas ya lo
-  usan (ver [`dashboard/design-system.md`](dashboard/design-system.md)). Faltan los modales y
-  botones de `orders.less`, `reservations.less` y `support.less`: llevar los CTA a `.btn primary`
-  (**uno por pantalla**), los formularios al patrón `.field` (helpers debajo del input) y purgar
-  el `--font-mono` restante. ✅ **Verificado el 2026-09-21: `orders.less` tiene ~10 usos de
-  `--font-mono` vivos.** Incluye `.quick-replies` / `.qr-chip`, escritos con px crudos para no
-  desentonar con el resto de `support.less`: pasan a tokens (`--fs-caption`…) en la misma tanda.
-  El lado de Configuración (`rr-*`) ya nace con tokens.
-- **`SalesChart`: eliminar el eje dual** `[S]` — ✅ **verificado el 2026-09-21: sigue con
-  `yAxisId="left"` + `yAxisId="right"`** (`SalesChart.jsx:21-22`). Pedidos (barras) e ingresos
-  (línea) comparten gráfica con dos escalas Y; la buena práctica de dataviz es separarlos en dos
-  charts o indexarlos a una base común.
-- **Rol mesero: parte de salón** `[M]` · 🔒 **bloqueado por PLATEO-52** — hoy el mesero tiene
-  pedidos, historial, clientes, reservas y menú (lectura); le faltan **mesas**, que exige ampliar
-  el CHECK de `tipo_pedido`. Mismo riesgo cross-layer que «venta en mostrador» — ver
-  [`dashboard/pos.md`](dashboard/pos.md).
-- **Invitar usuarios desde la UI** `[M]` — hoy se crean a mano en Supabase porque la admin API
-  exige `service_role`, que no puede ir en el bundle. Si se quiere en el dashboard: Edge Function
-  o webhook en n8n, **nunca desde React**. La pantalla de Usuarios ya explica el flujo manual, así
-  que esto es comodidad, no un bloqueo.
-
-## POS — impresión de tickets y cajón
-
-**Analizado el 2026-07-30, no priorizado, sin código.** El hardware ya está en el local (Epson
-TM-T88 + cajón 3nStar CD350) y la clienta decidió **no** hacer facturación electrónica DIAN por
-ahora, lo que elimina la parte difícil.
-
-→ **El análisis completo está en [`dashboard/pos.md`](dashboard/pos.md)**: plan A/B de impresión,
-enganche en el código, contenido de los dos tickets, y los adyacentes (arqueo de caja, venta en
-mostrador, DIAN, operación offline).
-
-Antes de empezar hay que confirmar **tres datos del local**: si la impresora está por USB o por
-red, si el cajón ya está en el puerto DK, y qué PC hay.
-
-## Features nuevas
-
-> Priorización sugerida para vender el SaaS: **Resumen diario WA + Modo TV** (wow inmediato,
-> esfuerzo bajo). **Métricas del bot** es la carta de ROI para nuevos clientes. **Campañas de
-> reactivación** es la que genera ingresos directos al restaurante.
-
-- **Resumen diario por WhatsApp al dueño** `[S — solo n8n]` — cron que al cierre (~23:00 Colombia)
-  manda el pulso del día: nº de pedidos, ingresos, producto top, cancelados. Deja «sentir» el
-  negocio sin abrir el dashboard. Reutiliza infra existente y la agregación es la misma lógica del
-  RPC `historial_resumen`.
-- **Modo TV para cocina (KDS)** `[S-M]` — botón «Modo pantalla» que abre el kanban a pantalla
-  completa (sin sidebar, cards gigantes, cronómetro por pedido con color según demora, sonido
-  fuerte) para una tablet o TV en cocina. **Alto valor en demos.**
-- **Metas y racha del mes** 🏆 `[S]` — el dueño fija una meta mensual en Configuración
-  (`info_negocio`); header y estadísticas muestran el progreso vs. meta y vs. el mes anterior.
-  Gamificación barata que genera hábito de uso.
-- **Insights automáticos** `[M]` — card en Estadísticas con 2-3 frases generadas **por reglas**
-  sobre agregaciones que ya se calculan («los viernes vendes 40% más», «Pizza Hawaiana lleva 30
-  días sin venderse», «5 clientes frecuentes no piden hace un mes» — esto último ya lo calcula
-  `RiskClients`). Se siente como IA, es solo agregación.
-- **Métricas del bot** 🤖 `[M]` — conversaciones atendidas solo por el bot vs. handoffs a humano,
-  conversión chat→pedido, horas pico. **Demuestra el ROI del bot = carta de venta para los
-  próximos clientes del SaaS.** Data: `n8n_chat_histories` + `mensajes_soporte` + `pedidos.origen`.
-- **Campañas de reactivación en lote** `[M-L]` — el **envío individual ya está hecho**
-  (2026-07-23): `RiskClients` manda la plantilla `reactivacion_cliente` con `PromoModal`. Falta el
-  **masivo**: seleccionar un segmento (inactivos 30+ días) y enviar en lote — debe ir por **n8n**
-  (límites de tier de Meta + no exponer el token). Requiere opt-in y cuidar la calidad del número.
-
-## Marca y producto — Plateo
-
-> **Plateo** es el software (el SaaS que vendemos a muchos restaurantes); **Vera** es solo el
-> primer cliente. Hoy toda la UI dice «Vera Pizzería» y se pierde el concepto de producto. Hay que
-> separar la **marca del producto** (Plateo, constante) de la **marca del cliente** (Vera, por
-> tenant).
-
-- **Branding Plateo en la plataforma** `[M]` — la regla mental: el operador (Vera) ve **su** marca
-  en el contenido (logo, nombre del negocio desde `info_negocio`), mientras Plateo aparece como
-  **el producto** en el chrome: login («Plateo · para Vera Pizzería»), footer «Powered by Plateo»,
-  favicon y título de pestaña, pantalla de carga, emails y PDFs exportados. Requisito multi-tenant:
-  el nombre del cliente sale **de datos**, nunca hardcodeado. Definir tokens de marca Plateo
-  (color, logo) separados del tema por-cliente.
-- **Landing / sitio de marketing** `[M-L]` — página pública que vende Plateo a nuevos restaurantes
-  (bot + dashboard + reservas), con demo, precios y captura de leads. Frente comercial, distinto
-  del dashboard operativo.
-- **Programa de referidos** `[M]` — que un cliente refiera a otro restaurante y reciba un
-  beneficio (descuento o mes gratis) cuando el referido se activa. Necesita código o link de
-  referido por cliente, tracking referido→activación, y un sitio donde el cliente vea sus
-  referidos. Encaja con el cobro tipo SaaS del control plane. **Palanca de crecimiento barata: los
-  dueños de restaurante se conocen entre sí.**
-
-## Visión SaaS
-
-- **Multi-cliente por silo** — un proyecto Supabase + una instancia n8n por cliente (aislamiento
-  físico, migraciones-como-código), y **una sola app React desplegada una vez** que resuelve el
-  tenant por subdominio. El dominio real es **`plateo.cloud`**: sitio público en
-  `www.plateo.cloud`, cada cliente en su subdominio con deploy aparte vía DNS (Vera en
-  `vera.plateo.cloud`).
-  > El `vera.lessplus.net` que aparece en el changelog del 2026-06-19 era un nombre tentativo que
-  > **nunca existió en DNS**. No usarlo como referencia.
-- **Control plane** con cobro tipo SaaS (Stripe) — futuro.
+- **Borrar `comprobantes/PED-109.jpg` de Storage** `[S]` — huérfano de un bug viejo; sin ninguna
+  referencia en la BD. No se puede borrar por SQL: hacerlo desde el panel de Supabase (Storage →
+  comprobantes).
+- **Limpiar `pedidos.repartidor`** `[S]` — columna muerta sustituida por `domiciliario_id` (NULL en
+  todos los pedidos). Se lee en dos sitios: `useOrderHistory.js` (el `select`) y
+  `OrderDetailModal.jsx`; eliminarla exige tocar ambos.
+- **Avatares huérfanos en Storage** `[S]` — si el borrado de la foto anterior falla queda suelto el
+  archivo. Si el bucket crece, un barrido contra `perfiles.avatar_url` lo limpia.
+- **Corregir textos viejos en `qa/sql/09-basura.sql`** `[S]` — T6 espera `23514` pero la función
+  ya devuelve `PASO_FLUJO_INVALIDO`; T2 pasa la misma mitad a las dos y solo ejercita `MITADES_IGUALES`.
+- **Envolver en `BEGIN … ROLLBACK`** las pruebas que escriben sin transacción: `08 T6` (deja un
+  carrito vivo del `573000000998`) y `09 T4/T10b`.

@@ -1,6 +1,6 @@
 # Esquema de Base de Datos — Supabase (PostgreSQL)
 
-> Fuente de verdad del backend compartido (bot n8n + dashboard). Leído de la instancia
+> Fuente de verdad del backend compartido (servidor del bot + dashboard). Leído de la instancia
 > real vía MCP de Supabase (proyecto `lwigogymjoyyzwiyewgi`), 2026-07-16.
 > **Todas las tablas, columnas y valores están en español y minúsculas.**
 
@@ -8,7 +8,7 @@
 
 - **IDs `text` con prefijo + secuencia** (NO uuid): `CLI-001` (clientes), `PED-001` (pedidos),
   `DET-001` (detalle), `FB-001` (feedback); reservas vía `generar_reserva_id()`;
-  `mensajes_soporte` y `n8n_mensajes_pendientes` sí usan `uuid`.
+  `mensajes_soporte` sí usa `uuid`.
 - **`fecha_pedido` es `timestamp` sin zona** con valor UTC → parsear con `parseDb()` en el
   frontend (`src/utils/dateRanges.js`). `fecha_entrega`, `created_at`, etc. son `timestamptz`.
 - **`metodo_pago` capitalizado** (`'Efectivo'`/`'Transferencia'`) — el frontend compara exacto.
@@ -104,7 +104,7 @@ tiempo. Verificado el 2026-09-09 con `qa/sql/07-housekeeping.sql` T7.
 
 > **La PK es el teléfono**, así que un cliente solo puede tener **un** carrito. Cualquier escritura
 > del bot que cree carrito tiene que ser un **upsert**, nunca un INSERT plano: si la fila ya existe
-> PostgREST devuelve conflicto y el nodo de n8n falla en silencio (BUG-032). El header correcto es
+> PostgREST devuelve conflicto (BUG-032). El header correcto es
 > `Prefer: resolution=merge-duplicates,return=representation`.
 
 **Estado del flujo de pedido (2026-09-01):** la tabla lleva además `tipo_pedido`
@@ -236,13 +236,13 @@ migración `feedback_add_resuelta_at`, 2026-07-23; solo aplica a negativas/neutr
 
 > **Desde 2026-09-16 (BUG-057/058/059) esta tabla solo la escriben dos RPCs:**
 > `solicitar_feedback_lote` (encola) y `procesar_respuesta_feedback` (avanza/cierra), más el cron
-> de expiración. La máquina de estados vivía en ~20 nodos de n8n sin transacción y cada paso podía
+> de expiración. La máquina de estados vivía fuera de la BD, sin transacción, y cada paso podía
 > fallar en silencio; el resultado fue un cliente atrapado en `esperando_feedback` con la cola viva
 > y un pedido ya calificado. **Invariante:** nunca `modo = 'bot'` con fila en la cola, ni
 > `esperando_feedback` sin ella (probado por `qa/sql/10-resenas.sql` T15).
 >
 > ⚠️ `feedback.fecha` es `timestamp` sin zona y guarda **UTC**. Lo escribe la RPC con
-> `now() at time zone 'utc'`; n8n escribía `$now.toISO()` en el huso de su instancia (UTC+2) y
+> `now() at time zone 'utc'`; el flujo anterior escribía en el huso de su instancia (UTC+2) y
 > dejaba las notas 2 h en el futuro (BUG-060).
 
 ### `mensajes_soporte` — chat de soporte (RLS ✅ solo authenticated)
@@ -261,8 +261,7 @@ migración `info_negocio_single_sede_y_claves_dashboard` (2026-07-23): al haber 
 sede**, `sede_1_direccion` → `direccion` (categoria `contacto`) y `sede_1_nombre` se eliminó;
 se agregaron `link_menu` (contacto) y `costo_delivery` (operacion), creadas vacías.
 `link_menu` se llenó el **2026-07-28** con `https://vera.plateo.cloud/menu_vera.pdf` (el PDF
-oficial que se sirve desde `public/` del dashboard); el mismo valor está hardcodeado en el prompt
-del Agente Menú en n8n — si el dominio cambia hay que actualizar **ambos**.
+oficial que se sirve desde `public/` del dashboard); si el dominio cambia, se actualiza aquí.
 
 Claves por `categoria`:
 - `identidad`: `nombre_negocio`, `slogan`, `descripcion_general`
@@ -298,7 +297,7 @@ propósito**: sembrar respuestas de ejemplo sería inventar afirmaciones del neg
 diría a clientes reales.
 
 > **Por qué esta tabla existe:** hasta ahora la verdad del negocio que no cabía en `info_negocio`
-> vivía escrita a mano en el prompt del Agente Soporte en n8n. Eso obliga a reescribir el prompt
+> vivía escrita a mano en el prompt del agente de Soporte. Eso obliga a reescribir el prompt
 > por cada cliente nuevo de Plateo — exactamente lo que rompe el modelo multi-tenant. Con `faq`,
 > el restaurante administra ese contenido solo y el prompt queda genérico.
 
@@ -355,11 +354,10 @@ Creada con la migración `roles_etapa1_perfiles_y_helpers` (2026-08-12).
 > (`useAuth`), no lo cachea en localStorage ni lo deduce del JWT. Aunque la RLS no se dejaría
 > engañar por un valor manipulado, la UI mostraría pantallas que luego llegan vacías.
 
-### `n8n_chat_histories` — memoria conversacional de los agentes (RLS ✅)
-`id` 🔑, `session_id` (= telefono), `message` jsonb, `created_at`.
-
-### `n8n_mensajes_pendientes` — buffer de acumulación de mensajes (RLS ✅)
-`id` uuid 🔑, `telefono`, `mensaje`, `creado_el`.
+### `n8n_chat_histories` — historial de conversación del bot (RLS ✅)
+`id` 🔑, `session_id` (= telefono), `message` jsonb, `created_at`. Nombre heredado de la época de n8n
+(renombrarla está en `docs/backlog.md`); hoy la escribe el servidor Node y la lee
+`registrar_contexto_handoff`.
 
 ### Tablas del servidor Node del bot (2026-09-29 · RLS ✅ solo admin)
 Creadas por la migración `bot_node_tablas_y_carrito` (fuente en
@@ -454,11 +452,11 @@ WHERE p.pedido_id = v_pedido_id;
 #### RPC del servidor Node del bot (2026-09-29)
 
 Migraciones `bot_node_tablas_y_carrito` y `bot_node_pedido_y_reservas` (fuente en
-`supabase/migrations/`, deshacer con `supabase/rollback/20260929_bot_node_fase2_rollback.sql`).
+`supabase/migrations/`).
 Principio: **el precio y las acciones críticas los decide la BD, nunca el LLM.** Todas devuelven
 `{ok, error?, message?, …}` con códigos estables en vez de reventar, y siguen el patrón
 `auth.uid() IS NULL → backend` (**SECURITY DEFINER**, salvo las marcadas). Cubiertas por
-`qa/sql/11-carrito-bot.sql` y `qa/sql/12-pedido-reservas-bot.sql`. n8n no las usa.
+`qa/sql/11-carrito-bot.sql` y `qa/sql/12-pedido-reservas-bot.sql`.
 
 | Función | Firma | Qué hace |
 |---|---|---|
@@ -484,7 +482,6 @@ Principio: **el precio y las acciones críticas los decide la BD, nunca el LLM.*
 | `expirar-feedback-pendiente` | `7 * * * *` | `expirar_feedback_pendiente()` — borra filas de `feedback_pendiente` de más de **6 h** y devuelve a `'bot'` a esos clientes si seguían en `esperando_feedback` (nunca pisa un `humano`). BUG-050, 2026-09-12. **2026-09-16 (BUG-057):** era 48 h con corrida diaria — un cliente atrapado podía pasar ~3 días sin bot. Es la red de seguridad de todo el flujo: acota cualquier fallo futuro a ≤ 7 h. |
 | `limpiar-wa-eventos` | `20 3 * * *` | Borra `wa_eventos` de más de 7 días (servidor Node, 2026-09-29) |
 | `limpiar-bot-turnos` | `25 3 * * *` | Borra `bot_turnos` de más de 30 días (servidor Node, 2026-09-29) |
-| `limpiar-mensajes-pendientes` | `*/5 * * * *` | `delete from n8n_mensajes_pendientes where creado_el < now() - interval '5 minutes'` — un turno que muere a mitad del buffer dejaba la fila, y `Combinar mensajes` la pegaba delante del próximo mensaje del cliente aunque llegara días después. Un flujo sano la borra a los ~3 s. BUG-053, 2026-09-15 |
 
 > ✅ Desde 2026-07-22 **`Sub — Consultar_menu` llama a `buscar_menu`** (POST
 > `/rest/v1/rpc/buscar_menu` con `{termino, umbral: 0.2, limite: 30, solo_disponibles: true}`)
@@ -518,7 +515,7 @@ Principio: **el precio y las acciones críticas los decide la BD, nunca el LLM.*
 | `motivos_reserva` · `faq` | todo | SELECT | — |
 | `zonas_entrega` · `barrios` | todo | SELECT | SELECT |
 | `perfiles` | todo | solo el suyo | solo el suyo |
-| `mensajes_soporte` · `feedback` · `feedback_pendiente` · `respuestas_rapidas` · `carritos` · `n8n_*` | todo | — | — |
+| `mensajes_soporte` · `feedback` · `feedback_pendiente` · `respuestas_rapidas` · `carritos` · `n8n_chat_histories` | todo | — | — |
 
 **Reglas por COLUMNA — las que la RLS no puede expresar.** Tres capacidades no caben en la matriz
 de arriba porque no son "qué filas" sino "qué columna de una fila que sí puedes tocar". Todas están
@@ -561,7 +558,7 @@ desactivado. No es una regresión — era así desde antes y el menú no es dato
 > una función `DEFINER` nueva, asumir que la RLS **no** la protege.
 >
 > Todas usan el patrón `auth.uid() IS NULL → dejar pasar`: sin JWT es contexto de backend
-> (service_role / n8n), donde no hay privilegio que escalar.
+> (la secret key del servidor), donde no hay privilegio que escalar.
 
 ### Verificación (2026-08-12)
 
@@ -621,17 +618,15 @@ Además:
 
 Historia: hasta 2026-07-22, 6 tablas (`carritos`, `feedback`, `feedback_pendiente`,
 `info_negocio`, `n8n_chat_histories`, `n8n_mensajes_pendientes`) estaban **sin RLS** y expuestas
-a la key pública (BUG-012), y varios nodos n8n escribían con keys hardcodeadas (BUG-003), lo que
-además bloqueaba el INSERT de `detalle_pedidos` y dejó 8 pedidos sin líneas (BUG-007). Todo
-resuelto: nodos migrados a credenciales, keys legacy deshabilitadas (sistema nuevo
-`sb_publishable_`/`sb_secret_`), RLS habilitado vía migración `bug012_enable_rls_exposed_tables`.
-El Postgres Chat Memory de n8n conecta como `postgres` (dueño de las tablas) → exento de RLS.
+a la key pública (BUG-012), y el bot anterior escribía con keys hardcodeadas (BUG-003). Todo
+resuelto: keys legacy deshabilitadas (sistema nuevo `sb_publishable_`/`sb_secret_`) y RLS
+habilitado vía migración `bug012_enable_rls_exposed_tables`.
 
 **Modelo de acceso vigente:**
 | Actor | Key | Acceso |
 |---|---|---|
 | Dashboard | `sb_publishable_` + sesión auth | rol `authenticated` → todo vía `auth_full_access` |
-| Bot n8n | `sb_secret_` (credencial `Supabase account`) | salta RLS |
+| Servidor del bot (`server/`) | `sb_secret_` (secret key `bot-node`) | salta RLS |
 | Público (key sola) | `sb_publishable_` | solo `menu` (SELECT) |
 
 **Alta de usuarios del dashboard:** se crean a mano en **Dashboard → Authentication → Users →
@@ -639,7 +634,7 @@ Add user** (email + contraseña), con **Authentication → Providers → Email �
 sign up" = OFF** (no es registro público). La admin API de Supabase exige `service_role`, que
 **no puede viajar en el bundle del navegador** — mismo motivo que el token de WhatsApp — así que
 el dashboard no crea usuarios, solo les asigna rol y perfil. Si algún día se quiere invitar desde
-la UI, va por Edge Function o n8n, nunca desde React.
+la UI, va por Edge Function, nunca desde React.
 
 El trigger `trigger_crear_perfil` (en `auth.users`) le da perfil automático al usuario nuevo con
 el rol **menos privilegiado** (`domiciliario`); un admin lo sube después.
@@ -690,7 +685,7 @@ avatares les daría esa misma puerta.
 
 ## Edge Functions
 
-Único código de servidor del sistema que **no** vive en n8n. El código está en este repo, bajo
+Código de servidor del sistema que **no** es el bot (`server/`). Está en este repo, bajo
 `supabase/functions/`, y se despliega con la CLI (`npx supabase functions deploy <nombre>`).
 
 | Función | Llama | Qué hace |

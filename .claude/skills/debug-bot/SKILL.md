@@ -1,6 +1,6 @@
 ---
 name: debug-bot
-description: Depura un fallo del bot de WhatsApp NODE (server/) — lee el turno real en bot_turnos (clasificación, decisión, herramientas, guardia, costo), lo reproduce en el simulador y lo cierra en código con su prueba. Úsalo cuando el bot Node conteste mal, invente, no conteste, pase a una persona sin motivo, cree o no cree un pedido/reserva, o cuando un escenario de server/test/escenarios falle. Para el bot de n8n (hasta el corte) usa debug-n8n.
+description: Depura un fallo del bot de WhatsApp NODE (server/) — lee el turno real en bot_turnos (clasificación, decisión, herramientas, guardia, costo), lo reproduce en el simulador y lo cierra en código con su prueba. Úsalo cuando el bot Node conteste mal, invente, no conteste, pase a una persona sin motivo, cree o no cree un pedido/reserva, o cuando un escenario de server/test/escenarios falle.
 ---
 
 Depura el fallo del bot Node que se esté investigando (el teléfono, el escenario o el síntoma que

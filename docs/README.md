@@ -11,34 +11,31 @@ docs/
 │   ── UNA CAPA, UN DOCUMENTO ──
 ├── architecture.md        ← visión global del sistema (las 3 capas juntas)
 ├── database.md            ← Capa 2 · Supabase: tablas, triggers, RPCs, permisos
-├── bot/                   ← Capa 1 · Automatización WhatsApp (n8n + OpenAI)
-│   ├── servidor.md        ← NUEVO: servidor Node que reemplaza a n8n (en construcción, server/)
-│   ├── n8n-workflow.md    ← workflow principal (trigger → routing → agentes)
-│   ├── feedback.md        ← feedback: job que pide la nota + subworkflow que la procesa
-│   ├── ai-agents.md       ← agentes IA: arquitectura, tools, reglas (referencia)
-│   ├── agent-prompts.md   ← system prompts completos verbatim (fuente de verdad)
-│   └── subworkflows.md    ← lógica server-side de las tools (n8n)
+├── bot/                   ← Capa 1 · Bot de WhatsApp (servidor Node en server/)
+│   ├── servidor.md        ← cómo funciona: flujo del turno, política, agentes, fases
+│   ├── despliegue.md      ← cómo se instala y actualiza en el VPS (Docker + Traefik)
+│   └── feedback.md        ← calificaciones: el job que pide la nota y la RPC que la procesa
 ├── dashboard/             ← Capa 3 · Frontend React + Vite (ESTE repositorio)
 │   ├── components.md      ← componentes, hooks, estructura del frontend
 │   ├── design-system.md   ← tokens, botones, forms, charts (fuente de verdad visual)
 │   └── pos.md             ← análisis de impresión de tickets + cajón (sin código aún)
 │
 │   ── ESTADO DEL PROYECTO — transversal, lo que se consulta a diario ──
-├── bug-tracker.md         ← bugs ABIERTOS + verificaciones en observación (nada más)
-├── backlog.md             ← features y mejoras pendientes (no-bugs, riesgos diferidos)
+├── backlog.md             ← QUÉ SIGUE: lanzamiento, vigilancia, mejoras y deuda, en orden
+├── bug-tracker.md         ← bugs ABIERTOS (nada más)
 ├── changelog.md           ← lo HECHO: decisiones arquitectónicas + bugs resueltos
 └── edge-cases.md          ← lecciones reutilizables (se consultan ANTES de trabajar)
 ```
 
 Fuera de `docs/` está la **suite de pruebas**. Vive en la raíz y no aquí dentro porque no es
-documentación: `qa/sql/` son ficheros **ejecutables** — es el `tests/` de este repo. La prosa
-(el informe y los guiones) vive junto a las pruebas que describe:
+documentación: `qa/sql/` son ficheros **ejecutables** — es el `tests/` de la base de datos. El
+bot tiene las suyas en `server/test/` (unitarias y escenarios de conversación).
 
 ```
-qa/                        ← campaña de pruebas (Capa A cerrada · última sesión 2026-09-22)
+qa/                        ← pruebas de la BD (última regresión completa: 2026-10-13, sin rojos)
 ├── RESULTADOS.md          ← EMPIEZA AQUÍ: estado por batería, hallazgos, y "Por dónde seguir"
-├── guiones-bot.md         ← Capa B: los 11 guiones de conversación por WhatsApp
-└── sql/                   ← 10 baterías deterministas, ejecutables vía el MCP de Supabase
+├── guiones-bot.md         ← los 11 guiones de conversación (hoy son escenarios en server/test/)
+└── sql/                   ← 12 baterías deterministas, ejecutables vía el MCP de Supabase
 ```
 
 **Antes de tocar una función, un trigger o una RPC, mira si hay una batería que la cubra** y
@@ -50,12 +47,11 @@ invariantes que verifica y las trampas de montaje que ya mordieron.
 
 | Capa | Qué es | Dónde vive | Doc |
 |---|---|---|---|
-| **Bot** | Agente IA que toma pedidos por WhatsApp | n8n (servidor externo) | [`bot/`](bot/) |
+| **Bot** | Servidor Node: la IA conversa, el código decide | `server/` → VPS (Docker) | [`bot/`](bot/) |
 | **Base de datos** | PostgreSQL, backend compartido | Supabase Cloud | [`database.md`](database.md) |
-| **Dashboard** | Panel admin en tiempo real | Este repositorio | [`dashboard/components.md`](dashboard/components.md) |
+| **Dashboard** | Panel admin en tiempo real | `src/` → Vercel | [`dashboard/components.md`](dashboard/components.md) |
 
-> El bot y el dashboard **comparten el mismo esquema PostgreSQL**. Solo el
-> dashboard vive en este repo; el workflow de n8n y la base de datos viven fuera.
+> El bot y el dashboard **comparten el mismo esquema PostgreSQL**.
 
 ## Cómo mantener esta documentación al día
 
@@ -63,8 +59,9 @@ Cuando hagas un cambio significativo, actualiza el doc que corresponde:
 
 | Cambiaste… | Actualiza |
 |---|---|
-| Esquema de BD (tabla, trigger, RPC) | `database.md` |
-| Workflow o tool del agente | `bot/n8n-workflow.md` + `bot/ai-agents.md` |
+| Esquema de BD (tabla, trigger, RPC) | `database.md` (+ migración en `supabase/migrations/`) |
+| Una regla o handler del bot | `bot/servidor.md` |
+| Cómo se despliega | `bot/despliegue.md` |
 | Componente o hook de React | `dashboard/components.md` |
 | Estilos, tokens o patrones visuales | `dashboard/design-system.md` |
 | Encontraste un bug por corregir | `bug-tracker.md` (Abiertos) |
@@ -75,4 +72,4 @@ Cuando hagas un cambio significativo, actualiza el doc que corresponde:
 
 El modelo de seguridad (RLS, políticas, keys) se documenta en
 [`database.md`](database.md) (sección «Modelo de permisos») y se verifica
-en vivo contra Supabase vía MCP — ya no hay scripts SQL versionados en el repo.
+en vivo contra Supabase vía MCP.

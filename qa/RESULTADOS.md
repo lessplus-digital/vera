@@ -91,47 +91,18 @@ feedback del 16-09. **Sin regresiones del sistema.**
 
 ## ▶️ Por dónde seguir
 
-### ⛳ Puerta de salida al MVP
+La puerta de salida a producción ya no depende de estas pruebas: las 12 baterías están en verde
+(2026-10-13) y el bot se prueba con el simulador de `server/` (28 escenarios + 6 adversariales).
+Lo que sigue —lanzamiento en el cliente real, vigilancia, apagar n8n— vive en
+[`docs/backlog.md`](../docs/backlog.md).
 
-1. **Repetir G3.5 y G3.6** (reset primero) — BUG-061 y BUG-062 ya tienen fix de prompt **publicado
-   en n8n el 2026-09-28**, pero ninguno de los dos pasa a cerrado hasta confirmar por WhatsApp que
-   el bot pregunta "¿te refieres a Niquía?"/"¿te refieres a Prado?" en vez de inventar tarifa o
-   mandar el PDF del menú. Ver el detalle del fix en `docs/bug-tracker.md`.
-2. **Correr G11, G1.7, G4 y G10 por WhatsApp** (G1.1–1.6 ya verdes el 23-09). Solo Juan puede. Cinco bugs 🔴
-   (BUG-056/057/058/059/060) están desplegados y **verificados únicamente en SQL** — ninguno se ha
-   probado hablando con el bot. Es el riesgo más grande abierto. G10.6 confirma además la regresión
-   de ruteo de BUG-062.
-3. **Terminar BUG-049 en n8n** (la BD ya está cerrada).
-4. **Kanban: cuarta columna + navegación por día** — es la otra mitad del fix de BUG-052; sin ella
-   el pedido pagado que ya no se autocancela se entierra igual. Ficha en `docs/backlog.md`.
-5. **Limpiar los datos de prueba de roles** antes de enseñar estadísticas (4 pedidos ficticios
-   cuentan en su día, 67 pedidos con `domiciliario_id` sembrado).
-6. **Rotar `VITE_WA_ACCESS_TOKEN`**, que viaja en el bundle. El proxy es `[M]` y no cabe; rotar sí.
+Lo que **sí** queda de esta campaña:
 
-**Fuera del MVP, decidido:** G9 y los precios de `motivos_reserva`, el FAQ de una sola fila, la
-Capa C (Vitest) y el proxy de WhatsApp.
-
-### Lo que sigue esperando una decisión de negocio (no es código)
-
-- **Los 6 precios de `motivos_reserva`** — siguen siendo el seed placeholder. Bloquean G9.
-- **El FAQ** tiene una sola fila; toda pregunta frecuente que no sea del parqueadero se improvisa.
-
-### Lo que NO hay que volver a investigar
-
-Ya se descartó, con evidencia: los 88 domicilios sin barrio (pre-migración del 18-08), las 37
-transferencias sin comprobante (32 son semilla; el número real es 5), los 8 pedidos sin líneas
-(BUG-007, cerrado, todos anteriores al 01-07), PED-235 en `en_camino` desde agosto (**dato de prueba
-manual de Juan**), los ids `RSV-M…` (dashboard viejo) y el webhook de estado disparando en cada
-UPDATE (`If1` sí filtra). Y **los $130.500 de PED-240 y PED-242** que el job canceló antes del fix
-de BUG-052: `573184821317` es el segundo número de Juan y **todos sus pedidos son de prueba**
-(confirmado por Juan el 2026-09-23). No hay nada que reembolsar ni reponer.
-
-> **Recordatorio permanente:** de los 117 pedidos, **~80 son semilla**, y además Juan manipula filas
-> a mano para probar. Ningún agregado sobre `pedidos` significa lo que parece hasta partirlo por
-> origen del dato. Los tres filtros obligatorios antes de convertir un hallazgo en bug están en
-> `edge-cases.md` §33: ¿es dato semilla?, ¿es anterior a una migración?, ¿lo tocó alguien a mano?
-
----
+- **Ejecutar de vez en cuando las baterías 06–12** tras tocar RPCs, triggers o RLS (skill `qa-regresion`).
+- **Textos desactualizados y escrituras fuera de transacción** de las baterías 08/09: anotados en
+  [`docs/backlog.md`](../docs/backlog.md) § Housekeeping.
+- **Línea base de tablas:** tras eliminar `n8n_mensajes_pendientes` (2026-10-13) la batería 09 T11
+  debe contar una tabla menos que en la corrida anterior (23 → 22).
 
 ## Hallazgos vivos que ninguna batería puede cazar
 
