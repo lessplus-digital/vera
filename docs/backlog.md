@@ -52,6 +52,14 @@ WhatsApp con el costo del montaje (aprobación de Meta) · rol mesero / salón y
 
 Un solo ítem, y es el riesgo diferido más antiguo del sistema.
 
+> **Estado (2026-10-13):** el proxy está en producción — el dashboard ya envía por
+> `bot.plateo.cloud/api/wa` y el bundle publicado **ya no contiene el token** (verificado
+> descargando el bundle de `vera.plateo.cloud`). **Rotar el token quedó como riesgo aceptado por el
+> dueño:** el token que estuvo expuesto sigue vigente. Rotarlo cuesta ~20 min (guía en la
+> conversación del 2026-10-13: usuario del sistema en Meta → token permanente → `WA_ACCESS_TOKEN` en
+> el `.env` del VPS → `docker compose up -d --force-recreate` → revocar el viejo). **Hacerlo, sin
+> excepción, al instalar en el cliente real** (número y token propios).
+
 - **Proxy para los envíos de WhatsApp** `[M]` — `VITE_WA_ACCESS_TOKEN` viaja en el bundle del
   dashboard (y además quedó en el historial de versiones de n8n). El fix real: enrutar los sends
   del dashboard por n8n o por una edge function, y **rotar el token** (actualizar la credencial de
