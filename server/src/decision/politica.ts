@@ -18,6 +18,10 @@ import { borradorListo, cambiaLaReserva } from './reserva.js'
 export type Accion =
   | { tipo: 'pasar_a_humano'; motivo: 'lo_pidio' | 'frustracion' }
   | { tipo: 'crear_pedido' }
+  /** El carrito (vacío) pasa a ser la ampliación de este pedido pendiente: lo que se agregue se le suma. */
+  | { tipo: 'ampliar_pedido'; pedido_id: string }
+  /** El "sí" al resumen de una ampliación: las líneas pasan al pedido (agregar_carrito_a_pedido). */
+  | { tipo: 'agregar_a_pedido' }
   /** `guardar`: el cliente AFIRMÓ el barrio (se guarda con su tarifa); false = solo preguntó. */
   | { tipo: 'verificar_cobertura'; barrio: string; guardar: boolean }
   | { tipo: 'guardar_datos'; datos: DatosPedido }
@@ -170,7 +174,34 @@ export function mencionado(barrio: string, texto: string): boolean {
 export const direccionUtil = (d: string) => /\d/.test(d)
 
 export function decidir(c: Clasificacion, ctx: ContextoDecision): Decision {
-  return conNombre(completarCobertura(decidirBase(c, ctx), ctx.estado), c, ctx)
+  return conNombre(conPedidoReciente(completarCobertura(decidirBase(c, ctx), ctx.estado), c, ctx), c, ctx)
+}
+
+/** "¿Todavía puedo agregar algo?", "súmale una gaseosa", "añádeme…": pedir más, lo lea como lo lea el clasificador. */
+const pideAgregar = (texto: string) => /\b(agreg|anad|adicion|sumal|sumarl|sumarle|incluy|incluir)/.test(norm(texto))
+/** Intenciones que, sin carrito y con un pedido recién hecho, pueden ser "quiero agregar algo" mal leído. */
+const LEIDO_COMO_OTRA = new Set<Intencion>(['ver_carrito', 'estado_pedido', 'otro', 'respuesta_corta', 'saludo'])
+
+/**
+ * Menú con un pedido recién registrado y sin carrito: lo que agregue no es un
+ * pedido nuevo. Si el pedido sigue 'pendiente' (nadie lo aprobó) el carrito pasa
+ * a ser su ampliación; si ya está en preparación, Menú tiene que decir que iría
+ * aparte. Antes Menú no sabía del pedido: a "¿todavía puedo agregar algo?" dijo
+ * que sí y armó un carrito nuevo, camino de un segundo pedido con su propio
+ * domicilio (2026-10-15, 573184821317, PED-270).
+ */
+function conPedidoReciente(base: Decision, c: Clasificacion, ctx: ContextoDecision): Decision {
+  const p = ctx.pedido_reciente
+  if (!p || hayCarrito(ctx.estado) || ctx.estado?.amplia_pedido) return base
+  // El clasificador leyó "¿todavía puedo agregar algo?" como ver_carrito 3 de 5 veces en el
+  // simulador: iba a Pedidos, que sin carrito contesta "no tienes un pedido armado".
+  const releido =
+    base.handler !== 'menu' && base.handler !== 'humano' && base.regla !== 'fuera_de_tema' && LEIDO_COMO_OTRA.has(c.intencion) && pideAgregar(ctx.texto)
+  const d: Decision = releido ? { ...base, handler: 'menu', regla: `pedido_reciente:agregar(${c.intencion})` } : base
+  if (d.handler !== 'menu') return d
+  if (p.estado === 'pendiente') return { ...d, acciones: [{ tipo: 'ampliar_pedido', pedido_id: p.pedido_id }, ...d.acciones] }
+  const aparte = `El pedido ${p.pedido_id} del cliente ya está en preparación y no se le puede agregar nada: lo que pida ahora sería un pedido aparte, con su propia entrega. Si pregunta si todavía puede agregar algo, díselo así.`
+  return { ...d, nota: [d.nota, aparte].filter(Boolean).join(' · ') }
 }
 
 // Lo que NO se registra como nombre (regla del Agente Soporte de n8n, ahora en
@@ -374,7 +405,10 @@ function responderPregunta(
       // El pedido se crea SOLO si la BD dice que el cliente está viendo el resumen
       // y no falta nada. Si no, se vuelve a mostrar (la RPC también lo exige: SIN_RESUMEN).
       if (estado?.paso_flujo === 'resumen' && estado.faltantes.length === 0 && estado.n_items > 0) {
-        return { handler: 'pedidos', acciones: [{ tipo: 'crear_pedido' }], regla: 'resumen:si' }
+        // Una ampliación no crea otro pedido: se suma al que ya está registrado.
+        return estado.amplia_pedido
+          ? { handler: 'pedidos', acciones: [{ tipo: 'agregar_a_pedido' }], regla: 'resumen:si_ampliacion' }
+          : { handler: 'pedidos', acciones: [{ tipo: 'crear_pedido' }], regla: 'resumen:si' }
       }
       if (!hayCarrito(estado)) return { handler: 'menu', acciones: [], regla: 'resumen:si_sin_carrito', nota: 'el carrito expiró: armarlo de nuevo' }
       return { handler: 'pedidos', acciones: [], regla: 'resumen:si_sin_resumen_valido', nota: 'volver a mostrar el resumen' }

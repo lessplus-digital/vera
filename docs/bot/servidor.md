@@ -95,7 +95,7 @@ Un turno de texto en modo `bot` pasa por `crearConversadorDecision` (`decision/c
 3. DECIDE (código puro, sin LLM ni efectos)           → decision/politica.ts
    handler (menu · pedidos · soporte · reservas · humano) + acciones críticas
 4. EJECUTA las acciones antes de redactar            → decision/ejecutor.ts
-   handoff · guardar_datos · verificar_cobertura · vaciar_carrito · crear_pedido
+   handoff · guardar_datos · verificar_cobertura · vaciar_carrito · crear_pedido · ampliar_pedido · agregar_a_pedido
 5. REDACTA el handler (Fase 5; hoy `redactorProvisional`, que solo dice qué entendió)
 6. GUARDIA de salida; si falla, regenera 1 vez; si vuelve a fallar, TEXTO_SEGURO → guardia/guardia.ts
 7. Guarda en conversaciones el handler y la pregunta que quedó abierta
@@ -132,6 +132,18 @@ agente; aquí `ultima_pregunta` está en la BD, así que un "dale" se interpreta
 6. Un dato con carrito → Pedidos; un barrio sin carrito → Soporte; lo demás sin carrito → Menú.
    **Nunca Pedidos sin carrito.**
 7. Sin intención clara: sigue quien llevaba el hilo.
+8. **Pedido recién registrado** (2026-10-15, `conPedidoReciente`): si la decisión va a Menú, no hay
+   carrito y el último pedido del cliente es de hace ≤ 2 h (`VENTANA_PEDIDO_RECIENTE_MIN`) y sigue
+   en curso, lo que pida **no es un pedido nuevo**. Si está `pendiente`, la acción `ampliar_pedido`
+   convierte el carrito en su ampliación (`carritos.amplia_pedido`); si ya está en cocina, en camino
+   o listo, Menú recibe en la nota que sería un pedido aparte. El "sí" al resumen de una ampliación
+   es `agregar_a_pedido` (regla `resumen:si_ampliacion`), **nunca** `crear_pedido` — también
+   barrido como invariante. Si el texto pide agregar ("agreg", "añad", "súmale"…) y el clasificador
+   lo leyó como `ver_carrito` / `estado_pedido` / `otro` (3 de 5 corridas en el simulador: iba a
+   Pedidos, que sin carrito contestaba "no tienes un pedido armado"), igual va a Menú (regla
+   `pedido_reciente:agregar(<intención>)`). Caso real: tras PED-270 el cliente preguntó "¿todavía puedo agregar
+   algo?", Menú dijo que sí sin saber del pedido y armó un carrito nuevo, camino de un segundo
+   pedido con su propio domicilio.
 
 Los tres invariantes críticos (crear pedido, crear reserva, nunca Pedidos sin carrito) se prueban
 además con un **barrido** de todas las combinaciones intención × confirma × pregunta × estado.
@@ -232,6 +244,18 @@ casi todo lo que allí era regla en texto es código, y el LLM **no tiene herram
   `PRODUCTO_NO_DISPONIBLE`, `CARRITO_VACIO`) Pedidos vuelve a mostrar el resumen o pide lo que
   falte; cualquier otro código pasa a una persona (`T.PEDIDO_FALLO_HANDOFF`) — el prompt de n8n
   decía "voy a escalarlo" pero nadie lo escalaba.
+- **Ampliar un pedido pendiente** (2026-10-15): con `amplia_pedido`, `faltantes` solo puede traer
+  `carrito` (entrega y pago son los del pedido), así que tras "¿algo más? → no" sale directo el
+  resumen de la ampliación (`formato.ts · bloqueAmpliacion`): lo nuevo, el total actual, lo nuevo y
+  el **nuevo total** (los dos de la BD), con `paso_flujo=resumen` y la pregunta `confirmar_pedido`.
+  El "sí" corre `agregar_carrito_a_pedido` y la confirmación es fija (`T.pedidoAmpliado`, con la
+  cuenta si paga por transferencia). Si el equipo lo aprobó o el cliente ya mandó comprobante
+  mientras miraba el resumen, la BD suelta el carrito (`PEDIDO_YA_PROCESADO` / `PEDIDO_PAGADO`) y
+  Pedidos lo dice (`yaNoSeSuma`) y sigue pidiendo entrega y pago **como pedido aparte**, sin pasar a
+  una persona. Menú, mientras tanto, titula el carrito "Para sumar a tu pedido PED-…" y sabe que lo
+  que agregue se suma (`ampliacionParaLLM`). **Límite conocido:** con un pedido pendiente reciente,
+  un cliente que quiera un pedido *separado* (otra dirección) no tiene cómo pedirlo por el bot;
+  lo atiende una persona.
 - **Tras crear:** la confirmación por transferencia incluye la cuenta de `info_negocio.datos_transferencia`
   (la que se edita en Configuración; antes estaba escrita en el prompt), y la dirección y el barrio
   del pedido pasan a `clientes.direccion_principal`/`barrio` para ofrecerlos la próxima vez.

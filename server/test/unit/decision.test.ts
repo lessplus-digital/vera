@@ -5,6 +5,7 @@ import { clasificacionVacia, type Clasificacion } from '../../src/decision/clasi
 import type { Redactor } from '../../src/decision/conversador.js'
 import type { UltimaPregunta } from '../../src/decision/contexto.js'
 import * as T from '../../src/textos.js'
+import { yaNoSeSuma } from '../../src/handlers/pedidos.js'
 
 // El pipeline completo de un turno (Fase 4) dentro del simulador: webhook →
 // clasificador (FakeLLM) → política → acciones sobre la BD en memoria →
@@ -12,7 +13,7 @@ import * as T from '../../src/textos.js'
 
 const TEL = '573000000902'
 
-function entorno(c: Partial<Clasificacion> | (() => never), redactores?: Record<string, Redactor>) {
+function entorno(c: Partial<Clasificacion> | (() => never), redactores?: Record<string, Redactor> | 'agentes') {
   const llm = new FakeLLM(() => (typeof c === 'function' ? c() : clasificacionVacia(c)))
   const sim = new EntornoSim({ llm, ...(redactores ? { redactores } : {}) })
   return sim
@@ -160,3 +161,68 @@ describe('robustez', () => {
     })
   })
 })
+
+// ── Agregar a un pedido ya registrado (2026-10-15, 573184821317, PED-270) ──
+describe('ampliar un pedido pendiente', () => {
+  const panDeAjo = { producto_id: 'PROD-001', nombre: 'Pan de Ajo', variante: null, cantidad: 1, precio_unitario: 13900, subtotal: 13900 }
+  async function conPedido(sim: EntornoSim, estado = 'pendiente') {
+    await sim.repo.clientePorTelefono(TEL)
+    return sim.repo.agregarPedido({ telefono: TEL, estado, metodo_pago: 'Efectivo', tipo_pedido: 'domicilio', total: 181000 })
+  }
+
+  it('"¿todavía puedo agregar algo?" con el pedido pendiente: el carrito queda marcado para sumarse a él', async () => {
+    const sim = entorno({ intencion: 'agregar_producto' })
+    const id = await conPedido(sim)
+    await sim.repo.guardarConversacion(TEL, { handler: 'soporte', ultima_pregunta: null })
+    const { registro } = await turno(sim, 'Uy todavía puedo agregar algo?')
+    expect(registro.decision).toMatchObject({ handler: 'menu', acciones: [{ tipo: 'ampliar_pedido', pedido_id: id }] })
+    expect((await sim.repo.estadoPedido(TEL))?.amplia_pedido).toBe(id)
+  })
+
+  it('un pedido de hace más de 2 horas ya no cuenta: lo que pida es un pedido nuevo', async () => {
+    const sim = entorno({ intencion: 'agregar_producto' })
+    await sim.repo.clientePorTelefono(TEL)
+    sim.repo.agregarPedido({ telefono: TEL, estado: 'pendiente', fecha_pedido: new Date(Date.now() - 3 * 3600_000).toISOString() })
+    const { registro } = await turno(sim, 'quiero agregar algo')
+    expect(registro.decision).toMatchObject({ acciones: [] })
+  })
+
+  it('"así está bien" a "¿algo más?": muestra lo que se suma y el total nuevo, sin pedir entrega ni pago', async () => {
+    const sim = entorno({ intencion: 'respuesta_corta', confirma: 'no' }, 'agentes')
+    const id = await conPedido(sim)
+    sim.repo.ponerCarrito(TEL, { items: [panDeAjo], amplia_pedido: id })
+    await sim.repo.guardarConversacion(TEL, { handler: 'menu', ultima_pregunta: { tipo: 'algo_mas' } })
+    const { respuestas } = await turno(sim, 'Así está bien, cuánto sería el total?')
+    expect(respuestas[0]).toContain(`se suma a tu pedido *${id}*`)
+    expect(respuestas[0]).toContain('*Nuevo total: $194.900*')
+    expect(respuestas[0]).not.toContain('domicilio o lo recoges')
+    expect((await sim.repo.estadoPedido(TEL))?.paso_flujo).toBe('resumen')
+    expect((await sim.repo.leerConversacion(TEL)).ultima_pregunta).toEqual({ tipo: 'confirmar_pedido' })
+  })
+
+  it('"sí" al resumen: se suma al MISMO pedido (no se crea otro) y confirma con el total nuevo', async () => {
+    const sim = entorno({ intencion: 'respuesta_corta', confirma: 'si' })
+    const id = await conPedido(sim)
+    sim.repo.ponerCarrito(TEL, { items: [panDeAjo], amplia_pedido: id, paso_flujo: 'resumen' })
+    await preparar(sim, { tipo: 'confirmar_pedido' })
+    const { respuestas } = await turno(sim, 'sí')
+    expect(sim.repo.ordenes).toHaveLength(0)
+    expect(sim.repo.ampliaciones).toEqual([{ pedido_id: id, items: [panDeAjo] }])
+    expect(respuestas).toEqual([T.pedidoAmpliado({ pedido_id: id, total: 194900, tipo_pedido: 'domicilio', metodo_pago: 'Efectivo' })])
+    expect(await sim.repo.estadoPedido(TEL)).toBeNull()
+  })
+
+  it('lo aprobaron mientras miraba el resumen: no se suma, se avisa y sigue como pedido aparte (sin pasar a una persona)', async () => {
+    const sim = entorno({ intencion: 'respuesta_corta', confirma: 'si' }, 'agentes')
+    const id = await conPedido(sim, 'en_cocina')
+    sim.repo.ponerCarrito(TEL, { items: [panDeAjo], amplia_pedido: id, paso_flujo: 'resumen' })
+    await preparar(sim, { tipo: 'confirmar_pedido' })
+    const { respuestas } = await turno(sim, 'sí')
+    expect(sim.repo.ampliaciones).toHaveLength(0)
+    expect((await sim.repo.clientePorTelefono(TEL)).modo).toBe('bot')
+    expect(respuestas[0]).toContain(yaNoSeSuma(id, 'PEDIDO_YA_PROCESADO'))
+    expect(respuestas[0]).toContain('¿Es para domicilio o lo recoges en el local?')
+    expect((await sim.repo.estadoPedido(TEL))?.amplia_pedido).toBeNull()
+  })
+})
+

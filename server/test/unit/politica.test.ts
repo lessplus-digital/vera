@@ -668,7 +668,8 @@ describe('política de decisión', () => {
     { tipo: 'nombre' },
     { tipo: 'dato_reserva', dato: 'hora' },
   ]
-  const estados = [null, carrito(), enResumen, carrito({ paso_flujo: 'resumen', faltantes: ['metodo_pago'] })]
+  const ampliacionEnResumen = carrito({ paso_flujo: 'resumen', faltantes: [], amplia_pedido: 'PED-270' })
+  const estados = [null, carrito(), enResumen, carrito({ paso_flujo: 'resumen', faltantes: ['metodo_pago'] }), ampliacionEnResumen]
   const reservas = [null, reservaLista, { personas: 4, fecha: '2026-10-03', hora: '19:00', motivo: 'cumpleanos' }]
   const combinaciones = intenciones.flatMap((intencion) =>
     confirmas.flatMap((confirma) =>
@@ -682,6 +683,17 @@ describe('política de decisión', () => {
       const crea = d.acciones.some((a) => a.tipo === 'crear_pedido')
       const debe = k.ultima?.tipo === 'confirmar_pedido' && k.confirma === 'si' && k.estado === enResumen
       expect(crea, JSON.stringify({ ...k, estado: k.estado?.paso_flujo })).toBe(debe)
+    }
+  })
+
+  it('INVARIANTE: agregar_a_pedido solo con "sí" al resumen de una ampliación; una ampliación nunca crea otro pedido', () => {
+    for (const k of combinaciones) {
+      const d = decidir(clasificacionVacia({ intencion: k.intencion, confirma: k.confirma }), ctx('x', k))
+      const suma = d.acciones.some((a) => a.tipo === 'agregar_a_pedido')
+      expect(suma, JSON.stringify({ ...k, estado: k.estado?.paso_flujo })).toBe(
+        k.ultima?.tipo === 'confirmar_pedido' && k.confirma === 'si' && k.estado === ampliacionEnResumen,
+      )
+      if (k.estado === ampliacionEnResumen) expect(d.acciones.some((a) => a.tipo === 'crear_pedido')).toBe(false)
     }
   })
 
@@ -791,5 +803,78 @@ describe('barrio del historial', () => {
     ['Niquía', '¿puedo celebrar allá?', false],
   ])('mencionado(%s, %s) = %s', (b, t, ok) => {
     expect(mencionado(b, t)).toBe(ok)
+  })
+})
+
+// ── Pedido recién registrado (2026-10-15, 573184821317: "¿todavía puedo agregar algo?") ──
+describe('agregar a un pedido ya registrado', () => {
+  const conPedido = (texto: string, estado: string, o: { estado?: EstadoPedido | null; ultima?: UltimaPregunta } = {}): ContextoDecision => ({
+    ...ctx(texto, { ...o, handler: 'soporte' }),
+    pedido_reciente: { pedido_id: 'PED-270', estado },
+  })
+
+  it('"¿todavía puedo agregar algo?" con el pedido pendiente: Menú, y el carrito pasa a sumarse a ese pedido', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'agregar_producto' }), conPedido('Uy todavía puedo agregar algo?', 'pendiente'))
+    expect(d.handler).toBe('menu')
+    expect(d.acciones).toEqual([{ tipo: 'ampliar_pedido', pedido_id: 'PED-270' }])
+  })
+
+  it.each(['ver_carrito', 'estado_pedido', 'otro'] as const)(
+    '"¿todavía puedo agregar algo?" leído como %s (3 de 5 en el simulador): igual va a Menú y se suma',
+    (intencion) => {
+      const d = decidir(clasificacionVacia({ intencion }), conPedido('Uy todavía puedo agregar algo?', 'pendiente'))
+      expect(d.handler).toBe('menu')
+      expect(d.acciones).toEqual([{ tipo: 'ampliar_pedido', pedido_id: 'PED-270' }])
+      expect(d.regla).toBe(`pedido_reciente:agregar(${intencion})`)
+    },
+  )
+
+  it('sin pedido reciente, "¿puedo agregar algo?" leído como ver_carrito no cambia de rumbo', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'ver_carrito' }), ctx('¿puedo agregar algo?'))
+    expect(d.regla).toBe('intencion:ver_carrito')
+  })
+
+  it('"agrégame un pan de ajo" con el pedido pendiente: también se suma (no hace falta preguntar antes)', () => {
+    const d = decidir(
+      clasificacionVacia({ intencion: 'agregar_producto', productos: [producto('pan de ajo')] }),
+      conPedido('Agregame una entrada de pan de ajo', 'pendiente'),
+    )
+    expect(d.acciones).toEqual([{ tipo: 'ampliar_pedido', pedido_id: 'PED-270' }])
+  })
+
+  it('con el pedido ya en cocina: no se toca, y Menú sabe que sería un pedido aparte', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'agregar_producto' }), conPedido('¿puedo agregar algo?', 'en_cocina'))
+    expect(d.handler).toBe('menu')
+    expect(d.acciones).toEqual([])
+    expect(d.nota).toContain('pedido aparte')
+  })
+
+  it('con un carrito ya armado (de un pedido nuevo) no se convierte', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'agregar_producto', productos: [producto('coca cola')] }), conPedido('y una coca cola', 'pendiente', { estado: carrito() }))
+    expect(d.acciones.some((a) => a.tipo === 'ampliar_pedido')).toBe(false)
+  })
+
+  it('el carrito ya es la ampliación: no se vuelve a marcar', () => {
+    const amplia = carrito({ faltantes: [], amplia_pedido: 'PED-270' })
+    const d = decidir(clasificacionVacia({ intencion: 'agregar_producto', productos: [producto('coca cola')] }), conPedido('y una coca cola', 'pendiente', { estado: amplia }))
+    expect(d.acciones).toEqual([])
+  })
+
+  it('"no, así está bien" a "¿algo más?" con la ampliación: a Pedidos, que muestra lo que se suma', () => {
+    const amplia = carrito({ faltantes: [], amplia_pedido: 'PED-270' })
+    const d = decidir(clasificacionVacia({ intencion: 'respuesta_corta', confirma: 'no' }), conPedido('Así está bien', 'pendiente', { estado: amplia, ultima: { tipo: 'algo_mas' } }))
+    expect(d).toMatchObject({ handler: 'pedidos', regla: 'algo_mas:no' })
+  })
+
+  it('"sí" al resumen de la ampliación: se suma al pedido, no se crea otro', () => {
+    const amplia = carrito({ paso_flujo: 'resumen', faltantes: [], amplia_pedido: 'PED-270' })
+    const d = decidir(clasificacionVacia({ intencion: 'respuesta_corta', confirma: 'si' }), conPedido('sí', 'pendiente', { estado: amplia, ultima: { tipo: 'confirmar_pedido' } }))
+    expect(d).toMatchObject({ handler: 'pedidos', acciones: [{ tipo: 'agregar_a_pedido' }], regla: 'resumen:si_ampliacion' })
+  })
+
+  it('preguntar por el estado del pedido no lo amplía (no es Menú)', () => {
+    const d = decidir(clasificacionVacia({ intencion: 'estado_pedido' }), conPedido('¿cómo va mi pedido?', 'pendiente'))
+    expect(d.handler).toBe('soporte')
+    expect(d.acciones).toEqual([])
   })
 })

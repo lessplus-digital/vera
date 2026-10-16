@@ -14,6 +14,29 @@
 ```
 
 ---
+### 2026-10-15 — El bot suma productos a un pedido pendiente en vez de crear otro
+
+**Contexto:** conversación real (573184821317): tras crear PED-270 el cliente preguntó "Uy
+todavía puedo agregar algo?". La intención `agregar_producto` iba siempre a Menú, que no sabía
+del pedido: dijo "sí alcanzamos a agregarte algo", metió el pan de ajo en un carrito nuevo y
+Pedidos volvió a preguntar "¿domicilio o recoger?", camino de un segundo pedido con otro domicilio.
+
+**Decisión:** si el pedido sigue `pendiente` (nadie lo aprobó y no tiene comprobante), el bot le
+suma lo nuevo él mismo. El carrito pasa a ser su ampliación (`carritos.amplia_pedido`), no pide
+entrega ni pago, muestra el total nuevo y el "sí" llama `agregar_carrito_a_pedido`. Si el pedido ya
+está en cocina (o lo aprueban mientras el cliente mira el resumen), va como pedido aparte y se le
+dice. Se descartó pasar a una persona: el pedido pendiente es justo el que todavía se puede tocar.
+En el simulador el clasificador leyó "¿todavía puedo agregar algo?" como `ver_carrito` 3 de 5
+veces, así que con un pedido reciente el texto que pide agregar manda a Menú lo lea como lo lea.
+
+**Impacto:** migración `20261015120000_ampliar_pedido_pendiente` (columna, vista `estado_pedido`,
+RPCs `carrito_ampliar_pedido` y `agregar_carrito_a_pedido`, guardia `ES_AMPLIACION` en
+`crear_orden_desde_carrito`); servidor: `politica.ts` (`conPedidoReciente`, `resumen:si_ampliacion`),
+`ejecutor.ts`, `conversador.ts` (lee el último pedido), `handlers/{menu,pedidos,formato}.ts`,
+`textos.ts`, `RepoMemoria`. Pruebas: batería 12 · T6 (17 casos), `politica.test.ts` (12 casos + un
+invariante en el barrido), `decision.test.ts` (5) y el escenario `f10-agregar-a-pedido-registrado`.
+
+---
 ### 2026-10-13 — Limpieza posterior a la migración: n8n sale del repo y de la BD
 
 **Contexto:** con el bot Node en producción y n8n apagado, el repo seguía lleno de n8n: docs de

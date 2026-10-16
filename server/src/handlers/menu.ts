@@ -77,6 +77,11 @@ export function crearRedactorMenu(d: { repo: Repo; llm: LLM }): Redactor {
   return async (e: EntradaRedactor): Promise<Redaccion> => {
     const tel = e.turno.telefono
     const carritoAntes = await d.repo.carrito(tel)
+    // El carrito se suma a un pedido ya registrado (política: conPedidoReciente).
+    const amplia = e.estado?.amplia_pedido ?? null
+    const fallida = e.efectos.ampliacionFallida?.pedido_id ?? null
+    // Los únicos PED- que el texto puede citar: el suyo en curso.
+    const pedidos = [amplia, fallida, e.pedido_reciente?.pedido_id].filter((x): x is string => !!x)
     const rastro: RastroMenu = {
       montos: [...(e.previo?.montos ?? [])],
       cambioCarrito: false,
@@ -92,6 +97,8 @@ export function crearRedactorMenu(d: { repo: Repo; llm: LLM }): Redactor {
         texto: [
           contextoComun(e),
           `Carrito actual:\n${carritoParaLLM(carritoAntes)}`,
+          amplia ? ampliacionParaLLM(amplia) : '',
+          fallida ? noSeSumaParaLLM(fallida) : '',
           e.decision.nota ? `Contexto de este turno: ${e.decision.nota}` : '',
           `MENSAJE DEL CLIENTE:\n${e.texto}`,
         ]
@@ -135,7 +142,7 @@ export function crearRedactorMenu(d: { repo: Repo; llm: LLM }): Redactor {
       montos.push(...montosDeCarrito(carrito))
       if (carrito.lineas.length) {
         // El "¿algo más?" lo pone el código: si el modelo también lo escribió, salía dos veces.
-        texto = [quitarAlgoMas(texto), bloqueCarrito(carrito)].filter(Boolean).join('\n\n')
+        texto = [quitarAlgoMas(texto), bloqueCarrito(carrito, amplia)].filter(Boolean).join('\n\n')
         // Si el modelo no dejó otra pregunta abierta, se cierra con "¿algo más?".
         if (!sinCob && (salida.pregunta === 'ninguna' || salida.pregunta === 'algo_mas')) {
           texto += `\n\n${PREGUNTA_ALGO_MAS}`
@@ -148,9 +155,15 @@ export function crearRedactorMenu(d: { repo: Repo; llm: LLM }): Redactor {
       pregunta = sinCob.pregunta
     }
     const consultoMenu = llamadas.some((l) => l.nombre === 'consultar_menu')
-    return { texto, pregunta, montos, llamadas, productos, consultoMenu }
+    return { texto, pregunta, montos, llamadas, productos, consultoMenu, pedidos }
   }
 }
+
+const ampliacionParaLLM = (id: string) =>
+  `Pedido en curso: el cliente ya tiene registrado el pedido ${id}, que todavía nadie ha aprobado. Lo que agregue ahora se SUMA a ese pedido (misma entrega y forma de pago): no es un pedido nuevo. Si pregunta si todavía puede agregar algo, dile que sí y que se suma a su pedido ${id}.`
+
+const noSeSumaParaLLM = (id: string) =>
+  `El pedido ${id} del cliente ya no se puede modificar (ya lo está procesando el equipo o ya está pago): lo que pida ahora sería un pedido aparte, con su propia entrega. Si pregunta si todavía puede agregar algo, díselo así.`
 
 /** Quita del texto del modelo las preguntas de "¿algo más?" (y el emoji que las cierra). */
 export const quitarAlgoMas = (t: string) =>

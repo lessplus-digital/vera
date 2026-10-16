@@ -1,0 +1,50 @@
+nombre: 'Agregar algo a un pedido ya registrado lo suma a ESE pedido'
+descripcion: >
+  Conversación real del 2026-10-15 (573184821317): tras crear PED-270 el cliente
+  preguntó "Uy todavía puedo agregar algo?". El bot dijo que sí, pero metió el pan
+  de ajo en un carrito NUEVO y volvió a preguntar "¿domicilio o recoger?", camino
+  de un segundo pedido. Con el pedido todavía pendiente, lo nuevo se suma a él:
+  sin pedir entrega ni pago, con el total nuevo, y el "sí" no crea otro pedido.
+critico: true
+bot: decision
+datos: real
+telefono: '573000000925'
+nombre_cliente: Juan Pérez
+cliente_registrado: true
+pasos:
+  - envia: Quiero una pizza hawaiana tradicional grande
+    debe:
+      bd: { carrito_solo: [Hawaiana] }
+      turno: { sin_acciones: [crear_pedido] }
+  - envia: Nada más
+    debe:
+      turno: { handler: pedidos, regla: 'algo_mas:no' }
+  - envia: Para recoger
+    debe:
+      coincide: efectivo|transferencia
+  - envia: Efectivo
+    debe:
+      contiene: ['¿Te lo confirmo así?']
+  - envia: Sí, confírmalo
+    debe:
+      turno: { acciones: [crear_pedido] }
+      contiene: ['Pedido registrado']
+      bd: { carrito: [] }
+  - envia: Uy todavía puedo agregar algo?
+    debe:
+      turno: { handler: menu, acciones: [ampliar_pedido], sin_acciones: [crear_pedido] }
+      no_contiene: ['domicilio o lo recoges', 'pedido aparte', 'nuevo pedido']
+  - envia: Agrégame una entrada de pan de ajo
+    debe:
+      bd: { carrito: [Pan de Ajo] }
+      contiene: ['Para sumar a tu pedido PED-']
+  - envia: Así está bien
+    debe:
+      turno: { handler: pedidos, regla: 'algo_mas:no' }
+      contiene: ['se suma a tu pedido', 'Nuevo total', '¿Te lo confirmo así?']
+      no_contiene: ['domicilio o lo recoges', 'efectivo o por transferencia']
+  - envia: Sí
+    debe:
+      turno: { acciones: [agregar_a_pedido], sin_acciones: [crear_pedido] }
+      contiene: ['Lo sumé a tu pedido']
+      bd: { carrito: [] }

@@ -1,4 +1,4 @@
-import type { Cliente, Cobertura, PedidoCreado, Repo, Reserva } from '../bd/repo.js'
+import type { Cliente, Cobertura, PedidoAmpliado, PedidoCreado, Repo, Reserva } from '../bd/repo.js'
 import type { Hechos } from '../guardia/guardia.js'
 import type { Turno } from '../log/turnos.js'
 import type { BorradorReserva, EstadoPedido, UltimaPregunta } from './contexto.js'
@@ -22,6 +22,13 @@ export type Efectos = {
   reservaCancelada?: { reserva_id: string; fecha: string; hora: string }
   /** Código de crear/cancelar_reserva_bot si no se pudo (SIN_CUPO, FECHA_PASADA…). */
   errorReserva?: string
+  /** Lo nuevo quedó sumado a un pedido pendiente (agregar_carrito_a_pedido). */
+  ampliado?: PedidoAmpliado
+  /**
+   * No se pudo sumar al pedido (ya lo aprobaron o ya pagó): lo que pida va como
+   * pedido aparte. Al marcar el carrito, o en el "sí", donde la BD ya soltó el carrito.
+   */
+  ampliacionFallida?: { pedido_id: string; error: string }
 }
 
 /** Códigos de crear_orden_desde_carrito que se arreglan siguiendo la conversación. */
@@ -32,6 +39,9 @@ export const ERRORES_RECUPERABLES = new Set([
   'TARIFA_ACTUALIZADA', //     ídem con el domicilio
   'PRODUCTO_NO_DISPONIBLE', // se agotó algo: que lo cambie
   'CARRITO_VACIO', //          el carrito expiró: armarlo de nuevo
+  // Solo de agregar_carrito_a_pedido: la BD ya soltó el carrito, sigue como pedido aparte.
+  'PEDIDO_YA_PROCESADO', //    lo aprobaron (o cancelaron) mientras miraba el resumen
+  'PEDIDO_PAGADO', //          ya mandó el comprobante: no se le cobra encima
 ])
 
 export type DepsEjecutor = {
@@ -117,6 +127,33 @@ export async function ejecutar(acciones: Accion[], d: DepsEjecutor): Promise<Efe
             ef.handoff = true
             return ef
           }
+        }
+        break
+      }
+
+      case 'ampliar_pedido': {
+        const r = await turno.herramienta('carrito_ampliar_pedido', { pedido_id: a.pedido_id }, () => repo.carritoAmpliarPedido(tel, a.pedido_id))
+        // Si no se pudo (lo aprobaron justo ahora), el carrito sigue siendo de un pedido nuevo.
+        if (!r.ok) ef.ampliacionFallida = { pedido_id: a.pedido_id, error: r.error ?? 'ERROR' }
+        break
+      }
+
+      case 'agregar_a_pedido': {
+        const r = await turno.herramienta('agregar_carrito_a_pedido', {}, () => repo.agregarCarritoAPedido(tel))
+        if (r.ok) {
+          ef.ampliado = r
+          ef.hechos.pedidoCreado = { pedido_id: r.pedido_id, total: r.total }
+          ef.hechos.montos.push(r.total, r.agregado)
+          break
+        }
+        ef.errorPedido = r.error ?? 'ERROR'
+        if (r.error === 'PEDIDO_YA_PROCESADO' || r.error === 'PEDIDO_PAGADO') {
+          ef.ampliacionFallida = { pedido_id: String(r.pedido_id ?? d.estado?.amplia_pedido ?? ''), error: r.error }
+        }
+        if (!ERRORES_RECUPERABLES.has(ef.errorPedido)) {
+          await turno.herramienta('pasar_a_humano', { motivo: `agregar_a_pedido:${ef.errorPedido}` }, () => repo.pasarAHumano(d.cliente.cliente_id))
+          ef.handoff = true
+          return ef
         }
         break
       }

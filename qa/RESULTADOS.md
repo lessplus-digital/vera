@@ -62,7 +62,7 @@ feedback del 16-09. **Sin regresiones del sistema.**
 | `09-basura.sql` | **BUG-045/046/047/048 confirmados cerrados** | T9 = BUG-049 → cerrado en BD, falta n8n |
 | `10-resenas.sql` | **T10–T15 verdes** (las RPC nuevas del feedback aguantan) · T1 reparado | T8 es réplica documental |
 | `11-carrito-bot.sql` · **nueva 2026-09-29** | **44/44** (2026-09-30) — carrito del servidor Node: el precio lo pone la BD · +T8: cambiar el pedido con el resumen a la vista lo saca del resumen | — |
-| `12-pedido-reservas-bot.sql` · **nueva 2026-09-29** | **44/44** (2026-09-30) — crear pedido en una transacción + reservas del bot · T2.5/T3.1 re-montados: corrompen tarifa/precio y vuelven a poner `resumen` | — |
+| `12-pedido-reservas-bot.sql` · **nueva 2026-09-29** | **61/61** (2026-10-15) — crear pedido en una transacción + reservas del bot · T2.5/T3.1 re-montados: corrompen tarifa/precio y vuelven a poner `resumen` · **T6 nueva**: ampliar un pedido pendiente (`carrito_ampliar_pedido`, `agregar_carrito_a_pedido`, `ES_AMPLIACION`) | — |
 
 > **2026-09-29 · migraciones aditivas del bot Node** (`bot_node_tablas_y_carrito`,
 > `bot_node_pedido_y_reservas`): 11 y 12 verdes y **regresión de 04 (13/13), 05 (14/14) y 06 (22/22)

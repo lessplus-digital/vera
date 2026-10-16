@@ -40,6 +40,19 @@ export function pedidoCreado(
   return `✅ ¡Pedido registrado! Tu número es *${p.pedido_id}* y el total es *${total}*.\n\nEl equipo lo revisa y ${entrega}${pago}`
 }
 
+/** Lo nuevo quedó sumado a un pedido pendiente: número y total nuevo tal como los devolvió agregar_carrito_a_pedido. */
+export function pedidoAmpliado(
+  p: { pedido_id: string; total: number; tipo_pedido: string; metodo_pago: string },
+  datosTransferencia: string | null = null,
+): string {
+  const pago =
+    p.metodo_pago === 'Transferencia'
+      ? `${datosTransferencia ? `\n\nTe paso los datos para la transferencia 👇\n${datosTransferencia}` : ''}\n\nRecuerda transferir el total nuevo y enviarme por aquí la foto del comprobante 📸`
+      : ''
+  const entrega = p.tipo_pedido === 'domicilio' ? 'llega todo junto 🛵' : 'te lo entregamos todo junto 🏃'
+  return `✅ ¡Listo! Lo sumé a tu pedido *${p.pedido_id}*. El total ahora es *${pesos(p.total)}*.\n\nEl equipo lo revisa y ${entrega}${pago}`
+}
+
 // ── Reservas ───────────────────────────────────────────────────────────────
 /** Confirmación de la reserva: fecha, hora, personas y costo tal como los devolvió crear_reserva_bot. */
 export function reservaCreada(

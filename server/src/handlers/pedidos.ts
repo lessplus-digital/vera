@@ -5,7 +5,7 @@ import type { Turno } from '../log/turnos.js'
 import type { EntradaRedactor, Redaccion, Redactor } from '../decision/conversador.js'
 import type { EstadoPedido, UltimaPregunta } from '../decision/contexto.js'
 import { pesos } from '../guardia/guardia.js'
-import { bloqueCarrito, bloqueResumen, montosDeCarrito, noLlegamos, siLlegamos, sinCobertura } from './formato.js'
+import { bloqueAmpliacion, bloqueCarrito, bloqueResumen, montosDeCarrito, noLlegamos, siLlegamos, sinCobertura } from './formato.js'
 import { contextoComun, primerNombre, reescritura } from './comun.js'
 
 // AGENTE PEDIDOS: recoge los datos que faltan y muestra el resumen. Portado del
@@ -36,6 +36,13 @@ export const P = {
   tarifaCambio: 'Ojo: la tarifa del domicilio cambió. Te lo dejo actualizado 👇',
 } as const
 
+/** El pedido ya no admite cambios: lo que armó va como un pedido aparte (la BD ya soltó el carrito). */
+export const yaNoSeSuma = (pedidoId: string, error: string) =>
+  error === 'PEDIDO_PAGADO'
+    ? `Como tu pedido *${pedidoId}* ya está pago, esto lo armamos como un pedido aparte 👇`
+    : `Tu pedido *${pedidoId}* ya lo está preparando el equipo, así que no alcancé a sumarle esto 😕 Te lo puedo enviar como un pedido aparte 👇`
+export const queSumar = (pedidoId: string) => `¿Qué te gustaría sumarle a tu pedido *${pedidoId}*? 😊`
+
 export const sigues = (barrio: string) => `¿Sigues por el barrio ${barrio}?`
 export const enviarA = (dir: string) => `¿Te lo enviamos a ${dir}?`
 export { noLlegamos }
@@ -50,6 +57,8 @@ type Plan = {
   montos: number[]
   /** Para el LLM: qué se hizo en este turno. */
   hechos: string[]
+  /** Pedidos ya registrados que el mensaje cita (la guardia solo deja citar estos). */
+  pedidos: string[]
 }
 
 // Registrado = de pedidos anteriores. 'Pendiente' es el valor con que nace el cliente.
@@ -63,7 +72,7 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
   const { decision, efectos, cliente } = e
   const estado = e.estado
   const carrito = await repo.carrito(tel)
-  const plan: Plan = { avisos: [], cierre: '', pregunta: null, montos: montosDeCarrito(carrito), hechos: [] }
+  const plan: Plan = { avisos: [], cierre: '', pregunta: null, montos: montosDeCarrito(carrito), hechos: [], pedidos: [] }
   const cierra = (cierre: string, pregunta: UltimaPregunta | null = null) => Object.assign(plan, { cierre, pregunta })
 
   // Lo que devolvió crear_orden_desde_carrito si el "sí" no alcanzó a crear el pedido.
@@ -79,6 +88,17 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
     case 'TARIFA_ACTUALIZADA':
       plan.avisos.push(P.tarifaCambio)
       break
+    case 'PEDIDO_YA_PROCESADO':
+    case 'PEDIDO_PAGADO': {
+      // El "sí" llegó tarde: la BD soltó el carrito y ahora pide entrega y pago propios.
+      const f = efectos.ampliacionFallida
+      if (f?.pedido_id) {
+        plan.avisos.push(yaNoSeSuma(f.pedido_id, f.error))
+        plan.pedidos.push(f.pedido_id)
+      }
+      plan.hechos.push('No se pudo sumar al pedido ya registrado: lo que armó va como un pedido aparte.')
+      break
+    }
   }
 
   for (const a of decision.acciones) {
@@ -105,11 +125,13 @@ export async function planificar(repo: Repo, e: EntradaRedactor): Promise<Plan> 
 
   const faltantes = estado?.faltantes ?? ['carrito']
   const f = faltantes[0]
-  if (e.clasificacion.intencion === 'ver_carrito' && carrito.lineas.length && f) plan.avisos.push(bloqueCarrito(carrito))
+  const amplia = estado?.amplia_pedido ?? null
+  if (amplia) plan.pedidos.push(amplia)
+  if (e.clasificacion.intencion === 'ver_carrito' && carrito.lineas.length && f) plan.avisos.push(bloqueCarrito(carrito, amplia))
 
   switch (f) {
     case 'carrito':
-      return cierra(P.sinCarrito)
+      return cierra(amplia ? queSumar(amplia) : P.sinCarrito)
     case 'tipo_pedido':
       return cierra(P.tipoPedido, { tipo: 'dato_pedido', dato: 'tipo_pedido' })
     case 'barrio':
@@ -145,6 +167,7 @@ function preguntarBarrio(plan: Plan, e: EntradaRedactor, cliente: Cliente): Plan
 }
 
 async function mostrarResumen(repo: Repo, turno: Turno, plan: Plan, estado: EstadoPedido, carrito: Carrito, cliente: Cliente): Promise<Plan> {
+  if (estado.amplia_pedido) return mostrarAmpliacion(repo, turno, plan, estado.amplia_pedido, carrito, cliente)
   if (!estado.tipo_pedido || !estado.metodo_pago) throw new Error('resumen sin tipo de pedido o sin método de pago')
   // Se marca ANTES de enviarlo: el "sí" del próximo turno solo crea el pedido si
   // la BD dice que el cliente está viendo este resumen. Cualquier cambio posterior
@@ -166,6 +189,30 @@ async function mostrarResumen(repo: Repo, turno: Turno, plan: Plan, estado: Esta
       direccion_entrega: estado.direccion_entrega,
       barrio: estado.barrio,
       metodo_pago: estado.metodo_pago,
+    }),
+    pregunta: { tipo: 'confirmar_pedido' } satisfies UltimaPregunta,
+  })
+}
+
+/** Lo que se suma a un pedido ya registrado. Entrega y pago son los del pedido: no se preguntan. */
+async function mostrarAmpliacion(repo: Repo, turno: Turno, plan: Plan, pedidoId: string, carrito: Carrito, cliente: Cliente): Promise<Plan> {
+  const pedido = (await repo.pedidosRecientes(turno.telefono, 5)).find((p) => p.pedido_id === pedidoId)
+  if (!pedido) throw new Error(`ampliación de un pedido que no aparece: ${pedidoId}`)
+  // Mismo candado que el resumen normal: el "sí" solo suma si la BD dice que lo está viendo.
+  const r = await turno.herramienta('guardar_datos_pedido', { paso_flujo: 'resumen' }, () =>
+    repo.guardarDatosPedido(turno.telefono, { paso_flujo: 'resumen' }),
+  )
+  if (!r.ok) throw new Error(`no se pudo marcar el resumen: ${r.error ?? '?'}`)
+
+  plan.montos.push(pedido.total, carrito.total, pedido.total + carrito.total)
+  plan.hechos.push(`Se le muestra lo que se SUMA a su pedido ${pedidoId}, que ya está registrado. La suma TODAVÍA NO está hecha.`)
+  return Object.assign(plan, {
+    cierre: bloqueAmpliacion({
+      nombre: primerNombre(cliente.nombre),
+      pedido_id: pedidoId,
+      total_actual: pedido.total,
+      tipo_pedido: pedido.tipo_pedido,
+      carrito,
     }),
     pregunta: { tipo: 'confirmar_pedido' } satisfies UltimaPregunta,
   })
@@ -225,7 +272,7 @@ export function crearRedactorPedidos(d: { repo: Repo; llm: LLM }): Redactor {
     const debajo = [...plan.avisos, plan.cierre].filter(Boolean).join('\n\n')
     if (soloDatos(e) && !e.previo) {
       // Con un aviso (cobertura, cambio) el mensaje ya arranca diciendo algo; sin él, un acuse corto.
-      return { texto: [plan.avisos.length ? '' : ACUSE, debajo].filter(Boolean).join('\n\n'), pregunta: plan.pregunta, montos: plan.montos }
+      return { texto: [plan.avisos.length ? '' : ACUSE, debajo].filter(Boolean).join('\n\n'), pregunta: plan.pregunta, montos: plan.montos, pedidos: plan.pedidos }
     }
     const mensajes: MensajeLLM[] = [
       { rol: 'system', texto: PROMPT },
@@ -250,6 +297,7 @@ export function crearRedactorPedidos(d: { repo: Repo; llm: LLM }): Redactor {
       texto: [enlace, debajo].filter(Boolean).join('\n\n'),
       pregunta: plan.pregunta,
       montos: plan.montos,
+      pedidos: plan.pedidos,
     }
   }
 }

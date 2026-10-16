@@ -1,9 +1,11 @@
 -- ============================================================================
 -- QA · 12 · Crear pedido y reservas del bot Node
--- Cubre: crear_orden_desde_carrito(), consultar_disponibilidad_reserva(),
+-- Cubre: crear_orden_desde_carrito(), carrito_ampliar_pedido(), agregar_carrito_a_pedido(),
+--        consultar_disponibilidad_reserva(),
 --        crear_reserva_bot(), cancelar_reserva_bot(), reservas_del_cliente()
 -- Migración: supabase/migrations/20260929210000_bot_node_pedido_y_reservas.sql
 --            (depende de 20260929200000: precio_producto, carrito_agregar_*)
+--            20261015120000_ampliar_pedido_pendiente.sql (T6)
 -- Todo dentro de BEGIN…ROLLBACK. Teléfonos 5730000008xx, nunca uno real.
 -- Devuelve SOLO las filas que fallan (vacío = verde).
 --
@@ -28,7 +30,8 @@ with nuevos as (
   insert into clientes (nombre, telefono, fecha_registro)
   select 'QA 12 ' || t, t, current_date
   from unnest(array['573000000821','573000000822','573000000823','573000000824',
-                    '573000000825','573000000826','573000000827','573000000828']) t
+                    '573000000825','573000000826','573000000827','573000000828',
+                    '573000000829']) t
   returning telefono, cliente_id
 ) insert into qa_cli select telefono, cliente_id from nuevos;
 
@@ -177,6 +180,75 @@ select 'T3.6 mitad y mitad crea pedido', 'true', r->>'ok' from qa_r3;
 insert into qa_out(paso, esperado, valor)
 select 'T3.7 detalle guarda las 2 mitades', '2',
        (select jsonb_array_length(mitades)::text from detalle_pedidos where pedido_id = r->>'pedido_id') from qa_r3;
+
+-- ---------------------------------------------------------------------------
+-- T6 · Ampliar un pedido pendiente (2026-10-15, caso PED-270)
+-- ---------------------------------------------------------------------------
+select pg_temp.carrito_recoger('573000000829');
+update carritos set paso_flujo = 'resumen' where telefono = '573000000829';
+create temp table qa_p6 on commit drop as
+select (crear_orden_desde_carrito('573000000829', pg_temp.cli('573000000829')))->>'pedido_id' as pid;
+
+insert into qa_out(paso, esperado, valor)
+select 'T6.1 ampliar un pedido de otro teléfono', 'PEDIDO_NO_ENCONTRADO',
+       carrito_ampliar_pedido('573000000829', (select pedido_id from pedidos where telefono = '573000000821' limit 1))->>'error';
+insert into qa_out(paso, esperado, valor)
+select 'T6.2 ampliar el propio pendiente', 'true', carrito_ampliar_pedido('573000000829', pid)->>'ok' from qa_p6;
+
+select carrito_agregar_item('573000000829', 'PROD-006', 'mediana', 1);
+insert into qa_out(paso, esperado, valor)
+select 'T6.3 ampliación no pide entrega ni pago', '[]', faltantes::text from estado_pedido where telefono = '573000000829';
+insert into qa_out(paso, esperado, valor)
+select 'T6.4 crear_orden no crea un pedido con un carrito de ampliación', 'ES_AMPLIACION',
+       crear_orden_desde_carrito('573000000829', pg_temp.cli('573000000829'))->>'error';
+insert into qa_out(paso, esperado, valor)
+select 'T6.5 sin resumen mostrado', 'SIN_RESUMEN', agregar_carrito_a_pedido('573000000829')->>'error';
+
+update carritos set paso_flujo = 'resumen' where telefono = '573000000829';
+create temp table qa_r6 on commit drop as
+select (select total from pedidos where pedido_id = pid) as antes, agregar_carrito_a_pedido('573000000829') r, pid from qa_p6;
+insert into qa_out(paso, esperado, valor)
+select 'T6.6a agrega', 'true', r->>'ok' from qa_r6;
+insert into qa_out(paso, esperado, valor)
+select 'T6.6b total = antes + lo agregado (trigger)',
+       (antes + (select ("tamaño"::jsonb->>'mediana')::numeric from menu where producto_id = 'PROD-006'))::numeric(12,2)::text,
+       (select total::numeric(12,2)::text from pedidos where pedido_id = pid) from qa_r6;
+insert into qa_out(paso, esperado, valor)
+select 'T6.6c total devuelto = total en pedidos', (select total::text from pedidos where pedido_id = pid), r->>'total' from qa_r6;
+insert into qa_out(paso, esperado, valor)
+select 'T6.6d dos líneas de detalle', '2', (select count(*)::text from detalle_pedidos where pedido_id = pid) from qa_r6;
+insert into qa_out(paso, esperado, valor)
+select 'T6.6e carrito borrado', '0', count(*)::text from carritos where telefono = '573000000829';
+insert into qa_out(paso, esperado, valor)
+select 'T6.6f nota para el equipo', 'true',
+       ((select notas from pedidos where pedido_id = pid) like '%Agregado por WhatsApp: 1x %')::text from qa_r6;
+
+-- El equipo lo aprueba mientras el cliente mira el resumen: el carrito se suelta.
+select carrito_ampliar_pedido('573000000829', pid) from qa_p6;
+select carrito_agregar_item('573000000829', 'PROD-006', 'mediana', 1);
+update carritos set paso_flujo = 'resumen' where telefono = '573000000829';
+update pedidos set estado = 'en_cocina' where pedido_id = (select pid from qa_p6);
+insert into qa_out(paso, esperado, valor)
+select 'T6.7 aprobado antes del "sí"', 'PEDIDO_YA_PROCESADO', agregar_carrito_a_pedido('573000000829')->>'error';
+insert into qa_out(paso, esperado, valor)
+select 'T6.8 el carrito queda como pedido aparte (pide entrega)', 'true true',
+       (amplia_pedido is null)::text || ' ' || (faltantes ? 'tipo_pedido')::text
+from estado_pedido where telefono = '573000000829';
+insert into qa_out(paso, esperado, valor)
+select 'T6.9 el pedido no cambió', '2', (select count(*)::text from detalle_pedidos where pedido_id = pid) from qa_p6;
+insert into qa_out(paso, esperado, valor)
+select 'T6.10 ampliar uno en cocina', 'PEDIDO_YA_PROCESADO', carrito_ampliar_pedido('573000000829', pid)->>'error' from qa_p6;
+
+-- Ya pagó (comprobante): no se le suma nada.
+update pedidos set comprobante_url = 'https://qa/comprobante.png'
+ where pedido_id = (select r->>'pedido_id' from qa_r2);
+insert into qa_out(paso, esperado, valor)
+select 'T6.11 pedido con comprobante', 'PEDIDO_PAGADO', carrito_ampliar_pedido('573000000822', r->>'pedido_id')->>'error' from qa_r2;
+
+-- Un carrito con productos de un pedido nuevo no se convierte.
+select carrito_agregar_item('573000000826', 'PROD-006', 'mediana', 1);
+insert into qa_out(paso, esperado, valor)
+select 'T6.12 carrito con productos', 'CARRITO_OCUPADO', carrito_ampliar_pedido('573000000826', r->>'pedido_id')->>'error' from qa_r3;
 
 -- ---------------------------------------------------------------------------
 -- T4 · Disponibilidad de reservas (fechas relativas a hoy en Colombia)

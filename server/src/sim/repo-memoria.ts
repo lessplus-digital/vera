@@ -6,7 +6,7 @@ import type {
   PedidoFeedback,
   Repo,
 } from '../bd/repo.js'
-import type { Carrito, Cobertura, DatosFlujo, Faq, LineaCarrito, MotivoReserva, PedidoCliente, PedidoCreado, Reserva, ResultadoMenu, RespuestaRPC } from '../bd/repo.js'
+import type { Carrito, Cobertura, DatosFlujo, Faq, LineaCarrito, MotivoReserva, PedidoAmpliado, PedidoCliente, PedidoCreado, Reserva, ResultadoMenu, RespuestaRPC } from '../bd/repo.js'
 import { menuSim, type FuenteMenu } from './menu-memoria.js'
 import type { Conversacion, EstadoPedido, Faltante, PasoFlujo } from '../decision/contexto.js'
 import { notaFeedback } from '../turno/procesador.js'
@@ -35,6 +35,8 @@ export type CarritoMem = {
   costo_domicilio: number | null
   cobertura_ok: boolean | null
   paso_flujo: PasoFlujo
+  /** carritos.amplia_pedido: se suma a ese pedido pendiente (no pide entrega ni pago). */
+  amplia_pedido?: string | null
 }
 
 /** Catálogo mínimo de barrios del simulador (el real vive en `barrios`/`zonas_entrega`). */
@@ -50,6 +52,7 @@ export const subtotalDe = (c: CarritoMem) => c.items.reduce((s, i) => s + i.subt
 
 export function faltantesDe(c: CarritoMem): Faltante[] {
   if (c.items.length === 0) return ['carrito']
+  if (c.amplia_pedido) return [] // entrega y pago son los del pedido (migración 20261015120000)
   const f: Faltante[] = []
   const dom = c.tipo_pedido === 'domicilio'
   if (!c.tipo_pedido) f.push('tipo_pedido')
@@ -257,6 +260,7 @@ export class RepoMemoria implements Repo {
       direccion_entrega: c.direccion_entrega,
       metodo_pago: c.metodo_pago,
       costo_domicilio: c.costo_domicilio,
+      amplia_pedido: c.amplia_pedido ?? null,
     }
   }
 
@@ -309,6 +313,7 @@ export class RepoMemoria implements Repo {
   async crearOrdenDesdeCarrito(telefono: string, _clienteId: string): Promise<PedidoCreado | (RespuestaRPC & { ok: false })> {
     const c = this.carritos.get(telefono)
     if (!c || c.items.length === 0) return { ok: false, error: 'CARRITO_VACIO' }
+    if (c.amplia_pedido) return { ok: false, error: 'ES_AMPLIACION', pedido_id: c.amplia_pedido }
     if (faltantesDe(c).length) return { ok: false, error: 'DATOS_INCOMPLETOS' }
     if (c.paso_flujo !== 'resumen') return { ok: false, error: 'SIN_RESUMEN' }
     const pedido_id = `PED-M${++this.n}`
@@ -328,6 +333,40 @@ export class RepoMemoria implements Repo {
       barrio: dom ? c.barrio : null,
       direccion_entrega: dom ? c.direccion_entrega : null,
     }
+  }
+
+  /** Líneas sumadas a pedidos ya registrados (agregar_carrito_a_pedido). */
+  readonly ampliaciones: { pedido_id: string; items: ItemMem[] }[] = []
+
+  // Mismas reglas que carrito_ampliar_pedido (qa/sql/12 · T6).
+  async carritoAmpliarPedido(telefono: string, pedidoId: string): Promise<RespuestaRPC> {
+    const p = this.pedidos.find((x) => x.pedido_id === pedidoId && x.telefono === telefono)
+    if (!p) return { ok: false, error: 'PEDIDO_NO_ENCONTRADO' }
+    if (p.estado !== 'pendiente') return { ok: false, error: 'PEDIDO_YA_PROCESADO', estado_actual: p.estado }
+    if (p.comprobante_url) return { ok: false, error: 'PEDIDO_PAGADO' }
+    const c = this.carritoDe(telefono)
+    if (c.items.length) return { ok: false, error: 'CARRITO_OCUPADO' }
+    Object.assign(c, { amplia_pedido: pedidoId, tipo_pedido: null, barrio: null, direccion_entrega: null, metodo_pago: null, costo_domicilio: null, cobertura_ok: null, paso_flujo: 'armando' })
+    return { ok: true, pedido_id: pedidoId }
+  }
+
+  // Mismas reglas que agregar_carrito_a_pedido (qa/sql/12 · T6).
+  async agregarCarritoAPedido(telefono: string): Promise<PedidoAmpliado | (RespuestaRPC & { ok: false })> {
+    const c = this.carritos.get(telefono)
+    if (!c || c.items.length === 0) return { ok: false, error: 'CARRITO_VACIO' }
+    if (!c.amplia_pedido) return { ok: false, error: 'NO_ES_AMPLIACION' }
+    if (c.paso_flujo !== 'resumen') return { ok: false, error: 'SIN_RESUMEN' }
+    const p = this.pedidos.find((x) => x.pedido_id === c.amplia_pedido && x.telefono === telefono)
+    if (!p || p.estado !== 'pendiente' || p.comprobante_url) {
+      const pedido_id = c.amplia_pedido
+      Object.assign(c, { amplia_pedido: null, paso_flujo: 'datos' })
+      return { ok: false, error: p && p.estado === 'pendiente' ? 'PEDIDO_PAGADO' : 'PEDIDO_YA_PROCESADO', pedido_id, estado_actual: p?.estado ?? null }
+    }
+    const agregado = subtotalDe(c)
+    p.total = (p.total ?? 0) + agregado
+    this.ampliaciones.push({ pedido_id: p.pedido_id, items: structuredClone(c.items) })
+    this.carritos.delete(telefono)
+    return { ok: true, pedido_id: p.pedido_id, total: p.total, agregado, tipo_pedido: p.tipo_pedido ?? 'recoger', metodo_pago: p.metodo_pago }
   }
 
   async actualizarDireccionCliente(clienteId: string, d: { direccion_principal: string; barrio: string | null }) {

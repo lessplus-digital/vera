@@ -1,4 +1,4 @@
-import type { Cliente, MensajeHistorial, Repo } from '../bd/repo.js'
+import type { Cliente, MensajeHistorial, PedidoCliente, Repo } from '../bd/repo.js'
 import { medirConsumo, type LLM, type LlamadaLLM } from '../llm/llm.js'
 import type { Turno } from '../log/turnos.js'
 import type { Conversador } from '../turno/procesador.js'
@@ -7,7 +7,7 @@ import * as T from '../textos.js'
 import { pideCuenta, S } from '../handlers/soporte.js'
 import { clasificar, hoyEnColombia } from './clasificador.js'
 import type { Clasificacion } from './clasificacion.js'
-import type { BorradorReserva, Conversacion, EstadoPedido, Handler, UltimaPregunta } from './contexto.js'
+import type { BorradorReserva, Conversacion, EstadoPedido, Handler, PedidoReciente, UltimaPregunta } from './contexto.js'
 import { ejecutar, type Efectos } from './ejecutor.js'
 import { decidir, type Decision } from './politica.js'
 
@@ -28,6 +28,8 @@ export type EntradaRedactor = {
   conversacion: Conversacion
   /** Estado del pedido DESPUÉS de las acciones de este turno. */
   estado: EstadoPedido | null
+  /** Su último pedido, si es reciente y sigue en curso (sus id son citables). */
+  pedido_reciente: PedidoReciente | null
   /** Lo que la guardia rechazó del intento anterior (vacío en el primero). */
   violaciones: Violacion[]
   /**
@@ -81,6 +83,20 @@ export const redactorProvisional: Redactor = async ({ handler, decision, efectos
   return { texto: partes.join('\n') }
 }
 
+/**
+ * Cuánto tiempo después de registrado un pedido "¿puedo agregar algo?" todavía
+ * habla de él. Un pendiente más viejo que esto ya es raro (el equipo los aprueba
+ * en minutos) y lo que pida se toma como pedido nuevo.
+ */
+export const VENTANA_PEDIDO_RECIENTE_MIN = 120
+const EN_CURSO = new Set(['pendiente', 'en_cocina', 'en_camino', 'recoger'])
+
+export function pedidoReciente(p: PedidoCliente | undefined, ahora: Date): PedidoReciente | null {
+  if (!p || !EN_CURSO.has(p.estado)) return null
+  const min = (ahora.getTime() - Date.parse(p.fecha_pedido)) / 60_000
+  return min <= VENTANA_PEDIDO_RECIENTE_MIN ? { pedido_id: p.pedido_id, estado: p.estado } : null
+}
+
 export type DepsConversador = {
   repo: Repo
   llm: LLM
@@ -97,11 +113,16 @@ export function crearConversadorDecision(d: DepsConversador): Conversador {
 
   async function responderTurno({ cliente, texto, historial, turno }: Parameters<Conversador['responder']>[0]): Promise<string[]> {
     const tel = turno.telefono
-    const [estado, conversacion] = await Promise.all([d.repo.estadoPedido(tel), d.repo.leerConversacion(tel)])
+    const [estado, conversacion, ultimos] = await Promise.all([
+      d.repo.estadoPedido(tel),
+      d.repo.leerConversacion(tel),
+      d.repo.pedidosRecientes(tel, 1),
+    ])
+    const reciente = pedidoReciente(ultimos[0], d.ahora?.() ?? new Date())
     // El cliente nace como 'Pendiente'; lo que diga que se llama se guarda (política).
     const sinNombre = !/\p{L}/u.test(cliente.nombre ?? '') || cliente.nombre!.trim().toLowerCase() === 'pendiente'
-    const contexto = { estado, conversacion, texto, sin_nombre: sinNombre }
-    turno.contexto = { ...(turno.contexto as object), estado, conversacion }
+    const contexto = { estado, conversacion, texto, sin_nombre: sinNombre, pedido_reciente: reciente }
+    turno.contexto = { ...(turno.contexto as object), estado, conversacion, pedido_reciente: reciente }
 
     const cl = await clasificar(d.llm, { texto, historial, contexto, hoy: hoyEnColombia(d.ahora?.()) })
     turno.clasificacion = cl.error ? { ...cl.clasificacion, error: cl.error } : cl.clasificacion
@@ -132,6 +153,13 @@ export function crearConversadorDecision(d: DepsConversador): Conversador {
       }
       const cuenta = p.metodo_pago === 'Transferencia' ? await d.repo.infoNegocio('datos_transferencia').catch(() => null) : null
       return [T.pedidoCreado(p, cuenta)]
+    }
+    if (efectos.ampliado) {
+      // Igual que el pedido creado: número y total nuevo salen de la BD, tal cual.
+      const p = efectos.ampliado
+      await d.repo.guardarConversacion(tel, { handler: 'soporte', ultima_pregunta: null, reserva })
+      const cuenta = p.metodo_pago === 'Transferencia' ? await d.repo.infoNegocio('datos_transferencia').catch(() => null) : null
+      return [T.pedidoAmpliado(p, cuenta)]
     }
     if (efectos.reserva) {
       // Igual que el pedido: la confirmación la arma el código con lo que devolvió la BD.
@@ -175,6 +203,7 @@ export function crearConversadorDecision(d: DepsConversador): Conversador {
           efectos,
           conversacion,
           estado: estadoDespues,
+          pedido_reciente: reciente,
           violaciones,
           previo: ultima,
           turno,

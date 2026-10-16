@@ -94,6 +94,17 @@ export type PedidoCreado = {
   direccion_entrega: string | null
 }
 
+/** agregar_carrito_a_pedido: el carrito se sumó a un pedido pendiente. `total` es el nuevo total del pedido (trigger). */
+export type PedidoAmpliado = {
+  ok: true
+  pedido_id: string
+  total: number
+  /** Lo que sumaron las líneas nuevas. */
+  agregado: number
+  tipo_pedido: string
+  metodo_pago: string
+}
+
 /** Una reserva confirmada del cliente (reservas_del_cliente / crear_reserva_bot). */
 export type Reserva = {
   reserva_id: string
@@ -158,6 +169,13 @@ export interface Repo {
   carritoVaciar(telefono: string): Promise<RespuestaRPC>
   /** Exige paso_flujo='resumen' y faltantes=[] en la BD; si no, {ok:false, error}. */
   crearOrdenDesdeCarrito(telefono: string, clienteId: string): Promise<PedidoCreado | (RespuestaRPC & { ok: false })>
+  /** carrito_ampliar_pedido: el carrito vacío se sumará a ese pedido (solo si es suyo, 'pendiente' y sin comprobante). */
+  carritoAmpliarPedido(telefono: string, pedidoId: string): Promise<RespuestaRPC>
+  /**
+   * agregar_carrito_a_pedido: exige paso_flujo='resumen'. Si el pedido ya no está pendiente o ya
+   * tiene comprobante, suelta el carrito (pedido aparte) y devuelve PEDIDO_YA_PROCESADO / PEDIDO_PAGADO.
+   */
+  agregarCarritoAPedido(telefono: string): Promise<PedidoAmpliado | (RespuestaRPC & { ok: false })>
   /** Tras un domicilio: la dirección y el barrio pasan a ser los registrados del cliente (se ofrecen la próxima vez). */
   actualizarDireccionCliente(clienteId: string, d: { direccion_principal: string; barrio: string | null }): Promise<void>
   /** Un valor de la tabla info_negocio (lo que se edita en la tab Configuración). null si no existe. */

@@ -120,6 +120,13 @@ pizza a domicilio"* ya salió de la ventana cuando el carrito está armado, así
 Pedidos no podía verlo y lo repreguntaba. Los ítems sobrevivían porque vivían en esta tabla;
 desde ahora el resto del pedido también.
 
+**`amplia_pedido`** (2026-10-15, FK → `pedidos.pedido_id`, ON DELETE SET NULL): el carrito no es un
+pedido nuevo sino lo que se **suma** a ese pedido, que tiene que ser del mismo teléfono y seguir
+`pendiente` y sin comprobante. Lo marca `carrito_ampliar_pedido` (solo sobre un carrito vacío) y lo
+cierra `agregar_carrito_a_pedido`. Con él, `estado_pedido` no pide entrega ni pago (son los del
+pedido) y `crear_orden_desde_carrito` se niega (`ES_AMPLIACION`). Migración
+`20261015120000_ampliar_pedido_pendiente`.
+
 CHECK de dominio: `carritos_tipo_pedido_chk`, `carritos_metodo_pago_chk`, `carritos_paso_flujo_chk`,
 `carritos_domicilio_coherente_chk` y, desde 2026-09-15, `carritos_costo_domicilio_chk`
 (`NULL` o `>= 0` y `<> 'NaN'`, BUG-047b).
@@ -137,7 +144,8 @@ que al registrarse el pedido el estado muere con ella.
 falta: `carrito` → `tipo_pedido` → `barrio` → `cobertura` → `direccion_entrega` →
 `metodo_pago`. **Qué preguntar lo decide la BD, no el LLM**: el prompt pasa de *"SIEMPRE
 PREGUNTA tipo de pedido"* —la instrucción que causaba la repregunta— a *"pregunta solo lo
-que venga en `faltantes`"*. Declarada `security_invoker = true`, así que respeta la RLS de
+que venga en `faltantes`"*. Con `amplia_pedido` (columna nueva al final de la vista) solo puede
+faltar `carrito`: entrega y pago son los del pedido que se amplía. Declarada `security_invoker = true`, así que respeta la RLS de
 `carritos` en vez de saltársela.
 
 ### `reservas` — (15 filas · RLS ✅)
@@ -466,7 +474,9 @@ Principio: **el precio y las acciones críticas los decide la BD, nunca el LLM.*
 | `carrito_agregar_mitad` | `(p_telefono, p_producto_a, p_producto_b, p_tamano, p_cantidad=1, p_notas=null) → jsonb` | Usa `cotizar_mitad_y_mitad` (se cobra la mitad más cara). Nunca se funde con otra línea |
 | `carrito_quitar_item` | `(p_telefono, p_linea, p_cantidad=null) → jsonb` | Línea 1-based; `p_cantidad` null = quitar la línea entera. `CARRITO_VACIO`, `LINEA_INVALIDA` |
 | `carrito_vaciar` | `(p_telefono) → jsonb` | `items=[]`, `total=0` (el trigger devuelve `paso_flujo` a `armando`) |
-| `crear_orden_desde_carrito` | `(p_telefono, p_cliente_id) → jsonb` | Crea pedido + detalle y borra el carrito **en una transacción**. Exige `faltantes=[]` y `paso_flujo='resumen'` (`SIN_RESUMEN`: el cliente no vio el resumen). Domicilio: barrio resuelto por `resolver_barrio` (`BARRIO_NO_RESUELTO`) y tarifa igual a la real (`TARIFA_ACTUALIZADA`). Re-cotiza cada línea contra el menú (`PRECIOS_ACTUALIZADOS`, `PRODUCTO_NO_DISPONIBLE`: el carrito queda corregido y vuelve a `datos`). Doble "sí" → `PEDIDO_DUPLICADO` (índice por minuto). Devuelve `total` real (ítems + domicilio) |
+| `crear_orden_desde_carrito` | `(p_telefono, p_cliente_id) → jsonb` | Crea pedido + detalle y borra el carrito **en una transacción**. Exige `faltantes=[]` y `paso_flujo='resumen'` (`SIN_RESUMEN`: el cliente no vio el resumen). Domicilio: barrio resuelto por `resolver_barrio` (`BARRIO_NO_RESUELTO`) y tarifa igual a la real (`TARIFA_ACTUALIZADA`). Re-cotiza cada línea contra el menú (`PRECIOS_ACTUALIZADOS`, `PRODUCTO_NO_DISPONIBLE`: el carrito queda corregido y vuelve a `datos`). Doble "sí" → `PEDIDO_DUPLICADO` (índice por minuto). Un carrito con `amplia_pedido` → `ES_AMPLIACION` (2026-10-15). Devuelve `total` real (ítems + domicilio) |
+| `carrito_ampliar_pedido` | `(p_telefono, p_pedido_id) → jsonb` | 2026-10-15. Marca el carrito (vacío; lo crea si no hay) como ampliación del pedido: `amplia_pedido` y borra entrega/pago del carrito. `PEDIDO_NO_ENCONTRADO` (no existe o es de otro teléfono), `PEDIDO_YA_PROCESADO` (no está `pendiente`), `PEDIDO_PAGADO` (ya tiene comprobante), `CARRITO_OCUPADO` (el carrito ya tiene productos) |
+| `agregar_carrito_a_pedido` | `(p_telefono) → jsonb` | 2026-10-15. El "sí" al resumen de una ampliación: exige `paso_flujo='resumen'` (`SIN_RESUMEN`), re-cotiza como `crear_orden_desde_carrito` (`PRECIOS_ACTUALIZADOS`, `PRODUCTO_NO_DISPONIBLE`), inserta las líneas en `detalle_pedidos` (el total lo recalcula `trigger_actualizar_total`), deja en `pedidos.notas` "➕ Agregado por WhatsApp: …" para el equipo y borra el carrito. Si el pedido ya no está `pendiente` o ya tiene comprobante, **suelta** el carrito (`amplia_pedido=null`, `datos`) y devuelve `PEDIDO_YA_PROCESADO` / `PEDIDO_PAGADO`: sigue como pedido aparte. Devuelve el `total` nuevo y `agregado` |
 | `consultar_disponibilidad_reserva` | `(p_fecha, p_hora, p_personas=null) → jsonb` | 12:00 → 20:30 L-V / 21:30 S-D (la del trigger, BUG-049), ≤14 días, ≥5 h si es hoy, 1–12 personas, 8 mesas × 90 min. Hora Colombia. STABLE |
 | `crear_reserva_bot` | `(p_telefono, p_cliente_id, p_nombre, p_fecha, p_hora, p_personas, p_motivo=null, p_notas=null) → jsonb` | Valida motivo contra `motivos_reserva`, guarda `notas` (BUG-029), idempotente (misma fecha y hora → `ya_existia:true`), traduce el choque de los triggers a `SIN_CUPO` / `RESERVA_INVALIDA` |
 | `cancelar_reserva_bot` | `(p_telefono, p_reserva_id) → jsonb` | Ajena = `RESERVA_NO_ENCONTRADA` (no confirma que exista). `RESERVA_YA_CANCELADA` |

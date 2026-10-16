@@ -17,7 +17,19 @@ export type EstadoPedido = {
   direccion_entrega: string | null
   metodo_pago: 'Efectivo' | 'Transferencia' | null
   costo_domicilio: number | null
+  /**
+   * El carrito se SUMA a este pedido pendiente (carritos.amplia_pedido): no pide entrega
+   * ni pago, y el "sí" al resumen llama agregar_carrito_a_pedido. null/ausente = pedido nuevo.
+   */
+  amplia_pedido?: string | null
 }
+
+/**
+ * El último pedido del cliente, si es reciente y sigue en curso (ni entregado ni
+ * cancelado). Con él, "¿todavía puedo agregar algo?" se entiende: si está
+ * 'pendiente' lo nuevo se le suma; si ya está en cocina, sería un pedido aparte.
+ */
+export type PedidoReciente = { pedido_id: string; estado: string }
 
 /**
  * Qué preguntó el bot por última vez. Es lo que le da sentido a un "sí" o un
@@ -74,4 +86,5 @@ export type ContextoDecision = {
   texto: string
   /** El cliente todavía no tiene nombre registrado (nace como 'Pendiente'): el que diga se guarda. */
   sin_nombre?: boolean
+  pedido_reciente?: PedidoReciente | null
 }

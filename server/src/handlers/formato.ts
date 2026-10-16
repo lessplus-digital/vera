@@ -12,11 +12,40 @@ export function nombreLinea(l: LineaCarrito): string {
   return `${l.nombre}${l.masa ? ` ${l.masa}` : ''}${tam ? ` (${tam})` : ''}`
 }
 
-export function bloqueCarrito(c: Carrito): string {
+/** `amplia`: el carrito se suma a ese pedido ya registrado (no es "tu pedido" entero). */
+export function bloqueCarrito(c: Carrito, amplia: string | null = null): string {
   const lineas = c.lineas.map(
     (l) => `${l.linea}. ${l.cantidad}x ${nombreLinea(l)} — ${pesos(l.subtotal)}${l.notas ? `\n    _${l.notas}_` : ''}`,
   )
-  return `🛒 *Tu pedido:*\n${lineas.join('\n')}\n\n💰 *Subtotal: ${pesos(c.total)}*`
+  const titulo = amplia ? `🛒 *Para sumar a tu pedido ${amplia}:*` : '🛒 *Tu pedido:*'
+  return `${titulo}\n${lineas.join('\n')}\n\n💰 *Subtotal: ${pesos(c.total)}*`
+}
+
+/**
+ * El resumen de una ampliación: lo que se suma y el total nuevo del pedido
+ * (el total registrado + lo nuevo, ambos de la BD). La entrega y el pago son
+ * los del pedido, así que no se vuelven a mostrar ni a preguntar.
+ */
+export function bloqueAmpliacion(r: {
+  nombre: string | null
+  pedido_id: string
+  total_actual: number
+  tipo_pedido: string | null
+  carrito: Carrito
+}): string {
+  const lineas = r.carrito.lineas.map(
+    (l) => `🛒 ${l.cantidad}x ${nombreLinea(l)} — ${pesos(l.subtotal)}${l.notas ? `\n    _${l.notas}_` : ''}`,
+  )
+  const saludo = `${r.nombre ? `Perfecto ${r.nombre}, esto` : 'Perfecto, esto'} se suma a tu pedido *${r.pedido_id}*:`
+  const cuentas = [
+    `💰 Total actual: ${pesos(r.total_actual)}`,
+    `➕ Lo nuevo: ${pesos(r.carrito.total)}`,
+    `💰 *Nuevo total: ${pesos(r.total_actual + r.carrito.total)}*`,
+    r.tipo_pedido === 'domicilio'
+      ? 'Llega con lo demás, a la misma dirección y con la misma forma de pago.'
+      : 'Te lo entregamos con lo demás, con la misma forma de pago.',
+  ]
+  return [saludo, lineas.join('\n'), cuentas.join('\n'), PREGUNTA_CONFIRMAR].join('\n\n')
 }
 
 export type DatosResumen = {

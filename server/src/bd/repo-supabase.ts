@@ -10,6 +10,7 @@ import {
   type ProductoMenu,
   type ResultadoMenu,
   type DatosFlujo,
+  type PedidoAmpliado,
   type PedidoCreado,
   type RespuestaRPC,
   type MensajeHistorial,
@@ -162,7 +163,7 @@ export class RepoSupabase implements Repo {
     const e = exigir(
       await this.sb
         .from('estado_pedido')
-        .select('n_items, paso_flujo, faltantes, tipo_pedido, barrio, cobertura_ok, direccion_entrega, metodo_pago, costo_domicilio')
+        .select('n_items, paso_flujo, faltantes, tipo_pedido, barrio, cobertura_ok, direccion_entrega, metodo_pago, costo_domicilio, amplia_pedido')
         .eq('telefono', telefono)
         .maybeSingle(),
       'leer estado_pedido',
@@ -172,6 +173,7 @@ export class RepoSupabase implements Repo {
       ...e,
       faltantes: Array.isArray(e.faltantes) ? e.faltantes : [],
       costo_domicilio: e.costo_domicilio == null ? null : Number(e.costo_domicilio),
+      amplia_pedido: (e.amplia_pedido as string | null) ?? null,
     } as EstadoPedido
   }
 
@@ -245,6 +247,26 @@ export class RepoSupabase implements Repo {
       barrio: (r.barrio as string | null) ?? null,
       direccion_entrega: (r.direccion_entrega as string | null) ?? null,
     } as PedidoCreado
+  }
+
+  async carritoAmpliarPedido(telefono: string, pedidoId: string): Promise<RespuestaRPC> {
+    return exigir(
+      await this.sb.rpc('carrito_ampliar_pedido', { p_telefono: telefono, p_pedido_id: pedidoId }),
+      'carrito_ampliar_pedido',
+    ) as RespuestaRPC
+  }
+
+  async agregarCarritoAPedido(telefono: string) {
+    const r = exigir(await this.sb.rpc('agregar_carrito_a_pedido', { p_telefono: telefono }), 'agregar_carrito_a_pedido') as RespuestaRPC
+    if (!r.ok) return r as RespuestaRPC & { ok: false }
+    return {
+      ok: true,
+      pedido_id: String(r.pedido_id),
+      total: Number(r.total),
+      agregado: Number(r.agregado ?? 0),
+      tipo_pedido: String(r.tipo_pedido),
+      metodo_pago: String(r.metodo_pago),
+    } as PedidoAmpliado
   }
 
   async actualizarDireccionCliente(clienteId: string, d: { direccion_principal: string; barrio: string | null }) {
